@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
-// 1. Importar o novo serviço (path corrigido)
+import React, { useState, useEffect, useRef } from 'react'; // 1. Importar useRef
 import { fetchB3Prices, fetchUniqueTickers } from "../services/b3service";
 import Pagination from './Pagination';
 
 function FiiHistoricalChecker() {
-    // 2. Iniciar states de ticker como vazios
+    // States 1-5 (sem mudanças)
     const [ticker, setTicker] = useState('');
     const [page, setPage] = useState(1);
     const [pageSize] = useState(50);
@@ -13,30 +12,29 @@ function FiiHistoricalChecker() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [searchedTicker, setSearchedTicker] = useState('');
-
-    // 3. Novos states para a lista de tickers do dropdown
     const [tickerList, setTickerList] = useState([]);
     const [tickersLoading, setTickersLoading] = useState(false);
 
-    // 4. Modificar loadPage para aceitar um ticker opcional (para busca/load inicial)
+    // State 9 (sem mudanças)
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+    // 12. Refs para o input e para o container do combobox
+    const inputRef = useRef(null);
+    const comboboxRef = useRef(null); // Ref para o container
+
+    // useEffects 6 e 7 (sem mudanças)
     const loadPage = async (pageToLoad, tickerToSearch = null) => {
         setLoading(true);
         setError(null);
-
-        // Se um novo ticker for fornecido (tickerToSearch), use-o.
-        // Caso contrário (paginação), use o ticker já buscado (searchedTicker).
         const tickerToFetch = tickerToSearch || searchedTicker;
-
         if (!tickerToFetch) {
             setLoading(false);
-            return; // Não fazer nada se não houver ticker
+            return;
         }
-
         try {
             const { data, count } = await fetchB3Prices(tickerToFetch, pageToLoad, pageSize);
             setData(data);
             setTotal(count);
-            // 5. Se foi uma nova busca, atualize o 'searchedTicker'
             if (tickerToSearch) {
                 setSearchedTicker(tickerToSearch);
             }
@@ -49,8 +47,6 @@ function FiiHistoricalChecker() {
             setLoading(false);
         }
     };
-
-    // 6. NOVO useEffect - Roda UMA VEZ no load inicial para carregar o dropdown
     useEffect(() => {
         async function loadTickers() {
             setTickersLoading(true);
@@ -58,48 +54,53 @@ function FiiHistoricalChecker() {
             try {
                 const tickers = await fetchUniqueTickers();
                 setTickerList(tickers);
-
-                // Definir um ticker padrão
                 const defaultTicker = tickers.includes('BPFF11') ? 'BPFF11' : (tickers[0] || '');
-
                 if (defaultTicker) {
-                    setTicker(defaultTicker); // Define o valor do dropdown
-                    // Chama o load inicial da página 1 com o ticker padrão
+                    setTicker(defaultTicker);
                     loadPage(1, defaultTicker);
                 }
             } catch (err) {
                 console.error("Falha ao carregar tickers", err);
-                setError('Erro ao carregar a lista de tickers. Verifique se a VIEW "unique_tickers_view" foi criada no Supabase.');
+                setError('Erro ao carregar a lista de tickers.');
             } finally {
                 setTickersLoading(false);
             }
         }
-
         loadTickers();
-    }, []); // Array vazio, roda só no mount
-
-    // 7. useEffect para PAGINAÇÃO (reage a 'page')
-    // (O useEffect de load inicial foi removido e substituído pelo de cima)
+    }, []);
     useEffect(() => {
-        // Só carrega se já tiver um ticker buscado E não for a página 1
-        // (pois o load da página 1 é feito pelo effect de cima ou pelo handleSearch)
         if (searchedTicker && page > 1) {
-            loadPage(page); // Chama sem ticker novo, vai usar 'searchedTicker'
+            loadPage(page);
         }
-        // Se a página for resetada para 1 (pelo handleSearch), este effect não
-        // fará a busca, pois o próprio handleSearch já chama o loadPage.
-    }, [page]); // Removido 'searchedTicker' daqui
+    }, [page]);
 
+    // handleSearch (sem mudanças)
     const handleSearch = (e) => {
         e.preventDefault();
-        setPage(1); // Reseta a página
-        loadPage(1, ticker); // Inicia a busca com a página 1 e o NOVO ticker do dropdown
+        if (ticker) {
+            setPage(1);
+            loadPage(1, ticker);
+            setIsDropdownOpen(false);
+        }
     };
 
+    // totalPages & handlePageChange (sem mudanças)
     const totalPages = Math.ceil(total / pageSize);
-
     const handlePageChange = (newPage) => {
         setPage(newPage);
+    };
+
+    // State 10 (sem mudanças)
+    const filteredTickers = tickerList.filter(t =>
+        t.toLowerCase().includes(ticker.toLowerCase())
+    );
+
+    // 13. Handler de onBlur para o container
+    // Fecha o dropdown se o foco sair do componente
+    const handleBlur = (e) => {
+        if (comboboxRef.current && !comboboxRef.current.contains(e.relatedTarget)) {
+            setIsDropdownOpen(false);
+        }
     };
 
     return (
@@ -108,34 +109,87 @@ function FiiHistoricalChecker() {
                 Histórico de FII (Supabase)
             </h2>
 
-            {/* --- CARD DE INPUTS --- */}
             <div className="border border-gray-500 bg-white rounded-lg shadow-md p-6 max-w-2xl">
                 <form onSubmit={handleSearch} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                             Ticker do FII
                         </label>
-                        {/* 8. SUBSTITUIR o <input> por este <select> */}
-                        <select
-                            value={ticker}
-                            onChange={(e) => setTicker(e.target.value)}
-                            disabled={tickersLoading || loading} // Desabilita enquanto carrega a lista OU os dados
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+
+                        {/* 14. O container do combobox com o ref e onBlur */}
+                        <div
+                            className="relative"
+                            ref={comboboxRef}
+                            onBlur={handleBlur} // Adiciona o handler de blur aqui
                         >
-                            {tickersLoading ? (
-                                <option>Carregando tickers...</option>
-                            ) : (
-                                tickerList.map(t => (
-                                    <option key={t} value={t}>
-                                        {t}
-                                    </option>
-                                ))
+                            <input
+                                ref={inputRef}
+                                type="text"
+                                value={ticker}
+                                onChange={(e) => {
+                                    setTicker(e.target.value);
+                                    setIsDropdownOpen(true); // Abrir ao digitar
+                                }}
+                                onFocus={() => setIsDropdownOpen(true)} // Abrir ao focar
+                                // onBlur foi movido para o container
+                                disabled={tickersLoading || loading}
+                                placeholder="Digite ou selecione um ticker"
+                                // Adiciona padding à direita para não sobrepor o texto ao botão
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white pr-10"
+                                autoComplete="off"
+                            />
+
+                            {/* 15. ESTE É O NOVO BOTÃO DE DROPDOWN */}
+                            <button
+                                type="button" // Prevenir submit de form
+                                disabled={tickersLoading || loading}
+                                onClick={() => {
+                                    // Alterna o dropdown e foca no input
+                                    setIsDropdownOpen(state => !state);
+                                    inputRef.current.focus();
+                                }}
+                                // Posicionamento absoluto sobre o input
+                                className="absolute inset-y-0 right-0 flex items-center justify-center w-10 h-full text-gray-500 hover:text-gray-700"
+                            >
+                                {/* Ícone de seta (tailwind heroicon) */}
+                                <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                            </button>
+
+                            {/* 16. Lista de resultados (dropdown) */}
+                            {isDropdownOpen && (
+                                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                    {tickersLoading ? (
+                                        <div className="px-4 py-2 text-gray-500">Carregando tickers...</div>
+                                    ) : filteredTickers.length > 0 ? (
+                                        filteredTickers.map(t => (
+                                            <div
+                                                key={t}
+                                                className="px-4 py-2 hover:bg-blue-100 cursor-pointer"
+                                                // 17. Usar onMouseDown para selecionar
+                                                // previne que o 'onBlur' feche o menu antes do clique
+                                                onMouseDown={(e) => {
+                                                    e.preventDefault(); // Previne o 'blur'
+                                                    setTicker(t);
+                                                    setIsDropdownOpen(false);
+                                                    inputRef.current.focus();
+                                                }}
+                                            >
+                                                {t}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="px-4 py-2 text-gray-500">Nenhum ticker encontrado.</div>
+                                    )}
+                                </div>
                             )}
-                        </select>
+                        </div>
                     </div>
+
                     <button
                         type="submit"
-                        disabled={loading || tickersLoading} // Desabilita em qualquer load
+                        disabled={loading || tickersLoading}
                         className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50"
                     >
                         {loading ? "Buscando..." : "Buscar Histórico"}
@@ -143,13 +197,12 @@ function FiiHistoricalChecker() {
                 </form>
             </div>
 
-            {/* --- ÁREA DE RESULTADOS --- */}
+            {/* --- ÁREA DE RESULTADOS (sem mudanças) --- */}
             <div className="mt-8 max-w-2xl space-y-6">
-                {/* Mostra "Carregando" apenas se for a primeira vez ou se a busca for nova */}
+                {/* ... (resto do código igual) ... */}
                 {loading && data.length === 0 && <p className="text-gray-500">Carregando...</p>}
                 {error && <p className="mt-6 text-red-500">{error}</p>}
 
-                {/* Card de Resultados */}
                 {!error && (data.length > 0 || !loading) && (
                     <div className="border border-gray-300 bg-white rounded-lg shadow-lg p-6">
                         {data.length > 0 ? (
@@ -157,8 +210,6 @@ function FiiHistoricalChecker() {
                                 <p className="text-gray-700 text-sm mb-4">
                                     Exibindo página {page} de {totalPages} ({total} registros para <strong>{searchedTicker}</strong>)
                                 </p>
-
-                                {/* Opacidade na tabela durante o carregamento de novas páginas */}
                                 <div className={`overflow-x-auto transition-opacity duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
                                     <table className="w-full border-collapse border border-gray-300 text-sm">
                                         <thead className="bg-gray-100">
@@ -181,8 +232,6 @@ function FiiHistoricalChecker() {
                                         </tbody>
                                     </table>
                                 </div>
-
-
                                 <div className="mt-6">
                                     <Pagination
                                         currentPage={page}
@@ -192,7 +241,6 @@ function FiiHistoricalChecker() {
                                 </div>
                             </>
                         ) : (
-                            // Mensagem para quando a busca não retorna nada (e não está carregando)
                             !loading && searchedTicker && (
                                 <p className="text-gray-600">
                                     Nenhum dado encontrado para o ticker "{searchedTicker}".
