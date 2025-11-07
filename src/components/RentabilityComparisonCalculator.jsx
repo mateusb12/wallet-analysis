@@ -3,7 +3,7 @@ import { useState } from 'react';
 function RentabilityComparisonCalculator() {
     const [amount, setAmount] = useState(10000);
     // NOVO: Taxa base do CDI (ex: 11.25% ao ano)
-    const [cdiRate, setCdiRate] = useState(11.25);
+    const [cdiRate, setCdiRate] = useState(14.9);
     // MUDADO: Agora representa a porcentagem SOBRE o CDI (ex: 95% do CDI)
     const [lciRate, setLciRate] = useState(95);
     // MUDADO: Agora representa a porcentagem SOBRE o CDI (ex: 110% do CDI)
