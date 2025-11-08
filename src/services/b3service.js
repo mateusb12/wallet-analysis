@@ -56,3 +56,40 @@ export async function fetchUniqueTickers() {
     // em um array de strings ['X', 'Y']
     return data.map(item => item.ticker);
 }
+
+/**
+ * --- NOVO ---
+ * Busca dividendos de FIIs (apenas linhas com dividend_value > 0)
+ * da view `b3_fiis_dividends`.
+ *
+ * @param {string} [ticker] - Opcional: filtra por ticker específico (ex: 'HGLG11')
+ * @param {number} [page=1]
+ * @param {number} [pageSize=50]
+ * @returns {Promise<{data: any[], count: number}>}
+ */
+export async function fetchFiiDividends(ticker = null, page = 1, pageSize = 50) {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = supabase
+        .from('b3_fiis_dividends')
+        .select('*', { count: 'exact' })
+        // --- ESTA É A LINHA QUE FALTAVA ---
+        // Filtra para mostrar apenas pagamentos reais
+        .gt('dividend_value', 0)
+        // ------------------------------------
+        .order('trade_date', { ascending: false })
+        .range(from, to);
+
+    if (ticker) {
+        query = query.eq('ticker', ticker.toUpperCase());
+    }
+
+    const { data, error, count } = await query;
+    if (error) {
+        console.error("Erro ao buscar dividendos de FIIs:", error.message);
+        throw error;
+    }
+
+    return { data, count };
+}
