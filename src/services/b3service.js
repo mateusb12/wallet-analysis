@@ -95,18 +95,39 @@ export async function fetchFiiDividends(ticker = null, page = 1, pageSize = 50) 
 }
 
 /**
- * Busca o primeiro registro de dividendo (dividend_value > 0)
- * para um ticker em um mês e ano específicos.
+ * --- NOVO ---
+ * Busca o range de datas (primeira e última) com dividendos
+ * para um FII específico.
  *
  * @param {string} ticker - Ticker (ex: 'HGLG11')
- * @param {number} month - Mês (1-12)
- * @param {number} year - Ano (ex: 2024)
- * @returns {Promise<any | null>} - Retorna o registro do dividendo, ou null se não houver.
+ * @returns {Promise<{oldest_date: string, newest_date: string} | null>}
+ */
+export async function fetchFiiDateRange(ticker) {
+    const { data, error } = await supabase
+        .from('fii_date_ranges') // Consulta a nova VIEW
+        .select('oldest_date, newest_date')
+        .eq('ticker', ticker.toUpperCase())
+        .single(); // Esperamos apenas um resultado
+
+    if (error) {
+        console.error(`Erro ao buscar range de datas para ${ticker}:`, error.message);
+        if (error.code === 'PGRST116') {
+            // "PGRST116" = "The result contains 0 rows"
+            throw new Error(`Nenhum dado histórico encontrado para o ticker ${ticker}.`);
+        }
+        throw error;
+    }
+
+    return data;
+}
+
+/**
+ * Busca o primeiro registro de dividendo (dividend_value > 0)
+ * para um ticker em um mês e ano específicos.
+ * (Função do passo anterior, sem mudanças)
  */
 export async function fetchFiiDividendForMonth(ticker, month, year) {
-    // Calcula o primeiro e o último dia do mês
-    // new Date(year, month, 0) -> 0 é o "dia zero" do mês, que é o último dia do mês ANTERIOR.
-    // new Date(year, month-1, 1) -> month-1 pois os meses em JS são 0-11
+    // ... (código da função sem mudanças) ...
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const lastDay = new Date(year, month, 0).getDate();
     const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
@@ -118,14 +139,13 @@ export async function fetchFiiDividendForMonth(ticker, month, year) {
         .gt('dividend_value', 0)
         .gte('trade_date', startDate)
         .lte('trade_date', endDate)
-        .order('trade_date', { ascending: true }) // Pega o primeiro pagamento no mês
-        .limit(1); // Queremos apenas um registro (o pagamento)
+        .order('trade_date', { ascending: true })
+        .limit(1);
 
     if (error) {
         console.error(`Erro ao buscar dividendo para ${ticker} em ${month}/${year}:`, error.message);
         throw error;
     }
 
-    // Retorna o primeiro (e único) registro encontrado, ou null
     return data && data.length > 0 ? data[0] : null;
 }
