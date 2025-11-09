@@ -171,6 +171,7 @@ function FiiSimulator() {
                 noReinvestDividends: 0,
                 noReinvestEnd: initialInv,
                 difference: 0,
+                currentPrice: lastPrice
             });
 
             // ----- 5. Loop Mensal (A partir do Mês 1) -----
@@ -218,6 +219,7 @@ function FiiSimulator() {
                     noReinvestDividends: dividendsNoReinvest,
                     noReinvestEnd: endValueNoReinvest,
                     difference: endValueReinvest - endValueNoReinvest,
+                    currentPrice: currentPrice
                 });
 
                 currentDate = addMonths(currentDate, 1);

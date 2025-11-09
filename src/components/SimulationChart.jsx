@@ -84,7 +84,7 @@ function SimulationChart({ data }) {
                         <Line
                             yAxisId="left"
                             type="monotone"
-                            dataKey="reinvestMontanteAtual"
+                            dataKey="reinvestEnd"
                             name="Montante (Reinvestindo)"
                             stroke="#16a34a" // Verde
                             strokeWidth={2}
@@ -95,7 +95,7 @@ function SimulationChart({ data }) {
                         <Line
                             yAxisId="left"
                             type="monotone"
-                            dataKey="noReinvestMontanteAtual"
+                            dataKey="noReinvestEnd"
                             name="Montante (Sem Reinvestir)"
                             stroke="#7e22ce" // Roxo
                             strokeWidth={2}
