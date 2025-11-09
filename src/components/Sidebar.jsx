@@ -5,6 +5,8 @@ import CompoundInterestCalculator from './CompoundInterestCalculator';
 import RentabilityComparisonCalculator from './RentabilityComparisonCalculator';
 import ReverseImpactCalculator from "./ReverseImpactCalculator.jsx";
 import FiiHistoricalChecker from "./FiiHistoricalChecker.jsx";
+// --- ADICIONADO ---
+import FiiSimulator from "./FiiSimulator.jsx";
 
 // 2. This is now the SINGLE SOURCE OF TRUTH
 // We've added a 'component' key to hold the actual component
@@ -15,6 +17,14 @@ const menuItems = [
         icon: '🏠',
         component: FiiHistoricalChecker
     },
+    // --- ADICIONADO COMO SEGUNDA OPÇÃO ---
+    {
+        id: 'fii-simulator',
+        label: 'Simulador de Investimento (FIIs)',
+        icon: '📈',
+        component: FiiSimulator
+    },
+    // ------------------------------------
     {
         id: 'rentability-comparison',
         label: 'Comparação de Rentabilidade (LCI/LCAs vs CDB)',
