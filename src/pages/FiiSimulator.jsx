@@ -337,7 +337,7 @@ function FiiSimulator() {
                             Ticker do FII
                         </label>
                         <div className="relative" ref={comboboxRef} onBlur={handleBlur}>
-                            {/* ... (Input, Botão e Dropdown do combobox - sem mudanças) ... */}
+                            {/* ... (Input, Botão e Dropdown do combobox) ... */}
                             <input ref={inputRef} type="text" id="ticker-input" value={ticker} onChange={(e) => { setTicker(e.target.value); setIsDropdownOpen(true); }} onFocus={() => setIsDropdownOpen(true)} disabled={tickersLoading || loading} placeholder="Digite ou selecione um ticker" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white pr-10" autoComplete="off" />
                             <button type="button" disabled={tickersLoading || loading} onClick={() => { setIsDropdownOpen((state) => !state); inputRef.current.focus(); }} className="absolute inset-y-0 right-0 flex items-center justify-center w-10 h-full text-gray-500 hover:text-gray-700"><svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg></button>
                             {isDropdownOpen && (
@@ -351,7 +351,7 @@ function FiiSimulator() {
                         </div>
                     </div>
 
-                    {/* --- 4. MUDANÇA: Inputs Financeiros --- */}
+                    {/* --- Inputs Financeiros --- */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                             <label htmlFor="initial-inv" className="block text-sm font-medium text-gray-700 mb-2">
@@ -394,13 +394,14 @@ function FiiSimulator() {
                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                                 placeholder="24"
                             />
-                            {/* --- 4. ÁREA DE MENSAGEM DO PRE-FLIGHT --- */}
+                            {/* --- ÁREA DE MENSAGEM DO PRE-FLIGHT --- */}
                             <div className="h-5 mt-1">
                                 {dateRangeLoading && (
                                     <p className="text-xs text-gray-500">Carregando histórico...</p>
                                 )}
                                 {dateRangeError && (
                                     <p className="text-xs text-red-600">{dateRangeError}</p>
+
                                 )}
                                 {fiiDateRange && !dateRangeLoading && !dateRangeError && (
                                     <p className="text-xs text-gray-600">
@@ -411,7 +412,7 @@ function FiiSimulator() {
                         </div>
                     </div>
 
-                    {/* --- Botão de Simular (atualizado) --- */}
+                    {/* --- Botão de Simular --- */}
                     <button
                         type="submit"
                         disabled={loading || tickersLoading || !ticker || dateRangeLoading}
@@ -426,7 +427,7 @@ function FiiSimulator() {
             <div className="space-y-8">
                 {loading && <p className="text-gray-500 text-lg">Carregando simulação...</p>}
 
-                {/* O Bloco de Erro agora também mostra AVISOS */}
+                {/* Bloco de Erro/Aviso */}
                 {error && (
                     <p className={`mt-6 p-4 rounded-lg ${error.startsWith('Aviso:') ? 'text-orange-700 bg-orange-100' : 'text-red-700 bg-red-100'}`}>
                         {error}
@@ -442,7 +443,7 @@ function FiiSimulator() {
                                 {simulationPeriodText}
                             </span>
                         </h3>
-                        {/* ... (O JSX do Resumo - Cards de Geral, Com e Sem Reinvestimento - não muda) ... */}
+                        {/* ... (Cards de Geral, Com e Sem Reinvestimento) ... */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="bg-gray-100 p-4 rounded-lg">
                                 <h4 className="text-sm font-semibold text-gray-600 uppercase mb-2">Geral</h4>
@@ -455,10 +456,11 @@ function FiiSimulator() {
                                 <p className="text-2xl font-bold text-green-800">{formatCurrency(summaryData.reinvestFinalValue)}</p>
                                 <p className="text-gray-700 mt-2">Ganho Total:</p>
                                 <p className="text-lg font-semibold text-green-800">{formatCurrency(summaryData.reinvestTotalGain)}</p>
+
                             </div>
                             <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
                                 <h4 className="text-sm font-semibold text-purple-700 uppercase mb-2">Sem Reinvestimento</h4>
-                                <p className="text-gray-700">Valor Final do Portfólio:</p>
+                                <p className="text-gray-700">Valor Final do PortfólIO:</p>
                                 <p className="text-2xl font-bold text-purple-800">{formatCurrency(summaryData.noReinvestFinalValue)}</p>
                                 <p className="text-gray-700 mt-2">Dividendos Sacados:</p>
                                 <p className="text-lg font-semibold text-purple-800">{formatCurrency(summaryData.totalDividendsWithdrawn)}</p>
@@ -470,13 +472,14 @@ function FiiSimulator() {
                 )}
 
 
-                {/* --- TABELA MÊS A MÊS --- */}
-                {/* ... (O JSX da Tabela Mês a Mês não muda) ... */}
+                {/* --- TABELA MÊS A MÊS E GRÁFICO --- */}
                 {simulationData.length > 0 && !loading && (
-                    <div className="border border-gray-300 bg-white rounded-lg shadow-lg p-6">
+                    <div className="border border-gray-300 bg-white rounded-lg shadow-lg p-6 space-y-6">
                         <h3 className="text-2xl font-bold mb-4 text-gray-800">
                             Detalhes da Simulação (Mês a Mês)
                         </h3>
+
+                        {/* 1. DIV DE OVERFLOW APENAS PARA A TABELA */}
                         <div className="overflow-x-auto">
                             <table className="w-full border-collapse border border-gray-300 text-sm whitespace-nowrap">
                                 <thead className="bg-gray-100">
@@ -505,18 +508,26 @@ function FiiSimulator() {
                                         <td className="border px-3 py-2 text-green-700 font-medium">+{formatCurrency(row.reinvestDividends)}</td>
                                         <td className="border px-3 py-2 font-bold text-gray-900">{formatCurrency(row.reinvestEnd)}</td>
                                         <td className="border px-3 py-2 text-gray-600">{formatCurrency(row.noReinvestStart)}</td>
-                                        <td className="border px-3 py-2 text-purple-700 font-medium">+{formatCurrency(row.noReinvestDividends)}</td>
+                                        <td className="border px-3 py-2 text-purple-700 font-medium">+{formatCurrency(row.reinvestDividends)}</td>
                                         <td className="border px-3 py-2 font-bold text-gray-900">{formatCurrency(row.noReinvestEnd)}</td>
                                         <td className="border px-3 py-2 font-semibold text-blue-700">{formatCurrency(row.difference)}</td>
                                     </tr>
                                 ))}
                                 </tbody>
                             </table>
+                        </div> {/* <-- FIM DA DIV DE OVERFLOW */}
 
-                            {simulationData.length > 0 && !loading && (
-                                <SimulationChart data={simulationData} />
-                            )}
-                        </div>
+
+                        {/* --- INÍCIO DA MUDANÇA --- */}
+                        {/* O Título do gráfico foi movido para cá */}
+                        <h3 className="text-2xl font-bold pt-4 text-gray-800">
+                            Evolução do Patrimônio vs. Preço da Cota
+                        </h3>
+
+                        {/* O Gráfico agora é renderizado aqui */}
+                        <SimulationChart data={simulationData} />
+                        {/* --- FIM DA MUDANÇA --- */}
+
                     </div>
                 )}
             </div>
