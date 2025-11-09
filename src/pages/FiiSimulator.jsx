@@ -5,8 +5,8 @@ import {
     fetchFiiDividendForMonth,
     fetchUniqueTickers,
     fetchFiiDateRange // <-- Necessário para o pre-flight
-} from "../services/b3service";
-import SimulationChart from "./SimulationChart.jsx";
+} from "../services/b3service.js";
+import SimulationChart from "../components/SimulationChart.jsx";
 
 // --- (Helpers de formatação e data, sem mudanças) ---
 const formatCurrency = (num) =>

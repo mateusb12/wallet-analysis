@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 // 1. Importa fetchFiiDividends e remove fetchB3Prices
-import { fetchFiiDividends, fetchUniqueTickers } from "../services/b3service";
-import Pagination from './Pagination';
+import { fetchFiiDividends, fetchUniqueTickers } from "../services/b3service.js";
+import Pagination from '../components/Pagination.jsx';
 
 function FiiHistoricalChecker() {
     // States (sem mudanças)

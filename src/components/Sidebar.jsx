@@ -1,12 +1,12 @@
 import { useState } from 'react';
 
 // 1. Import all your calculator components HERE
-import CompoundInterestCalculator from './CompoundInterestCalculator';
-import RentabilityComparisonCalculator from './RentabilityComparisonCalculator';
-import ReverseImpactCalculator from "./ReverseImpactCalculator.jsx";
-import FiiHistoricalChecker from "./FiiHistoricalChecker.jsx";
+import CompoundInterestCalculator from '../pages/CompoundInterestCalculator.jsx';
+import RentabilityComparisonCalculator from '../pages/RentabilityComparisonCalculator.jsx';
+import ReverseImpactCalculator from "../pages/ReverseImpactCalculator.jsx";
+import FiiHistoricalChecker from "../pages/FiiHistoricalChecker.jsx";
 // --- ADICIONADO ---
-import FiiSimulator from "./FiiSimulator.jsx";
+import FiiSimulator from "../pages/FiiSimulator.jsx";
 
 // 2. This is now the SINGLE SOURCE OF TRUTH
 // We've added a 'component' key to hold the actual component
