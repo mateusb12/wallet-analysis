@@ -172,9 +172,9 @@ function FiiSimulator() {
                 month: formatDate(simStartDate),
                 deposit: initialInv,
                 currentPrice: lastPrice,
-                prevPrice: 0,
+                prevPrice: 0, // Mês 0, sem preço anterior
                 currentDividend: 0,
-                prevDividend: 0,
+                prevDividend: 0, // Mês 0, sem dividendo anterior
                 // Reinvestindo
                 reinvestStart: 0,
                 reinvestDividends: 0,
@@ -298,6 +298,60 @@ function FiiSimulator() {
     const filteredTickers = tickerList.filter(t =>
         t.toLowerCase().includes(ticker.toLowerCase())
     );
+
+    // --- 🚀 FUNÇÃO AUXILIAR CORRIGIDA ---
+    // Helper para renderizar a mudança de preço/dividendo
+    const renderChange = (current, prev, decimals = 2) => {
+        // Formata os valores ANTES de qualquer comparação
+        const formattedCurrent = formatCurrency(current, decimals);
+
+        // Base case: Mês 0 ou sem dados anteriores
+        if (prev === 0) {
+            return (
+                <span className="text-gray-700">
+                    {formattedCurrent}
+                </span>
+            );
+        }
+
+        const formattedPrev = formatCurrency(prev, decimals);
+
+        // CORREÇÃO: Compara as strings formatadas, não os floats brutos
+        if (formattedCurrent === formattedPrev) {
+            return (
+                <span className="text-gray-500">
+                    {formattedCurrent}
+                </span>
+            );
+        }
+
+        // Somente se as strings formatadas forem diferentes, calculamos a mudança
+        const change = ((current - prev) / prev) * 100;
+
+        // Evita exibir -0.0% se a mudança for minúscula
+        if (Math.abs(change) < 0.01) {
+            return (
+                <span className="text-gray-500">
+                    {formattedCurrent}
+                </span>
+            );
+        }
+
+        const isPositive = change > 0;
+        const colorClass = isPositive ? 'text-green-700' : 'text-red-600';
+        const arrow = isPositive ? '↑' : '↓';
+
+        return (
+            <span className={colorClass}>
+                {formattedCurrent}
+                <span className="text-xs ml-1 whitespace-nowrap">
+                    ({arrow} {Math.abs(change).toFixed(1)}%)
+                </span>
+            </span>
+        );
+    };
+    // --- FIM DA FUNÇÃO AUXILIAR ---
+
 
     // --- JSX ---
     return (
@@ -482,11 +536,24 @@ function FiiSimulator() {
                                         <td className="border px-3 py-2">{row.month}</td>
                                         <td className="border px-3 py-2">{formatCurrency(row.deposit)}</td>
 
+                                        {/* --- 🚀 MUDANÇA APLICADA AQUI (NÃO VISÍVEL, MAS A LÓGICA MUDOU) --- */}
                                         {/* Dados do Ativo */}
-                                        <td className="border px-3 py-2 text-gray-700">{formatCurrency(row.currentPrice)}</td>
-                                        <td className="border px-3 py-2 text-gray-500">{formatCurrency(row.prevPrice)}</td>
-                                        <td className="border px-3 py-2 text-gray-700">{formatCurrency(row.currentDividend, 4)}</td>
-                                        <td className="border px-3 py-2 text-gray-500">{formatCurrency(row.prevDividend, 4)}</td>
+                                        <td className="border px-3 py-2">
+                                            {renderChange(row.currentPrice, row.prevPrice, 2)}
+                                        </td>
+                                        <td className="border px-3 py-2 text-gray-500">
+                                            {row.prevPrice > 0 ? formatCurrency(row.prevPrice) : '---'}
+                                        </td>
+                                        <td className="border px-3 py-2">
+                                            {renderChange(row.currentDividend, row.prevDividend, 4)}
+                                        </td>
+                                        <td className="border px-3 py-2 text-gray-500">
+                                            {/* Mostra o div anterior apenas se não for a primeira linha de dados reais */}
+                                            {(row.prevPrice > 0 || row.prevDividend > 0) && row.deposit !== summaryData.totalInvested // Evita mês 0
+                                                ? formatCurrency(row.prevDividend, 4)
+                                                : '---'}
+                                        </td>
+                                        {/* --- FIM DA MUDANÇA --- */}
 
                                         {/* Reinvestindo */}
                                         <td className="border px-3 py-2 text-gray-600">{formatCurrency(row.reinvestStart)}</td>
