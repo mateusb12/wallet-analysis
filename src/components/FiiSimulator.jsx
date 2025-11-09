@@ -6,6 +6,7 @@ import {
     fetchUniqueTickers,
     fetchFiiDateRange // <-- NOVO
 } from "../services/b3service";
+import SimulationChart from "./SimulationChart.jsx";
 
 // --- (Helpers de formatação e data, sem mudanças) ---
 const formatCurrency = (num) =>
@@ -433,6 +434,10 @@ function FiiSimulator() {
                                 ))}
                                 </tbody>
                             </table>
+
+                            {simulationData.length > 0 && !loading && (
+                                <SimulationChart data={simulationData} />
+                            )}
                         </div>
                     </div>
                 )}
