@@ -16,13 +16,15 @@ const formatCurrency = (value) =>
     currency: 'BRL',
   }).format(value);
 
-const tooltipFormatter = (value, name, props) => {
-  if (name === 'correctedValue') {
-    return [formatCurrency(value), 'Valor Corrigido'];
+const tooltipFormatter = (value, name) => {
+  if (name === 'Valor Corrigido' || name === 'correctedValue') {
+    return [formatCurrency(Number(value.toFixed(2))), 'Valor Corrigido'];
   }
-  if (name === 'ipca') {
-    return [`${value.toFixed(2)}%`, 'IPCA (mês)'];
+
+  if (name === 'IPCA (mês)' || name === 'ipca') {
+    return [`${Number(value).toFixed(2)}%`, 'IPCA (mês)'];
   }
+
   return [value, name];
 };
 
@@ -84,7 +86,6 @@ function IpcaChart({ data }) {
 
           <XAxis dataKey="month" tickFormatter={formatXAxis} interval="preserveStartEnd" />
 
-          {}
           <YAxis
             yAxisId="left"
             tickFormatter={formatCurrency}
@@ -92,7 +93,6 @@ function IpcaChart({ data }) {
             stroke="#16a34a"
           />
 
-          {}
           <YAxis
             yAxisId="right"
             orientation="right"
@@ -104,7 +104,6 @@ function IpcaChart({ data }) {
           <Tooltip formatter={tooltipFormatter} />
           <Legend />
 
-          {}
           <Line
             yAxisId="left"
             type="monotone"
@@ -116,7 +115,6 @@ function IpcaChart({ data }) {
             dot={false}
           />
 
-          {}
           <Line
             yAxisId="right"
             type="monotone"

@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { getIpcaRange, calculateAccumulatedFactor, correctValue } from '../services/ipcaService.js';
 import IpcaChart from '../components/IpcaChart.jsx';
+import DatePicker from 'react-datepicker';
+
+import 'react-datepicker/dist/react-datepicker.css';
 
 const formatCurrency = (num) =>
   new Intl.NumberFormat('pt-BR', {
@@ -23,8 +26,8 @@ const parseUTCDate = (dateString) => {
 
 function IpcaCalculator() {
   const [initialValue, setInitialValue] = useState('1000');
-  const [startDate, setStartDate] = useState('2000-01');
-  const [endDate, setEndDate] = useState('2023-12');
+  const [startDate, setStartDate] = useState(new Date('2000-01-01T12:00:00Z'));
+  const [endDate, setEndDate] = useState(new Date('2023-12-01T12:00:00Z'));
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -50,8 +53,10 @@ function IpcaCalculator() {
         throw new Error('A data final deve ser maior ou igual à data inicial.');
       }
 
-      const [startYear, startMonth] = startDate.split('-').map(Number);
-      const [endYear, endMonth] = endDate.split('-').map(Number);
+      const startYear = startDate.getUTCFullYear();
+      const startMonth = startDate.getUTCMonth() + 1;
+      const endYear = endDate.getUTCFullYear();
+      const endMonth = endDate.getUTCMonth() + 1;
 
       const ipcaSeries = await getIpcaRange(startYear, startMonth, endYear, endMonth);
 
@@ -62,8 +67,8 @@ function IpcaCalculator() {
       let newChartData = [];
       let currentValue = value;
       let accumulatedFactor = 1;
+      const startDateObj = startDate;
 
-      const startDateObj = new Date(Date.UTC(startYear, startMonth - 1, 1));
       newChartData.push({
         month: formatDate(startDateObj),
         correctedValue: currentValue,
@@ -131,32 +136,41 @@ function IpcaCalculator() {
                 step="0.01"
               />
             </div>
-            <div>
+
+            {}
+            <div className="relative z-20">
               <label htmlFor="start-date" className="block text-sm font-medium text-gray-700 mb-2">
                 Data Inicial
               </label>
-              <input
-                type="month"
+              <DatePicker
                 id="start-date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                selected={startDate}
+                onChange={(date) => setStartDate(date)}
+                dateFormat="yyyy-MM"
+                showMonthYearPicker
                 disabled={loading}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <div>
+
+            {}
+            <div className="relative z-10">
               <label htmlFor="end-date" className="block text-sm font-medium text-gray-700 mb-2">
                 Data Final
               </label>
-              <input
-                type="month"
+              <DatePicker
                 id="end-date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                selected={endDate}
+                onChange={(date) => setEndDate(date)}
+                dateFormat="yyyy-MM"
+                showMonthYearPicker
                 disabled={loading}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                showMonthYearDropdown={true}
               />
             </div>
+
+            {}
           </div>
 
           <button
