@@ -56,7 +56,7 @@ export async function fetchFiiDividends(ticker = null, page = 1, pageSize = 50) 
 
 export async function fetchFiiDateRange(ticker) {
     const { data, error } = await supabase
-        .from('fii_date_ranges')
+        .from('fii_date_ranges_view')
         .select('oldest_date, newest_date')
         .eq('ticker', ticker.toUpperCase())
         .single();
