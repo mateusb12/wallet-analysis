@@ -6,6 +6,7 @@ import FiiSimulator from '../pages/FiiSimulator.jsx';
 import RentabilityComparisonCalculator from '../pages/RentabilityComparisonCalculator.jsx';
 
 import IpcaCalculator from '../pages/IpcaCalculator.jsx';
+import PricePositionCalculator from '../pages/PricePositionCalculator.jsx';
 
 const menuItems = [
   {
@@ -38,6 +39,12 @@ const menuItems = [
     label: 'Calculadora de Correção (IPCA)',
     icon: '📊',
     component: IpcaCalculator,
+  },
+  {
+    id: 'price-analyzer',
+    label: 'Analisador de Preço (Ações)',
+    icon: '💹',
+    component: PricePositionCalculator,
   },
 ];
 
