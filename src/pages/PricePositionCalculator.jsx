@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ZScoreChart from '../components/ZScoreChart';
 
 const STOCKS = [
   { id: 'VALE3', label: 'Vale (VALE3)' },
@@ -20,6 +21,8 @@ function stdDev(arr) {
 function PricePositionCalculator() {
   const [selected, setSelected] = useState(STOCKS[0].id);
   const [result, setResult] = useState(null);
+
+  const [historicalData, setHistoricalData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -27,6 +30,7 @@ function PricePositionCalculator() {
     setLoading(true);
     setErrorMessage('');
     setResult(null);
+    setHistoricalData([]);
 
     try {
       const response = await fetch(`https://brapi.dev/api/quote/${selected}?range=1y&interval=1d`);
@@ -43,13 +47,17 @@ function PricePositionCalculator() {
 
       const apiResult = json.results[0];
 
-      const prices = (apiResult.historicalDataPrice || [])
-        .map((d) => d.close)
-        .filter((v) => typeof v === 'number' && !Number.isNaN(v));
+      const pricesData = (apiResult.historicalDataPrice || [])
+        .map((d) => ({ date: d.date, close: d.close }))
+        .filter((d) => typeof d.close === 'number' && !Number.isNaN(d.close));
 
-      if (!prices.length) {
+      if (!pricesData.length) {
         throw new Error('Histórico sem preços válidos');
       }
+
+      setHistoricalData(pricesData);
+
+      const prices = pricesData.map((d) => d.close);
 
       const currentPrice =
         typeof apiResult.regularMarketPrice === 'number'
@@ -68,7 +76,6 @@ function PricePositionCalculator() {
       let positionPct = null;
       if (range !== 0) {
         positionPct = ((currentPrice - minPrice) / range) * 100;
-
         positionPct = Math.max(0, Math.min(100, positionPct));
       }
 
@@ -118,7 +125,7 @@ function PricePositionCalculator() {
 
       <div className="bg-white rounded-lg shadow-md p-6">
         <p className="text-gray-700 mb-6">
-          Este módulo usa o histórico de aproximadamente 1 ano da ação selecionada (dados da BRAPI)
+          Este módulo usa o histórico de approximately 1 ano da ação selecionada (dados da BRAPI)
           para calcular <strong>média, desvio padrão e Z-Score</strong>, além de posição no range de
           preços e percentil. Isso te dá uma noção de quão <strong>esticado ou descontado</strong> o
           preço atual está em relação ao comportamento recente.
@@ -145,50 +152,62 @@ function PricePositionCalculator() {
         >
           {loading ? 'Calculando...' : 'Calcular Z-Score'}
         </button>
-
-        {errorMessage && (
-          <div className="mt-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm">{errorMessage}</div>
-        )}
-
-        {result && (
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-            <h3 className="text-lg font-semibold mb-3 text-gray-700">Resultado:</h3>
-
-            <p>
-              <strong>Preço atual:</strong> R$ {result.current}
-            </p>
-            <p>
-              <strong>Mínimo no período (~1 ano):</strong> R$ {result.min}
-            </p>
-            <p>
-              <strong>Máximo no período (~1 ano):</strong> R$ {result.max}
-            </p>
-            <p>
-              <strong>Média no período (~1 ano):</strong> R$ {result.media}
-            </p>
-            <p>
-              <strong>Desvio padrão:</strong> {result.desvio}
-            </p>
-            <p>
-              <strong>Z-Score:</strong> {result.zScore}
-            </p>
-
-            {result.positionPct !== null && (
-              <p>
-                <strong>Posição no range de 1 ano:</strong> {result.positionPct}% (0% = na mínima,
-                100% = na máxima)
-              </p>
-            )}
-
-            <p className="mt-2 text-sm text-gray-700">
-              Em {result.daysBelowOrEqual} de {result.totalDays} pregões ({result.percentile}% do
-              tempo), o preço esteve <strong>menor ou igual</strong> ao preço atual.
-            </p>
-
-            <p className="mt-4 text-xl font-bold">{result.status}</p>
-          </div>
-        )}
       </div>
+
+      {errorMessage && (
+        <div className="mt-6 p-3 rounded-lg bg-red-50 text-red-700 text-sm">{errorMessage}</div>
+      )}
+
+      {result && (
+        <div className="mt-6 p-4 bg-blue-50 rounded-lg shadow-md">
+          <h3 className="text-lg font-semibold mb-3 text-gray-700">Resultado:</h3>
+
+          <p>
+            <strong>Preço atual:</strong> R$ {result.current}
+          </p>
+          <p>
+            <strong>Mínimo no período (~1 ano):</strong> R$ {result.min}
+          </p>
+          <p>
+            <strong>Máximo no período (~1 ano):</strong> R$ {result.max}
+          </p>
+          <p>
+            <strong>Média no período (~1 ano):</strong> R$ {result.media}
+          </p>
+          <p>
+            <strong>Desvio padrão:</strong> {result.desvio}
+          </p>
+          <p>
+            <strong>Z-Score:</strong> {result.zScore}
+          </p>
+
+          {result.positionPct !== null && (
+            <p>
+              <strong>Posição no range de 1 ano:</strong> {result.positionPct}% (0% = na mínima,
+              100% = na máxima)
+            </p>
+          )}
+
+          <p className="mt-2 text-sm text-gray-700">
+            Em {result.daysBelowOrEqual} de {result.totalDays} pregões ({result.percentile}% do
+            tempo), o preço esteve <strong>menor ou igual</strong> ao preço atual.
+          </p>
+
+          <p className="mt-4 text-xl font-bold">{result.status}</p>
+        </div>
+      )}
+
+      {}
+      {result && historicalData.length > 0 && (
+        <div className="mt-8">
+          <h3 className="text-2xl font-semibold mb-4 text-gray-700">
+            Visualização Gráfica (1 Ano)
+          </h3>
+          <div className="bg-white rounded-lg shadow-md p-4 pt-8">
+            <ZScoreChart historicalPrices={historicalData} analysisResult={result} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
