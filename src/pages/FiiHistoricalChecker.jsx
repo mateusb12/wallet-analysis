@@ -3,6 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { fetchFiiDividends, fetchUniqueTickers } from '../services/b3service.js';
 import Pagination from '../components/Pagination.jsx';
 
+import HistoryChart from '../components/HistoryChart.jsx';
+
 function FiiHistoricalChecker() {
   const [ticker, setTicker] = useState('');
   const [page, setPage] = useState(1);
@@ -190,6 +192,18 @@ function FiiHistoricalChecker() {
                   Exibindo página {page} de {totalPages} ({total} registros para{' '}
                   <strong>{searchedTicker}</strong>)
                 </p>
+
+                {}
+                <div className="mb-8">
+                  <h3 className="text-lg font-semibold text-gray-700 mb-2">
+                    Evolução do Preço e Dividendos (Visualização da Página Atual)
+                  </h3>
+                  <div className="border border-gray-200 rounded p-4 bg-gray-50">
+                    <HistoryChart data={data} />
+                  </div>
+                </div>
+                {}
+
                 <div
                   className={`overflow-x-auto transition-opacity duration-300 ${
                     loading ? 'opacity-50' : 'opacity-100'
