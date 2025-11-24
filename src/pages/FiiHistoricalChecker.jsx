@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchFiiDividends, fetchUniqueTickers, fetchFiiChartData } from '../services/b3service.js';
+import { getIpcaRange } from '../services/ipcaService.js';
 import Pagination from '../components/Pagination.jsx';
 import HistoryChart from '../components/HistoryChart.jsx';
 
@@ -13,6 +14,8 @@ function FiiHistoricalChecker() {
 
   const [chartData, setChartData] = useState([]);
   const [timeRange, setTimeRange] = useState(12);
+
+  const [showTotalReturn, setShowTotalReturn] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -55,8 +58,63 @@ function FiiHistoricalChecker() {
     if (!tickerToFetch) return;
 
     try {
-      const data = await fetchFiiChartData(tickerToFetch, timeRange);
-      setChartData(data);
+      const fiiData = await fetchFiiChartData(tickerToFetch, timeRange);
+
+      if (!fiiData || fiiData.length === 0) {
+        setChartData([]);
+        return;
+      }
+
+      const sortedData = [...fiiData].sort(
+        (a, b) => new Date(a.trade_date) - new Date(b.trade_date)
+      );
+
+      const startDate = sortedData[0].trade_date;
+      const endDate = sortedData[sortedData.length - 1].trade_date;
+
+      const [startYear, startMonth] = startDate.split('-').map(Number);
+      const [endYear, endMonth] = endDate.split('-').map(Number);
+
+      const ipcaData = await getIpcaRange(startYear, startMonth, endYear, endMonth);
+
+      const ipcaMap = {};
+      ipcaData.forEach((item) => {
+        const key = item.ref_date.substring(0, 7);
+        ipcaMap[key] = item.ipca;
+      });
+
+      const basePrice = parseFloat(sortedData[0].price_close);
+
+      let ipcaAccumulatedFactor = 1.0;
+      let ipcaProcessedMonth = '';
+
+      let dividendsAccumulated = 0;
+      let dividendProcessedMonth = '';
+
+      const mergedData = sortedData.map((dayData, index) => {
+        const dateKey = dayData.trade_date.substring(0, 7);
+        const currentPrice = parseFloat(dayData.price_close);
+        const currentDividend = parseFloat(dayData.dividend_value || 0);
+
+        if (dateKey !== ipcaProcessedMonth && ipcaMap[dateKey] !== undefined && index > 0) {
+          const monthlyRate = ipcaMap[dateKey] / 100;
+          ipcaAccumulatedFactor *= 1 + monthlyRate;
+          ipcaProcessedMonth = dateKey;
+        }
+
+        if (dateKey !== dividendProcessedMonth) {
+          dividendsAccumulated += currentDividend;
+          dividendProcessedMonth = dateKey;
+        }
+
+        return {
+          ...dayData,
+          ipca_projection: basePrice * ipcaAccumulatedFactor,
+          total_return: currentPrice + dividendsAccumulated,
+        };
+      });
+
+      setChartData([...mergedData].reverse());
     } catch (err) {
       console.error('Erro ao carregar gráfico', err);
     }
@@ -71,7 +129,6 @@ function FiiHistoricalChecker() {
         const defaultTicker = tickers.includes('BPFF11') ? 'BPFF11' : tickers[0] || '';
         if (defaultTicker) {
           setTicker(defaultTicker);
-
           loadTableData(1, defaultTicker);
           setSearchedTicker(defaultTicker);
         }
@@ -127,7 +184,6 @@ function FiiHistoricalChecker() {
     <div className="p-8">
       <h2 className="text-3xl font-bold mb-6 text-gray-800">Histórico de Dividendos de FIIs</h2>
 
-      {}
       <div className="border border-gray-500 bg-white rounded-lg shadow-md p-6 max-w-2xl mb-8">
         <form onSubmit={handleSearch} className="space-y-4">
           <div>
@@ -145,7 +201,6 @@ function FiiHistoricalChecker() {
                 placeholder="Digite ou selecione um ticker"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white pr-10"
               />
-              {}
               <button
                 type="button"
                 onClick={() => {
@@ -195,15 +250,34 @@ function FiiHistoricalChecker() {
 
         {!error && searchedTicker && (
           <div className="border border-gray-300 bg-white rounded-lg shadow-lg p-6">
-            {}
             <div className="mb-8">
-              <div className="flex flex-col md:flex-row justify-between items-end md:items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-700">
-                  Evolução ({getRangeLabel(timeRange)})
-                </h3>
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                {}
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-lg font-semibold text-gray-700">
+                    Evolução ({getRangeLabel(timeRange)})
+                  </h3>
+
+                  {}
+                  <div className="flex items-center space-x-2">
+                    <input
+                      id="totalReturnCheck"
+                      type="checkbox"
+                      checked={showTotalReturn}
+                      onChange={(e) => setShowTotalReturn(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                    />
+                    <label
+                      htmlFor="totalReturnCheck"
+                      className="text-sm font-medium text-purple-700 cursor-pointer select-none"
+                    >
+                      Mostrar Retorno Total (Cota + Div)
+                    </label>
+                  </div>
+                </div>
 
                 {}
-                <div className="w-full md:w-1/3 mt-4 md:mt-0">
+                <div className="w-full md:w-1/3">
                   <label
                     htmlFor="timeRange"
                     className="block text-sm font-medium text-gray-600 mb-1"
@@ -231,16 +305,14 @@ function FiiHistoricalChecker() {
               </div>
 
               <div className="border border-gray-200 rounded p-4 bg-gray-50">
-                {}
                 {chartData.length > 0 ? (
-                  <HistoryChart data={chartData} />
+                  <HistoryChart data={chartData} showTotalReturn={showTotalReturn} />
                 ) : (
                   <p className="text-center text-gray-500 py-10">Carregando gráfico...</p>
                 )}
               </div>
             </div>
 
-            {}
             {tableData.length > 0 ? (
               <>
                 <p className="text-gray-700 text-sm mb-4">

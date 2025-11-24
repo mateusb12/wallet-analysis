@@ -48,10 +48,12 @@ const formatDate = (dateStr) => {
   return `${day}/${month}/${year.slice(2)}`;
 };
 
-const CustomTooltip = ({ active, payload, label }) => {
+const CustomTooltip = ({ active, payload, label, showTotalReturn }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     const yieldValue = data.dividend_yield_month ? data.dividend_yield_month * 100 : 0;
+    const ipcaValue = data.ipca_projection ? data.ipca_projection : null;
+    const totalReturnValue = data.total_return ? data.total_return : null;
 
     return (
       <div className="bg-white border border-gray-300 p-3 rounded-lg shadow-lg text-sm z-50">
@@ -60,19 +62,33 @@ const CustomTooltip = ({ active, payload, label }) => {
         </p>
 
         <div className="space-y-1">
+          {}
+          {showTotalReturn && totalReturnValue && (
+            <p className="text-purple-700 flex justify-between gap-4 font-bold bg-purple-50 px-1 rounded">
+              <span>Retorno Total:</span>
+              <span className="font-mono">{formatPrice(totalReturnValue)}</span>
+            </p>
+          )}
+
+          <p className="text-orange-600 flex justify-between gap-4">
+            <span>IPCA (Base 1º dia):</span>
+            <span className="font-mono">{formatPrice(ipcaValue)}</span>
+          </p>
+
+          <div className="my-1 border-t border-gray-100"></div>
+
+          <p className="text-blue-600 flex justify-between gap-4">
+            <span>Preço Cota:</span>
+            <span className="font-mono">{formatPrice(data.price_close)}</span>
+          </p>
+
           <p className="text-green-600 flex justify-between gap-4">
             <span>Dividendos:</span>
             <span className="font-mono">{formatDividend(data.dividend_value)}</span>
           </p>
 
-          <p className="text-blue-600 flex justify-between gap-4">
-            <span>Preço Fechamento:</span>
-            <span className="font-mono">{formatPrice(data.price_close)}</span>
-          </p>
-
-          {}
           <p className="text-purple-600 flex justify-between gap-4 font-semibold mt-1 pt-1 border-t border-gray-100">
-            <span>Dividend Yield:</span>
+            <span>Yield:</span>
             <span className="font-mono">{yieldValue.toFixed(2)}%</span>
           </p>
         </div>
@@ -82,7 +98,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
-function HistoryChart({ data }) {
+function HistoryChart({ data, showTotalReturn }) {
   const isMobile = useMediaQuery('(max-width: 768px)');
 
   const chartData = [...data].reverse();
@@ -108,7 +124,6 @@ function HistoryChart({ data }) {
             tick={{ fontSize: 12 }}
           />
 
-          {}
           <YAxis
             yAxisId="left"
             width={isMobile ? 40 : 60}
@@ -117,7 +132,6 @@ function HistoryChart({ data }) {
             style={{ fontSize: '11px' }}
           />
 
-          {}
           <YAxis
             yAxisId="right"
             orientation="right"
@@ -128,7 +142,7 @@ function HistoryChart({ data }) {
           />
 
           {}
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip showTotalReturn={showTotalReturn} />} />
 
           <Legend wrapperStyle={{ paddingTop: '10px' }} />
 
@@ -138,7 +152,32 @@ function HistoryChart({ data }) {
             name="Dividendos"
             fill="#82ca9d"
             barSize={20}
-            opacity={0.6}
+            opacity={0.4}
+          />
+
+          {}
+          {showTotalReturn && (
+            <Line
+              yAxisId="left"
+              type="monotone"
+              dataKey="total_return"
+              name="Retorno Total (Cota+Div)"
+              stroke="#7e22ce"
+              strokeWidth={3}
+              dot={false}
+              animationDuration={500}
+            />
+          )}
+
+          <Line
+            yAxisId="left"
+            type="stepAfter"
+            dataKey="ipca_projection"
+            name="Inflação Acumulada (IPCA)"
+            stroke="#ea580c"
+            strokeDasharray="5 5"
+            strokeWidth={2}
+            dot={false}
           />
 
           <Line
