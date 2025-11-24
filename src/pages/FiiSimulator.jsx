@@ -53,6 +53,8 @@ function FiiSimulator() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const [copySuccess, setCopySuccess] = useState('');
+
   const [fiiDateRange, setFiiDateRange] = useState(null);
   const [dateRangeLoading, setDateRangeLoading] = useState(false);
   const [dateRangeError, setDateRangeError] = useState(null);
@@ -346,6 +348,50 @@ function FiiSimulator() {
     }
   };
 
+  const handleCopyToClipboard = async () => {
+    if (!simulationData || simulationData.length === 0) return;
+
+    const headers = [
+      'Mês',
+      'Aporte',
+      'Reinv. Início',
+      'Reinv. Dividendos',
+      'Reinv. Fim',
+      'S/ Reinv. Início',
+      'S/ Reinv. Dividendos',
+      'S/ Reinv. Fim',
+      'Diferença',
+    ].join('\t');
+
+    const rows = simulationData
+      .map((row) => {
+        return [
+          row.month,
+          formatCurrency(row.deposit),
+          formatCurrency(row.reinvestStart),
+          formatCurrency(row.reinvestDividends),
+          formatCurrency(row.reinvestEnd),
+          formatCurrency(row.noReinvestStart),
+          formatCurrency(row.noReinvestDividends),
+          formatCurrency(row.noReinvestEnd),
+          formatCurrency(row.difference),
+        ].join('\t');
+      })
+      .join('\n');
+
+    const csvContent = `${headers}\n${rows}`;
+
+    try {
+      await navigator.clipboard.writeText(csvContent);
+      setCopySuccess('Copiado!');
+
+      setTimeout(() => setCopySuccess(''), 2000);
+    } catch (err) {
+      console.error('Falha ao copiar:', err);
+      setCopySuccess('Erro ao copiar');
+    }
+  };
+
   const handleBlur = (e) => {
     if (comboboxRef.current && !comboboxRef.current.contains(e.relatedTarget)) {
       setIsDropdownOpen(false);
@@ -557,9 +603,48 @@ function FiiSimulator() {
 
         {simulationData.length > 0 && !loading && (
           <div className="border border-gray-300 bg-white rounded-lg shadow-lg p-6 space-y-6">
-            <h3 className="text-2xl font-bold mb-4 text-gray-800">
-              Detalhes da Simulação (Mês a Mês)
-            </h3>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+              <h3 className="text-2xl font-bold text-gray-800">
+                Detalhes da Simulação (Mês a Mês)
+              </h3>
+
+              <button
+                onClick={handleCopyToClipboard}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-md border border-gray-300 transition-colors"
+                title="Copiar tabela para colar no Excel"
+              >
+                {copySuccess === 'Copiado!' ? (
+                  <>
+                    <svg
+                      className="w-5 h-5 text-green-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <span className="text-green-600">Copiado!</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                      />
+                    </svg>
+                    <span>Copiar Tabela</span>
+                  </>
+                )}
+              </button>
+            </div>
 
             <div className="overflow-x-auto">
               <table className="w-full border-collapse border border-gray-300 text-sm whitespace-nowrap">
@@ -599,7 +684,7 @@ function FiiSimulator() {
                         {formatCurrency(row.reinvestStart)}
                       </td>
                       <td className="border px-3 py-2 text-green-700 font-medium">
-                        +{formatCurrency(row.reinvestDividends)}
+                        +{formatCurrency(row.noReinvestDividends)}
                       </td>
                       <td className="border px-3 py-2 font-bold text-gray-900">
                         {formatCurrency(row.reinvestEnd)}
