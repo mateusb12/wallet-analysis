@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Sidebar, { defaultCalculator } from './components/Sidebar';
 import { AuthProvider, useAuth } from './features/auth/AuthContext';
 import Login from './features/auth/Login';
+import Register from './features/auth/Register';
 
 function HamburgerIcon() {
   return (
@@ -22,34 +23,35 @@ function HamburgerIcon() {
   );
 }
 
-// Internal component to handle content rendering based on auth state
 function AppContent() {
   const { session, loading } = useAuth();
   const [ActiveCalculator, setActiveCalculator] = useState(() => defaultCalculator.component);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Show loading spinner while checking session
+  const [authView, setAuthView] = useState('login');
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-100">
+      <div className="flex items-center justify-center h-screen bg-gray-100 dark:bg-gray-900">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
-  // If no session, show Login
   if (!session) {
-    return <Login />;
+    if (authView === 'register') {
+      return <Register onSwitchToLogin={() => setAuthView('login')} />;
+    }
+    return <Login onSwitchToRegister={() => setAuthView('register')} />;
   }
 
-  // Authenticated layout
   const handleSelectCalculator = (component) => {
     setActiveCalculator(() => component);
     setIsMobileMenuOpen(false);
   };
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
       <Sidebar
         onSelectCalculator={handleSelectCalculator}
         isMobileOpen={isMobileMenuOpen}
