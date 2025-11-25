@@ -1,13 +1,14 @@
 import { useState } from 'react';
+import { useAuth } from '../features/auth/AuthContext'; // Import useAuth
 import CompoundInterestCalculator from '../pages/CompoundInterestCalculator.jsx';
 import ReverseImpactCalculator from '../pages/ReverseImpactCalculator.jsx';
 import FiiHistoricalChecker from '../pages/FiiHistoricalChecker.jsx';
 import FiiSimulator from '../pages/FiiSimulator.jsx';
 import RentabilityComparisonCalculator from '../pages/RentabilityComparisonCalculator.jsx';
-
 import IpcaCalculator from '../pages/IpcaCalculator.jsx';
 import PricePositionCalculator from '../pages/PricePositionCalculator.jsx';
 
+// ... (keep menuItems and defaultCalculator definitions exactly as they were) ...
 const menuItems = [
   {
     id: 'fii-historical-checker',
@@ -52,6 +53,7 @@ export const defaultCalculator = menuItems[0];
 
 function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
   const [activeItem, setActiveItem] = useState(defaultCalculator.id);
+  const { signOut, user } = useAuth(); // Get signOut function and user
 
   const handleItemClick = (item) => {
     setActiveItem(item.id);
@@ -66,9 +68,12 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
     <>
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-center">Calculadora de Investimentos</h1>
+        <p className="text-xs text-gray-400 text-center mt-2 truncate px-2">
+          {user?.email}
+        </p>
       </div>
 
-      <nav className="flex-1">
+      <nav className="flex-1 overflow-y-auto">
         <ul className="space-y-2">
           {menuItems.map((item) => (
             <li key={item.id}>
@@ -86,8 +91,15 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
         </ul>
       </nav>
 
-      <div className="pt-4 border-t border-gray-700">
-        <p className="text-xs text-gray-400 text-center">© 2024 Ferramentas de Investimento</p>
+      <div className="pt-4 mt-2 border-t border-gray-700 space-y-4">
+        <button
+          onClick={signOut}
+          className="w-full text-left px-4 py-2 rounded-lg hover:bg-red-600/20 text-red-300 hover:text-red-100 transition-colors duration-200 flex items-center space-x-3"
+        >
+          <span>🚪</span>
+          <span className="text-sm">Sair</span>
+        </button>
+        <p className="text-xs text-gray-500 text-center">© 2024 Ferramentas de Investimento</p>
       </div>
     </>
   );

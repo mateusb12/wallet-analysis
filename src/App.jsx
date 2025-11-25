@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import Sidebar, { defaultCalculator } from './components/Sidebar';
+import { AuthProvider, useAuth } from './features/auth/AuthContext';
+import Login from './features/auth/Login';
 
 function HamburgerIcon() {
   return (
@@ -20,10 +22,27 @@ function HamburgerIcon() {
   );
 }
 
-function App() {
+// Internal component to handle content rendering based on auth state
+function AppContent() {
+  const { session, loading } = useAuth();
   const [ActiveCalculator, setActiveCalculator] = useState(() => defaultCalculator.component);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Show loading spinner while checking session
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  // If no session, show Login
+  if (!session) {
+    return <Login />;
+  }
+
+  // Authenticated layout
   const handleSelectCalculator = (component) => {
     setActiveCalculator(() => component);
     setIsMobileMenuOpen(false);
@@ -53,6 +72,14 @@ function App() {
         </div>
       </div>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 
