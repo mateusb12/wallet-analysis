@@ -1,14 +1,13 @@
 import { useState } from 'react';
-import { useAuth } from '../features/auth/AuthContext'; // Import useAuth
-import CompoundInterestCalculator from '../pages/CompoundInterestCalculator.jsx';
-import ReverseImpactCalculator from '../pages/ReverseImpactCalculator.jsx';
+import { useAuth } from '../features/auth/AuthContext';
+import { useTheme } from '../features/theme/ThemeContext'; // Import ThemeContext
 import FiiHistoricalChecker from '../pages/FiiHistoricalChecker.jsx';
 import FiiSimulator from '../pages/FiiSimulator.jsx';
 import RentabilityComparisonCalculator from '../pages/RentabilityComparisonCalculator.jsx';
+import ReverseImpactCalculator from '../pages/ReverseImpactCalculator.jsx';
 import IpcaCalculator from '../pages/IpcaCalculator.jsx';
 import PricePositionCalculator from '../pages/PricePositionCalculator.jsx';
 
-// ... (keep menuItems and defaultCalculator definitions exactly as they were) ...
 const menuItems = [
   {
     id: 'fii-historical-checker',
@@ -34,7 +33,6 @@ const menuItems = [
     icon: '⏱️',
     component: ReverseImpactCalculator,
   },
-
   {
     id: 'ipca-calculator',
     label: 'Calculadora de Correção (IPCA)',
@@ -53,7 +51,8 @@ export const defaultCalculator = menuItems[0];
 
 function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
   const [activeItem, setActiveItem] = useState(defaultCalculator.id);
-  const { signOut, user } = useAuth(); // Get signOut function and user
+  const { signOut, user } = useAuth();
+  const { theme, toggleTheme } = useTheme(); // Use Theme Hook
 
   const handleItemClick = (item) => {
     setActiveItem(item.id);
@@ -91,7 +90,18 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
         </ul>
       </nav>
 
-      <div className="pt-4 mt-2 border-t border-gray-700 space-y-4">
+      <div className="pt-4 mt-2 border-t border-gray-700 space-y-2">
+        {/* Dark Mode Toggle */}
+        <button
+          onClick={toggleTheme}
+          className="w-full text-left px-4 py-2 rounded-lg hover:bg-gray-700 text-gray-300 hover:text-white transition-colors duration-200 flex items-center space-x-3"
+        >
+          <span>{theme === 'dark' ? '☀️' : '🌙'}</span>
+          <span className="text-sm">
+            {theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
+          </span>
+        </button>
+
         <button
           onClick={signOut}
           className="w-full text-left px-4 py-2 rounded-lg hover:bg-red-600/20 text-red-300 hover:text-red-100 transition-colors duration-200 flex items-center space-x-3"

@@ -57,3 +57,10 @@ export const tooltipFormatter = (value, name) => {
 
   return [formattedValue, formattedName];
 };
+
+export const getChartColors = (isDark) => ({
+  grid: isDark ? '#374151' : '#e0e0e0', // gray-700 vs gray-300
+  text: isDark ? '#e5e7eb' : '#374151', // gray-200 vs gray-700
+  tooltipBg: isDark ? '#1f2937' : '#ffffff',
+  tooltipBorder: isDark ? '#4b5563' : '#d1d5db',
+});

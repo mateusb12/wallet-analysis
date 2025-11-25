@@ -4,9 +4,7 @@ import {
   fetchUniqueTickers,
   fetchFiiDateRange,
 } from '../services/b3service.js';
-
 import { getIpcaRange } from '../services/ipcaService.js';
-
 import SimulationChart from '../components/SimulationChart.jsx';
 import { supabase } from '../services/supabaseClient.js';
 
@@ -112,9 +110,7 @@ function FiiSimulator() {
         }
       } catch (err) {
         console.error(err);
-        setDateRangeError(
-          `Erro ao buscar histórico para ${ticker}. (Verifique se a view 'fii_date_ranges' existe)`
-        );
+        setDateRangeError(`Erro ao buscar histórico para ${ticker}.`);
       } finally {
         setDateRangeLoading(false);
       }
@@ -163,9 +159,9 @@ function FiiSimulator() {
           (simEndDate.getUTCMonth() - simStartDate.getUTCMonth()) +
           1;
 
-        setError(`Aviso: O período solicitado (${requestedMonths} meses, desde ${formatDate(oldStartDate)}) 
-                          é maior que o histórico disponível. 
-                          Simulando com o máximo de ${actualMonths} meses (desde ${formatDate(simStartDate)}).`);
+        setError(
+          `Aviso: O período solicitado (${requestedMonths} meses) é maior que o histórico disponível. Simulando com ${actualMonths} meses.`
+        );
       }
 
       const ipcaStartYear = simStartDate.getUTCFullYear();
@@ -188,11 +184,6 @@ function FiiSimulator() {
         }
       } catch (ipcaError) {
         console.error('Erro ao buscar IPCA:', ipcaError);
-        setError(
-          (prevError) =>
-            (prevError ? prevError + '\n' : '') +
-            'Aviso: Não foi possível carregar os dados do IPCA. A linha de inflação não será exibida.'
-        );
       }
 
       setSimulationPeriodText(
@@ -225,17 +216,14 @@ function FiiSimulator() {
           .single();
 
         if (firstEverError || !firstEverData) {
-          console.error('Erro ao buscar primeiro preço:', firstEverError);
           throw new Error(
             `Falha crítica: não foi possível obter nenhum preço inicial para ${ticker}.`
           );
         }
         lastPrice = parseFloat(firstEverData.price_close);
-
         lastDividend = lastPrice * parseFloat(firstEverData.dividend_value);
       } else {
         lastPrice = parseFloat(firstMonthData.price_close);
-
         lastDividend = lastPrice * parseFloat(firstMonthData.dividend_value);
       }
 
@@ -274,9 +262,7 @@ function FiiSimulator() {
         if (monthData) {
           currentPrice = parseFloat(monthData.price_close);
           const yieldValue = parseFloat(monthData.dividend_value);
-
           dividendPerShare = currentPrice * yieldValue;
-
           lastPrice = currentPrice;
           lastDividend = dividendPerShare;
         } else {
@@ -291,7 +277,6 @@ function FiiSimulator() {
         const monthIpcaFactor = ipcaMap.get(prevMonthKey) || 1.0;
 
         inflationCorrectedValue = inflationCorrectedValue * monthIpcaFactor + monthlyDep;
-
         totalInvested += monthlyDep;
 
         const startValueReinvest = sharesReinvest * currentPrice;
@@ -350,7 +335,6 @@ function FiiSimulator() {
 
   const handleCopyToClipboard = async () => {
     if (!simulationData || simulationData.length === 0) return;
-
     const headers = [
       'Mês',
       'Aporte',
@@ -380,11 +364,9 @@ function FiiSimulator() {
       .join('\n');
 
     const csvContent = `${headers}\n${rows}`;
-
     try {
       await navigator.clipboard.writeText(csvContent);
       setCopySuccess('Copiado!');
-
       setTimeout(() => setCopySuccess(''), 2000);
     } catch (err) {
       console.error('Falha ao copiar:', err);
@@ -401,12 +383,17 @@ function FiiSimulator() {
 
   return (
     <div className="p-8">
-      <h2 className="text-3xl font-bold mb-6 text-gray-800">Simulador de Investimento em FIIs</h2>
+      <h2 className="text-3xl font-bold mb-6 text-gray-800 dark:text-white transition-colors">
+        Simulador de Investimento em FIIs
+      </h2>
 
-      <div className="border border-gray-500 bg-white rounded-lg shadow-md p-6 max-w-2xl mb-8">
+      <div className="border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 max-w-2xl mb-8 transition-colors">
         <form onSubmit={handleRunSimulation} className="space-y-4">
           <div>
-            <label htmlFor="ticker-input" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="ticker-input"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+            >
               Ticker do FII
             </label>
             <div className="relative" ref={comboboxRef} onBlur={handleBlur}>
@@ -422,7 +409,7 @@ function FiiSimulator() {
                 onFocus={() => setIsDropdownOpen(true)}
                 disabled={tickersLoading || loading}
                 placeholder="Digite ou selecione um ticker"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white pr-10"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white pr-10 placeholder-gray-400 dark:placeholder-gray-500 transition-colors"
                 autoComplete="off"
               />
               <button
@@ -432,11 +419,11 @@ function FiiSimulator() {
                   setIsDropdownOpen((state) => !state);
                   inputRef.current.focus();
                 }}
-                className="absolute inset-y-0 right-0 flex items-center justify-center w-10 h-full text-gray-500 hover:text-gray-700"
+                className="absolute inset-y-0 right-0 flex items-center justify-center w-10 h-full text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 <svg
                   className="w-5 h-5"
-                  xmlns="http://www.w.0.org/2000/svg"
+                  xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 20 20"
                   fill="currentColor"
                 >
@@ -448,14 +435,16 @@ function FiiSimulator() {
                 </svg>
               </button>
               {isDropdownOpen && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                   {tickersLoading ? (
-                    <div className="px-4 py-2 text-gray-500">Carregando tickers...</div>
+                    <div className="px-4 py-2 text-gray-500 dark:text-gray-400">
+                      Carregando tickers...
+                    </div>
                   ) : filteredTickers.length > 0 ? (
                     filteredTickers.map((t) => (
                       <div
                         key={t}
-                        className="px-4 py-2 hover:bg-blue-100 cursor-pointer"
+                        className="px-4 py-2 hover:bg-blue-100 dark:hover:bg-gray-600 cursor-pointer text-gray-900 dark:text-gray-100"
                         onMouseDown={(e) => {
                           e.preventDefault();
                           setTicker(t);
@@ -467,7 +456,9 @@ function FiiSimulator() {
                       </div>
                     ))
                   ) : (
-                    <div className="px-4 py-2 text-gray-500">Nenhum ticker encontrado.</div>
+                    <div className="px-4 py-2 text-gray-500 dark:text-gray-400">
+                      Nenhum ticker encontrado.
+                    </div>
                   )}
                 </div>
               )}
@@ -476,7 +467,10 @@ function FiiSimulator() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label htmlFor="initial-inv" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="initial-inv"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+              >
                 Investimento Inicial (R$)
               </label>
               <input
@@ -485,12 +479,15 @@ function FiiSimulator() {
                 value={initialInvestment}
                 onChange={(e) => setInitialInvestment(e.target.value)}
                 disabled={loading}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
                 placeholder="10000"
               />
             </div>
             <div>
-              <label htmlFor="monthly-dep" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="monthly-dep"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+              >
                 Aporte Mensal (R$)
               </label>
               <input
@@ -499,12 +496,15 @@ function FiiSimulator() {
                 value={monthlyDeposit}
                 onChange={(e) => setMonthlyDeposit(e.target.value)}
                 disabled={loading}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
                 placeholder="500"
               />
             </div>
             <div>
-              <label htmlFor="sim-months" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="sim-months"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+              >
                 Período (meses)
               </label>
               <input
@@ -513,16 +513,20 @@ function FiiSimulator() {
                 value={simulationMonths}
                 onChange={(e) => setSimulationMonths(e.target.value)}
                 disabled={loading}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
                 placeholder="24"
               />
               <div className="h-5 mt-1">
                 {dateRangeLoading && (
-                  <p className="text-xs text-gray-500">Carregando histórico...</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Carregando histórico...
+                  </p>
                 )}
-                {dateRangeError && <p className="text-xs text-red-600">{dateRangeError}</p>}
+                {dateRangeError && (
+                  <p className="text-xs text-red-600 dark:text-red-400">{dateRangeError}</p>
+                )}
                 {fiiDateRange && !dateRangeLoading && !dateRangeError && (
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
                     Data mais antiga:{' '}
                     {formatDate(new Date(fiiDateRange.oldest_date.replace(/-/g, '/')))}
                   </p>
@@ -534,7 +538,7 @@ function FiiSimulator() {
           <button
             type="submit"
             disabled={loading || tickersLoading || !ticker || dateRangeLoading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Simulando...' : 'Rodar Simulação'}
           </button>
@@ -542,58 +546,69 @@ function FiiSimulator() {
       </div>
 
       <div className="space-y-8">
-        {loading && <p className="text-gray-500 text-lg">Carregando simulação...</p>}
+        {loading && (
+          <p className="text-gray-500 dark:text-gray-400 text-lg">Carregando simulação...</p>
+        )}
 
         {error && (
           <p
-            className={`mt-6 p-4 rounded-lg ${error.startsWith('Aviso:') ? 'text-orange-700 bg-orange-100' : 'text-red-700 bg-red-100'}`}
+            className={`mt-6 p-4 rounded-lg ${
+              error.startsWith('Aviso:')
+                ? 'text-orange-700 bg-orange-100 dark:bg-orange-900/30 dark:text-orange-300'
+                : 'text-red-700 bg-red-100 dark:bg-red-900/30 dark:text-red-300'
+            }`}
           >
             {error}
           </p>
         )}
 
         {summaryData && !loading && (
-          <div className="border border-gray-300 bg-white rounded-lg shadow-lg p-6">
-            <h3 className="text-2xl font-bold mb-4 text-gray-800">
+          <div className="border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 transition-colors">
+            <h3 className="text-2xl font-bold mb-4 text-gray-800 dark:text-white">
               Resumo da Simulação {ticker}
-              <span className="text-lg font-normal text-gray-600 ml-2">{simulationPeriodText}</span>
+              <span className="text-lg font-normal text-gray-600 dark:text-gray-400 ml-2">
+                {simulationPeriodText}
+              </span>
             </h3>
-            {}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-gray-100 p-4 rounded-lg">
-                <h4 className="text-sm font-semibold text-gray-600 uppercase mb-2">Geral</h4>
-                <p className="text-gray-700">Total Investido:</p>
-                <p className="text-2xl font-bold text-gray-900">
+              <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg">
+                <h4 className="text-sm font-semibold text-gray-600 dark:text-gray-300 uppercase mb-2">
+                  Geral
+                </h4>
+                <p className="text-gray-700 dark:text-gray-300">Total Investido:</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
                   {formatCurrency(summaryData.totalInvested)}
                 </p>
               </div>
-              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                <h4 className="text-sm font-semibold text-green-700 uppercase mb-2">
+              <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border border-green-200 dark:border-green-800">
+                <h4 className="text-sm font-semibold text-green-700 dark:text-green-400 uppercase mb-2">
                   Com Reinvestimento
                 </h4>
-                <p className="text-gray-700">Valor Final do Portfólio:</p>
-                <p className="text-2xl font-bold text-green-800">
+                <p className="text-gray-700 dark:text-gray-300">Valor Final do Portfólio:</p>
+                <p className="text-2xl font-bold text-green-800 dark:text-green-300">
                   {formatCurrency(summaryData.reinvestFinalValue)}
                 </p>
-                <p className="text-gray-700 mt-2">Ganho Total:</p>
-                <p className="text-lg font-semibold text-green-800">
+                <p className="text-gray-700 dark:text-gray-300 mt-2">Ganho Total:</p>
+                <p className="text-lg font-semibold text-green-800 dark:text-green-300">
                   {formatCurrency(summaryData.reinvestTotalGain)}
                 </p>
               </div>
-              <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                <h4 className="text-sm font-semibold text-purple-700 uppercase mb-2">
+              <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg border border-purple-200 dark:border-purple-800">
+                <h4 className="text-sm font-semibold text-purple-700 dark:text-purple-400 uppercase mb-2">
                   Sem Reinvestimento
                 </h4>
-                <p className="text-gray-700">Valor Final do PortfólIO:</p>
-                <p className="text-2xl font-bold text-purple-800">
+                <p className="text-gray-700 dark:text-gray-300">Valor Final do Portfólio:</p>
+                <p className="text-2xl font-bold text-purple-800 dark:text-purple-300">
                   {formatCurrency(summaryData.noReinvestFinalValue)}
                 </p>
-                <p className="text-gray-700 mt-2">Dividendos Sacados:</p>
-                <p className="text-lg font-semibold text-purple-800">
+                <p className="text-gray-700 dark:text-gray-300 mt-2">Dividendos Sacados:</p>
+                <p className="text-lg font-semibold text-purple-800 dark:text-purple-300">
                   {formatCurrency(summaryData.totalDividendsWithdrawn)}
                 </p>
-                <p className="text-gray-700 mt-2">Ganho Total (Portfólio + Sacado):</p>
-                <p className="text-lg font-semibold text-purple-800">
+                <p className="text-gray-700 dark:text-gray-300 mt-2">
+                  Ganho Total (Portfólio + Sacado):
+                </p>
+                <p className="text-lg font-semibold text-purple-800 dark:text-purple-300">
                   {formatCurrency(summaryData.noReinvestTotalGain)}
                 </p>
               </div>
@@ -602,21 +617,21 @@ function FiiSimulator() {
         )}
 
         {simulationData.length > 0 && !loading && (
-          <div className="border border-gray-300 bg-white rounded-lg shadow-lg p-6 space-y-6">
+          <div className="border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 space-y-6 transition-colors">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
-              <h3 className="text-2xl font-bold text-gray-800">
+              <h3 className="text-2xl font-bold text-gray-800 dark:text-white">
                 Detalhes da Simulação (Mês a Mês)
               </h3>
 
               <button
                 onClick={handleCopyToClipboard}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-md border border-gray-300 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 transition-colors"
                 title="Copiar tabela para colar no Excel"
               >
                 {copySuccess === 'Copiado!' ? (
                   <>
                     <svg
-                      className="w-5 h-5 text-green-600"
+                      className="w-5 h-5 text-green-600 dark:text-green-400"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -628,7 +643,7 @@ function FiiSimulator() {
                         d="M5 13l4 4L19 7"
                       />
                     </svg>
-                    <span className="text-green-600">Copiado!</span>
+                    <span className="text-green-600 dark:text-green-400">Copiado!</span>
                   </>
                 ) : (
                   <>
@@ -647,58 +662,89 @@ function FiiSimulator() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-gray-300 text-sm whitespace-nowrap">
-                <thead className="bg-gray-100">
+              <table className="w-full border-collapse border border-gray-300 dark:border-gray-600 text-sm whitespace-nowrap">
+                <thead className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
                   <tr>
-                    <th rowSpan="2" className="border px-3 py-2 text-left">
+                    <th
+                      rowSpan="2"
+                      className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-left"
+                    >
                       Mês
                     </th>
-                    <th rowSpan="2" className="border px-3 py-2 text-left">
+                    <th
+                      rowSpan="2"
+                      className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-left"
+                    >
                       Aporte
                     </th>
-                    <th colSpan="3" className="border px-3 py-2 text-center bg-green-50">
+                    <th
+                      colSpan="3"
+                      className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-center bg-green-50 dark:bg-green-900/30 text-green-900 dark:text-green-100"
+                    >
                       Cenário: Reinvestindo
                     </th>
-                    <th colSpan="3" className="border px-3 py-2 text-center bg-purple-50">
+                    <th
+                      colSpan="3"
+                      className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-center bg-purple-50 dark:bg-purple-900/30 text-purple-900 dark:text-purple-100"
+                    >
                       Cenário: Sem Reinvestir
                     </th>
-                    <th rowSpan="2" className="border px-3 py-2 text-left">
+                    <th
+                      rowSpan="2"
+                      className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-left"
+                    >
                       Diferença
                     </th>
                   </tr>
                   <tr>
-                    <th className="border px-3 py-2 text-left bg-green-50">Início</th>
-                    <th className="border px-3 py-2 text-left bg-green-50">Rend. (Div.)</th>
-                    <th className="border px-3 py-2 text-left bg-green-50">Fim</th>
-                    <th className="border px-3 py-2 text-left bg-purple-50">Início</th>
-                    <th className="border px-3 py-2 text-left bg-purple-50">Rend. (Sacado)</th>
-                    <th className="border px-3 py-2 text-left bg-purple-50">Fim</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-left bg-green-50 dark:bg-green-900/30 text-green-900 dark:text-green-100">
+                      Início
+                    </th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-left bg-green-50 dark:bg-green-900/30 text-green-900 dark:text-green-100">
+                      Rend. (Div.)
+                    </th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-left bg-green-50 dark:bg-green-900/30 text-green-900 dark:text-green-100">
+                      Fim
+                    </th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-left bg-purple-50 dark:bg-purple-900/30 text-purple-900 dark:text-purple-100">
+                      Início
+                    </th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-left bg-purple-50 dark:bg-purple-900/30 text-purple-900 dark:text-purple-100">
+                      Rend. (Sacado)
+                    </th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-left bg-purple-50 dark:bg-purple-900/30 text-purple-900 dark:text-purple-100">
+                      Fim
+                    </th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="text-gray-900 dark:text-gray-200">
                   {simulationData.map((row) => (
-                    <tr key={row.month} className="hover:bg-gray-50">
-                      <td className="border px-3 py-2">{row.month}</td>
-                      <td className="border px-3 py-2">{formatCurrency(row.deposit)}</td>
-                      <td className="border px-3 py-2 text-gray-600">
+                    <tr key={row.month} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <td className="border border-gray-300 dark:border-gray-600 px-3 py-2">
+                        {row.month}
+                      </td>
+                      <td className="border border-gray-300 dark:border-gray-600 px-3 py-2">
+                        {formatCurrency(row.deposit)}
+                      </td>
+                      <td className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-gray-600 dark:text-gray-400">
                         {formatCurrency(row.reinvestStart)}
                       </td>
-                      <td className="border px-3 py-2 text-green-700 font-medium">
+                      <td className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-green-700 dark:text-green-400 font-medium">
                         +{formatCurrency(row.noReinvestDividends)}
                       </td>
-                      <td className="border px-3 py-2 font-bold text-gray-900">
+                      <td className="border border-gray-300 dark:border-gray-600 px-3 py-2 font-bold text-gray-900 dark:text-white">
                         {formatCurrency(row.reinvestEnd)}
                       </td>
-                      <td className="border px-3 py-2 text-gray-600">
+                      <td className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-gray-600 dark:text-gray-400">
                         {formatCurrency(row.noReinvestStart)}
                       </td>
-                      <td className="border px-3 py-2 text-purple-700 font-medium">
+                      <td className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-purple-700 dark:text-purple-400 font-medium">
                         +{formatCurrency(row.reinvestDividends)}
                       </td>
-                      <td className="border px-3 py-2 font-bold text-gray-900">
+                      <td className="border border-gray-300 dark:border-gray-600 px-3 py-2 font-bold text-gray-900 dark:text-white">
                         {formatCurrency(row.noReinvestEnd)}
                       </td>
-                      <td className="border px-3 py-2 font-semibold text-blue-700">
+                      <td className="border border-gray-300 dark:border-gray-600 px-3 py-2 font-semibold text-blue-700 dark:text-blue-400">
                         {formatCurrency(row.difference)}
                       </td>
                     </tr>
@@ -707,7 +753,7 @@ function FiiSimulator() {
               </table>
             </div>
 
-            <h3 className="text-2xl font-bold pt-4 text-gray-800">
+            <h3 className="text-2xl font-bold pt-4 text-gray-800 dark:text-white">
               Evolução do Patrimônio vs. Preço da Cota
             </h3>
 
