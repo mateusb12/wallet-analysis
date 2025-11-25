@@ -1,9 +1,9 @@
 {
-  "name": "investments-calculator",
+  "name": "wallet-analysis",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://mateusb12.github.io/investments-calculator",
+  "homepage": "https://mateusb12.github.io/wallet-analysis",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
