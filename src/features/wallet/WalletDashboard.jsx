@@ -107,7 +107,7 @@ function WalletDashboard() {
         <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">Meu Portfólio</h2>
 
         {}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {Object.entries(CATEGORIES_CONFIG).map(([key, config]) => {
             const isActive = activeTab === key;
             return (
@@ -115,39 +115,53 @@ function WalletDashboard() {
                 key={key}
                 onClick={() => setActiveTab(key)}
                 className={`
-                  relative flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-300 group
-                  ${
-                    isActive
-                      ? 'bg-blue-600 border-blue-600 shadow-lg shadow-blue-500/30 transform scale-[1.02]'
-                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md'
-                  }
-                `}
+          relative flex items-center p-5 rounded-2xl border transition-all duration-300 group text-left
+          ${
+            isActive
+              ? 'bg-blue-600 border-blue-600 shadow-lg shadow-blue-500/30 transform scale-[1.02]'
+              : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md'
+          }
+        `}
               >
+                {}
                 <div
-                  className={`mb-3 p-2 rounded-full ${isActive ? 'bg-white/20' : 'bg-gray-100 dark:bg-gray-700'}`}
+                  className={`
+            flex-shrink-0 p-3 rounded-xl mr-4 transition-colors duration-300
+            ${isActive ? 'bg-white/20' : 'bg-gray-100 dark:bg-gray-700 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30'}
+          `}
                 >
                   <img
                     src={config.icon}
                     alt={config.label}
-                    className={`w-8 h-8 object-contain ${!isActive && 'opacity-80 grayscale-[0.3] group-hover:grayscale-0'}`}
+                    className={`w-12 h-12 object-contain transition-all duration-300 ${
+                      !isActive &&
+                      'opacity-80 grayscale-[0.3] group-hover:grayscale-0 group-hover:scale-110'
+                    }`}
                   />
                 </div>
 
-                <span
-                  className={`text-sm font-medium mb-1 ${isActive ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'}`}
-                >
-                  {config.label}
-                </span>
+                {}
+                <div className="flex flex-col">
+                  <span
+                    className={`text-sm font-medium mb-1 ${
+                      isActive ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'
+                    }`}
+                  >
+                    {config.label}
+                  </span>
 
-                <span
-                  className={`text-lg font-bold ${isActive ? 'text-white' : 'text-gray-900 dark:text-white'}`}
-                >
-                  {formatCurrency(categoryTotals[key])}
-                </span>
+                  <span
+                    className={`text-xl font-bold tracking-tight ${
+                      isActive ? 'text-white' : 'text-gray-900 dark:text-white'
+                    }`}
+                  >
+                    {formatCurrency(categoryTotals[key])}
+                  </span>
+                </div>
 
                 {}
                 {isActive && (
-                  <span className="absolute top-3 right-3 w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                  <span className="absolute top-3 right-3 w-2 h-2 bg-green-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(74,222,128,0.8)]"></span>
                 )}
               </button>
             );
@@ -191,16 +205,14 @@ function WalletDashboard() {
                 Últimos 12 meses
               </span>
             </h3>
-            {filteredHistory.length > 0 && activeTab !== 'total' ? (
+            {filteredHistory.length > 0 ? (
               <WalletHistoryChart
                 data={filteredHistory}
                 benchmarkName={CATEGORIES_CONFIG[activeTab].benchmark}
               />
             ) : (
               <div className="h-64 flex items-center justify-center text-gray-500 bg-gray-50 dark:bg-gray-900/50 rounded">
-                {activeTab === 'total'
-                  ? 'Gráfico consolidado não disponível'
-                  : 'Dados insuficientes para gráfico'}
+                Dados insuficientes para gráfico
               </div>
             )}
           </div>
