@@ -1,35 +1,81 @@
-// src/services/walletDataService.js
-
-// 1. Parsing the hardcoded CSV data provided
 const RAW_WALLET_DATA = [
   {
-    ticker: "BBAS3",
-    name: "BCO BRASIL S.A.",
+    ticker: 'BBAS3',
+    name: 'BCO BRASIL S.A.',
     qty: 5,
     price_close: 22.22,
-    total_value: 111.10,
-    type: "Ação"
+    total_value: 111.1,
+    type: 'stock',
   },
   {
-    ticker: "BBSE3",
-    name: "BB SEGURIDADE PARTICIPAÇÕES S.A.",
+    ticker: 'BBSE3',
+    name: 'BB SEGURIDADE PARTICIPAÇÕES S.A.',
     qty: 9,
-    price_close: 34.60,
-    total_value: 311.40,
-    type: "Ação"
+    price_close: 34.6,
+    total_value: 311.4,
+    type: 'stock',
   },
   {
-    ticker: "WEGE3",
-    name: "WEG S.A.",
+    ticker: 'WEGE3',
+    name: 'WEG S.A.',
     qty: 5,
-    price_close: 44.40,
-    total_value: 222.00,
-    type: "Ação"
-  }
+    price_close: 44.4,
+    total_value: 222.0,
+    type: 'stock',
+  },
+
+  {
+    ticker: 'IVVB11',
+    name: 'ISHARES S&P 500 FUNDO DE ÍNDICE',
+    qty: 1,
+    price_close: 408.65,
+    total_value: 408.65,
+    type: 'etf',
+  },
+  {
+    ticker: 'QQQQ11',
+    name: 'BUENA VISTA V FUNDO DE ÍNDICE',
+    qty: 3,
+    price_close: 97.3,
+    total_value: 291.9,
+    type: 'etf',
+  },
+
+  {
+    ticker: 'BTLG11',
+    name: 'BTG PACTUAL LOGISTICA FDO INV IMOB RESP LIM',
+    qty: 1,
+    price_close: 103.58,
+    total_value: 103.58,
+    type: 'fii',
+  },
+  {
+    ticker: 'KNCR11',
+    name: 'KINEA RENDIMENTOS IMOBILIÁRIOS FII RESP LIM',
+    qty: 1,
+    price_close: 105.55,
+    total_value: 105.55,
+    type: 'fii',
+  },
+  {
+    ticker: 'KNHF11',
+    name: 'KINEA HEDGE FUND FII RESP LIM',
+    qty: 4,
+    price_close: 91.92,
+    total_value: 367.68,
+    type: 'fii',
+  },
+  {
+    ticker: 'XPCM11',
+    name: 'XP CORPORATE MACAÉ FII RESP LIM',
+    qty: 10,
+    price_close: 7.91,
+    total_value: 79.1,
+    type: 'fii',
+  },
 ];
 
 export const fetchWalletPositions = async () => {
-  // Simulating API delay
   return new Promise((resolve) => {
     setTimeout(() => {
       resolve(RAW_WALLET_DATA);
@@ -37,42 +83,77 @@ export const fetchWalletPositions = async () => {
   });
 };
 
-/**
- * Since the CSV doesn't have history, we mock a performance curve
- * based on the current total value to show the chart concept.
- */
+const generateCurve = (
+  currentTotal,
+  timeRangeMonths,
+  volatilityBase,
+  trendFactor,
+  benchmarkRate
+) => {
+  const history = [];
+  const today = new Date();
+
+  if (currentTotal === 0) {
+    for (let i = timeRangeMonths * 30; i >= 0; i -= 5) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      history.push({
+        trade_date: date.toISOString().split('T')[0],
+        portfolio_value: 0,
+        invested_amount: 0,
+        benchmark_value: 0,
+      });
+    }
+    return history;
+  }
+
+  for (let i = timeRangeMonths * 30; i >= 0; i -= 5) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - i);
+
+    const progress = 1 - i / (timeRangeMonths * 30);
+
+    const randomNoise = (Math.random() - 0.5) * (currentTotal * volatilityBase);
+
+    const value = currentTotal * 0.8 + currentTotal * 0.2 * progress * trendFactor + randomNoise;
+
+    const invested = currentTotal * 0.85 + Math.random() * currentTotal * 0.05;
+
+    const benchmark = invested * Math.pow(1 + benchmarkRate, (timeRangeMonths * 30 - i) / 365);
+
+    history.push({
+      trade_date: date.toISOString().split('T')[0],
+      portfolio_value: parseFloat(Math.max(0, value).toFixed(2)),
+      invested_amount: parseFloat(invested.toFixed(2)),
+      benchmark_value: parseFloat(benchmark.toFixed(2)),
+    });
+  }
+  return history;
+};
+
 export const fetchWalletPerformanceHistory = async (timeRangeMonths = 12) => {
-  const currentTotal = RAW_WALLET_DATA.reduce((acc, item) => acc + item.total_value, 0);
+  const stockTotal = RAW_WALLET_DATA.filter((i) => i.type === 'stock').reduce(
+    (acc, item) => acc + item.total_value,
+    0
+  );
+  const etfTotal = RAW_WALLET_DATA.filter((i) => i.type === 'etf').reduce(
+    (acc, item) => acc + item.total_value,
+    0
+  );
+  const fiiTotal = RAW_WALLET_DATA.filter((i) => i.type === 'fii').reduce(
+    (acc, item) => acc + item.total_value,
+    0
+  );
 
   return new Promise((resolve) => {
     setTimeout(() => {
-      const history = [];
-      const today = new Date();
+      resolve({
+        stock: generateCurve(stockTotal, timeRangeMonths, 0.15, 1.2, 0.12),
 
-      // Generate points going backwards
-      for (let i = timeRangeMonths * 30; i >= 0; i -= 5) { // Every 5 days
-        const date = new Date(today);
-        date.setDate(date.getDate() - i);
+        etf: generateCurve(etfTotal, timeRangeMonths, 0.1, 1.1, 0.1),
 
-        // Random volatility to simulate market movement
-        // We ensure it ends exactly at the currentTotal
-        const volatility = Math.random() * 0.04 - 0.015; // slightly upward trend
-        const historicalFactor = 1 - (i / (timeRangeMonths * 30)) * 0.15; // Assume 15% growth over period
-
-        // Add some noise
-        const randomNoise = (Math.random() - 0.5) * 10;
-
-        const value = (currentTotal * historicalFactor) + randomNoise;
-        const invested = currentTotal * 0.85; // Simulate that we invested 85% of current value
-
-        history.push({
-          trade_date: date.toISOString().split('T')[0],
-          portfolio_value: parseFloat(value.toFixed(2)),
-          invested_amount: parseFloat(invested.toFixed(2)), // Flat line for simplicity
-          cdi_benchmark: parseFloat((invested * (1 + (0.01 * (timeRangeMonths * 30 - i) / 30))).toFixed(2)) // Mock CDI
-        });
-      }
-      resolve(history);
+        fii: generateCurve(fiiTotal, timeRangeMonths, 0.05, 1.05, 0.11),
+      });
     }, 800);
   });
 };

@@ -45,7 +45,7 @@ const CustomTooltip = ({ active, payload, label, isDark }) => {
   return null;
 };
 
-function WalletHistoryChart({ data }) {
+function WalletHistoryChart({ data, benchmarkName = 'Benchmark' }) {
   const themeContext = tryUseTheme();
   const isDark = themeContext === 'dark';
 
@@ -84,17 +84,18 @@ function WalletHistoryChart({ data }) {
           <Area
             type="monotone"
             dataKey="portfolio_value"
-            name="Valor da Carteira"
+            name="Valor da Categoria"
             stroke="#2563eb"
             fillOpacity={1}
             fill="url(#colorValue)"
             strokeWidth={3}
           />
 
+          {}
           <Line
             type="monotone"
-            dataKey="cdi_benchmark"
-            name="Benchmark (CDI)"
+            dataKey="benchmark_value"
+            name={benchmarkName}
             stroke="#eab308"
             strokeDasharray="3 3"
             dot={false}
