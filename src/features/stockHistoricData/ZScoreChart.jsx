@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   ResponsiveContainer,
   LineChart,
@@ -16,12 +16,72 @@ import {
   formatCurrencyMobile,
   tooltipFormatter,
   useMediaQuery,
-} from '../utils/chartUtils.js';
+} from '../../utils/chartUtils.js';
 
 const parseNum = (str) => (typeof str === 'string' ? parseFloat(str.replace(',', '.')) : str);
 
 function ZScoreChart({ historicalPrices, analysisResult }) {
   const isMobile = useMediaQuery('(max-width: 768px)');
+
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const checkDark = () => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    };
+
+    checkDark();
+
+    const observer = new MutationObserver(checkDark);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
+    return () => observer.disconnect();
+  }, []);
+
+  const theme = useMemo(() => {
+    return isDark
+      ? {
+          grid: '#374151',
+          text: '#9ca3af',
+          line: '#60a5fa',
+          currentLine: '#c084fc',
+          currentLabel: '#e9d5ff',
+          meanLine: '#fb923c',
+          meanLabel: '#fdba74',
+          tooltipBg: '#1f2937',
+          tooltipBorder: '#374151',
+          tooltipText: '#f3f4f6',
+          areas: {
+            veryCheap: { fill: '#064e3b', label: '#6ee7b7' },
+            cheap: { fill: '#065f46', label: '#6ee7b7' },
+            neutral: { fill: '#1e3a8a', label: '#93c5fd' },
+            expensive: { fill: '#7f1d1d', label: '#fca5a5' },
+            veryExpensive: { fill: '#991b1b', label: '#fca5a5' },
+            opacity: 0.4,
+          },
+        }
+      : {
+          grid: '#e0e0e0',
+          text: '#666666',
+          line: '#2563eb',
+          currentLine: '#7e22ce',
+          currentLabel: '#581c87',
+          meanLine: '#f97316',
+          meanLabel: '#a15200',
+          tooltipBg: '#ffffff',
+          tooltipBorder: '#e5e7eb',
+          tooltipText: '#333333',
+          areas: {
+            veryCheap: { fill: '#bbf7d0', label: '#064e3b' },
+            cheap: { fill: '#dcfce7', label: '#052e16' },
+            neutral: { fill: '#e0f2fe', label: '#1e3a8a' },
+            expensive: { fill: '#fee2e2', label: '#7f1d1d' },
+            veryExpensive: { fill: '#fecaca', label: '#991b1b' },
+            opacity: 0.6,
+          },
+        };
+  }, [isDark]);
+
   const yAxisFormatter = (value) =>
     isMobile ? formatCurrencyMobile(value) : formatCurrency(value);
 
@@ -61,7 +121,7 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
   const yDomain = [boundaries.min * 0.95, boundaries.max * 1.05];
 
   return (
-    <div className="" style={{ width: '100%', height: 450 }}>
+    <div style={{ width: '100%', height: 450 }}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
           data={chartData}
@@ -72,18 +132,35 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
             bottom: 20,
           }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+          <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} />
 
-          <XAxis dataKey="date" interval={isMobile ? 30 : 15} tick={{ fontSize: 12 }} />
+          <XAxis
+            dataKey="date"
+            interval={isMobile ? 30 : 15}
+            tick={{ fontSize: 12, fill: theme.text }}
+            tickLine={{ stroke: theme.grid }}
+          />
 
           <YAxis
             domain={yDomain}
             tickFormatter={yAxisFormatter}
-            tick={{ fontSize: 12 }}
+            tick={{ fontSize: 12, fill: theme.text }}
+            tickLine={{ stroke: theme.grid }}
             width={isMobile ? 65 : 80}
           />
 
-          <Tooltip formatter={tooltipFormatter} />
+          <Tooltip
+            formatter={tooltipFormatter}
+            contentStyle={{
+              backgroundColor: theme.tooltipBg,
+              borderColor: theme.tooltipBorder,
+              color: theme.tooltipText,
+              borderRadius: '8px',
+            }}
+            itemStyle={{ color: theme.tooltipText }}
+            labelStyle={{ color: theme.tooltipText, fontWeight: 'bold' }}
+          />
+
           <Legend wrapperStyle={{ paddingTop: '20px' }} />
 
           {}
@@ -94,12 +171,12 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
             label={{
               value: 'Barato (Z: -1 a -2)',
               position: 'insideTopLeft',
-              fill: '#052e16',
+              fill: theme.areas.cheap.label,
               fontSize: 12,
-              opacity: 0.8,
+              opacity: 0.9,
             }}
-            fill="#dcfce7"
-            fillOpacity={0.6}
+            fill={theme.areas.cheap.fill}
+            fillOpacity={theme.areas.opacity}
             ifOverflow="visible"
           />
 
@@ -109,12 +186,12 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
             label={{
               value: 'Muito Barato (Z: < -2)',
               position: 'insideTopLeft',
-              fill: '#064e3b',
+              fill: theme.areas.veryCheap.label,
               fontSize: 12,
-              opacity: 0.8,
+              opacity: 0.9,
             }}
-            fill="#bbf7d0"
-            fillOpacity={0.7}
+            fill={theme.areas.veryCheap.fill}
+            fillOpacity={theme.areas.opacity}
             ifOverflow="visible"
           />
 
@@ -124,12 +201,12 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
             label={{
               value: 'Zona Neutra (Z: -1 a +1)',
               position: 'insideTopLeft',
-              fill: '#1e3a8a',
+              fill: theme.areas.neutral.label,
               fontSize: 12,
-              opacity: 0.6,
+              opacity: 0.8,
             }}
-            fill="#e0f2fe"
-            fillOpacity={0.4}
+            fill={theme.areas.neutral.fill}
+            fillOpacity={theme.areas.opacity}
             ifOverflow="visible"
           />
 
@@ -139,12 +216,12 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
             label={{
               value: 'Caro (Z: +1 a +2)',
               position: 'insideTopLeft',
-              fill: '#7f1d1d',
+              fill: theme.areas.expensive.label,
               fontSize: 12,
-              opacity: 0.8,
+              opacity: 0.9,
             }}
-            fill="#fee2e2"
-            fillOpacity={0.6}
+            fill={theme.areas.expensive.fill}
+            fillOpacity={theme.areas.opacity}
             ifOverflow="visible"
           />
 
@@ -154,12 +231,12 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
             label={{
               value: 'Muito Caro (Z: > +2)',
               position: 'insideTopLeft',
-              fill: '#991b1b',
+              fill: theme.areas.veryExpensive.label,
               fontSize: 12,
-              opacity: 0.8,
+              opacity: 0.9,
             }}
-            fill="#fecaca"
-            fillOpacity={0.7}
+            fill={theme.areas.veryExpensive.fill}
+            fillOpacity={theme.areas.opacity}
             ifOverflow="visible"
           />
 
@@ -167,8 +244,12 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
 
           <ReferenceLine
             y={boundaries.mean}
-            label={{ value: `Média: ${formatCurrency(boundaries.mean)}`, fill: '#a15200' }}
-            stroke="#f97316"
+            label={{
+              value: `Média: ${formatCurrency(boundaries.mean)}`,
+              fill: theme.meanLabel,
+              fontSize: 12,
+            }}
+            stroke={theme.meanLine}
             strokeWidth={2}
             strokeDasharray="5 5"
           />
@@ -177,7 +258,7 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
             type="monotone"
             dataKey="price"
             name="Preço Histórico"
-            stroke="#2563eb"
+            stroke={theme.line}
             strokeWidth={2}
             dot={false}
           />
@@ -186,10 +267,12 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
             y={boundaries.current}
             label={{
               value: `Preço Atual: ${formatCurrency(boundaries.current)}`,
-              fill: '#581c87',
+              fill: theme.currentLabel,
               position: 'top',
+              fontSize: 12,
+              fontWeight: 'bold',
             }}
-            stroke="#7e22ce"
+            stroke={theme.currentLine}
             strokeWidth={3}
           />
         </LineChart>

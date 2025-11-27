@@ -5,7 +5,7 @@ import FiiSimulator from '../../pages/FiiSimulator.jsx';
 import RentabilityComparisonCalculator from '../../pages/RentabilityComparisonCalculator.jsx';
 import ReverseImpactCalculator from '../../pages/ReverseImpactCalculator.jsx';
 import IpcaCalculator from '../../pages/IpcaCalculator.jsx';
-import PricePositionCalculator from '../../pages/PricePositionCalculator.jsx';
+import PricePositionCalculator from '../stockHistoricData/PricePositionCalculator.jsx';
 
 const menuItems = [
   {

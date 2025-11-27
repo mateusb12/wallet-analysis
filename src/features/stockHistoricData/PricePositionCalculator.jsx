@@ -1,5 +1,5 @@
 import { useState, useEffect, useTransition } from 'react';
-import ZScoreChart from '../components/ZScoreChart';
+import ZScoreChart from './ZScoreChart.jsx';
 
 const STOCKS = [
   { id: 'VALE3', label: 'Vale (VALE3)' },
@@ -170,34 +170,38 @@ function PricePositionCalculator() {
 
   return (
     <div className="p-8 max-w-3xl">
-      <h2 className="text-3xl font-bold mb-6 text-gray-800">
+      <h2 className="text-3xl font-bold mb-6 text-gray-800 dark:text-white">
         Analisador PRO (Z-Score / Desvio Padrão)
       </h2>
 
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <p className="text-gray-700 mb-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 transition-colors duration-200">
+        <p className="text-gray-700 dark:text-gray-300 mb-6">
           Use o slider para ajustar a janela de análise (1-60 meses) e veja o cálculo do Z-Score ser
           atualizado instantaneamente. Os dados de 5 anos são carregados uma vez por ação.
         </p>
 
-        <label className="block text-sm font-medium text-gray-700 mb-2">Selecione a ação:</label>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Selecione a ação:
+        </label>
 
         <select
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
           disabled={loading}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-6 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg mb-6 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-700 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
         >
           {STOCKS.map((stock) => (
-            <option key={stock.id} value={stock.id}>
+            <option key={stock.id} value={stock.id} className="dark:bg-gray-700">
               {stock.label}
             </option>
           ))}
         </select>
 
-        {}
-        <label className="block text-sm font-medium text-gray-700">
-          Janela de Análise: <span className="font-bold">{timeWindowInMonths} meses</span>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+          Janela de Análise:{' '}
+          <span className="font-bold text-gray-900 dark:text-white">
+            {timeWindowInMonths} meses
+          </span>
         </label>
         <input
           type="range"
@@ -207,80 +211,92 @@ function PricePositionCalculator() {
           value={timeWindowInMonths}
           onChange={(e) => {
             const newValue = Number(e.target.value);
-
             setTimeWindowInMonths(newValue);
-
             startTransition(() => {
               setDeferredTimeWindow(newValue);
             });
           }}
           disabled={loading || !fullHistoricalData.length}
-          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-2 mb-4"
+          className="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer mt-2 mb-4 accent-blue-600"
         />
-        {}
-
-        {}
       </div>
 
       {loading && (
-        <div className="mt-6 text-center text-blue-600 font-semibold">
+        <div className="mt-6 text-center text-blue-600 dark:text-blue-400 font-semibold">
           Carregando dados de 5 anos...
         </div>
       )}
 
       {errorMessage && (
-        <div className="mt-6 p-3 rounded-lg bg-red-50 text-red-700 text-sm">{errorMessage}</div>
+        <div className="mt-6 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
+          {errorMessage}
+        </div>
       )}
 
-      {}
       {!loading && result && (
-        <div className="mt-6 p-4 bg-blue-50 rounded-lg shadow-md">
-          <h3 className="text-lg font-semibold mb-3 text-gray-700">
+        <div className="mt-6 p-4 bg-blue-50 dark:bg-slate-800 dark:border dark:border-slate-700 rounded-lg shadow-md transition-colors duration-200">
+          <h3 className="text-lg font-semibold mb-3 text-gray-700 dark:text-gray-200">
             Resultado para {windowLabel}:
           </h3>
 
-          <p>
-            <strong>Preço atual:</strong> R$ {result.current}
-          </p>
-          <p>
-            <strong>Mínimo no período {windowLabel}:</strong> R$ {result.min}
-          </p>
-          <p>
-            <strong>Máximo no período {windowLabel}:</strong> R$ {result.max}
-          </p>
-          <p>
-            <strong>Média no período {windowLabel}:</strong> R$ {result.media}
-          </p>
-          <p>
-            <strong>Desvio padrão:</strong> {result.desvio}
-          </p>
-          <p>
-            <strong>Z-Score:</strong> {result.zScore}
-          </p>
-
-          {result.positionPct !== null && (
+          <div className="text-gray-800 dark:text-gray-300 space-y-1">
             <p>
-              <strong>Posição no range {windowLabel}:</strong> {result.positionPct}% (0% = na
-              mínima, 100% = na máxima)
+              <strong className="text-gray-900 dark:text-white">Preço atual:</strong> R${' '}
+              {result.current}
             </p>
-          )}
+            <p>
+              <strong className="text-gray-900 dark:text-white">
+                Mínimo no período {windowLabel}:
+              </strong>{' '}
+              R$ {result.min}
+            </p>
+            <p>
+              <strong className="text-gray-900 dark:text-white">
+                Máximo no período {windowLabel}:
+              </strong>{' '}
+              R$ {result.max}
+            </p>
+            <p>
+              <strong className="text-gray-900 dark:text-white">
+                Média no período {windowLabel}:
+              </strong>{' '}
+              R$ {result.media}
+            </p>
+            <p>
+              <strong className="text-gray-900 dark:text-white">Desvio padrão:</strong>{' '}
+              {result.desvio}
+            </p>
+            <p>
+              <strong className="text-gray-900 dark:text-white">Z-Score:</strong> {result.zScore}
+            </p>
 
-          <p className="mt-2 text-sm text-gray-700">
-            Em {result.daysBelowOrEqual} de {result.totalDays} pregões {windowLabel} (
-            {result.percentile}% do tempo), o preço esteve <strong>menor ou igual</strong> ao preço
-            atual.
-          </p>
+            {result.positionPct !== null && (
+              <p>
+                <strong className="text-gray-900 dark:text-white">
+                  Posição no range {windowLabel}:
+                </strong>{' '}
+                {result.positionPct}% (0% = na mínima, 100% = na máxima)
+              </p>
+            )}
 
-          <p className="mt-4 text-xl font-bold">{result.status}</p>
+            <p className="mt-2 text-sm text-gray-700 dark:text-gray-400">
+              Em {result.daysBelowOrEqual} de {result.totalDays} pregões {windowLabel} (
+              {result.percentile}% do tempo), o preço esteve{' '}
+              <strong className="text-gray-900 dark:text-white">menor ou igual</strong> ao preço
+              atual.
+            </p>
+
+            <p className="mt-4 text-xl font-bold text-gray-900 dark:text-white">{result.status}</p>
+          </div>
         </div>
       )}
 
       {!loading && result && chartData.length > 0 && (
         <div className={`mt-8 ${isPending ? 'opacity-60 transition-opacity' : ''}`}>
-          <h3 className="text-2xl font-semibold mb-4 text-gray-700">
+          <h3 className="text-2xl font-semibold mb-4 text-gray-700 dark:text-gray-200">
             Visualização Gráfica {windowLabel}
           </h3>
-          <div className="bg-white rounded-lg shadow-md p-4 pt-8">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 pt-8 transition-colors duration-200">
             <ZScoreChart
               key={deferredTimeWindow}
               historicalPrices={chartData}
