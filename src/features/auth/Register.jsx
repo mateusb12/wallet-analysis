@@ -38,10 +38,20 @@ export default function Register({ onSwitchToLogin }) {
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
       });
+
+      if (data?.user?.identities?.length === 0) {
+        console.log('⚠️ IDENTITIES VAZIO → EMAIL JÁ EXISTE');
+        setMessage({
+          type: 'error',
+          content: 'Este email já está registrado. Faça login.',
+        });
+        setLoading(false);
+        return;
+      }
 
       if (error) throw error;
 
@@ -50,9 +60,8 @@ export default function Register({ onSwitchToLogin }) {
         content:
           'Cadastro realizado com sucesso! Verifique seu email para confirmar o link de acesso.',
       });
-
-      setFormData({ email: '', password: '', confirmPassword: '' });
     } catch (error) {
+      console.log('🔥 ERRO CAPTURADO NO CATCH:', error);
       setMessage({ type: 'error', content: error.message });
     } finally {
       setLoading(false);
