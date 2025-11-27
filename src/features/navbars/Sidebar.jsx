@@ -1,13 +1,21 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
+
 import FiiHistoricalChecker from '../fiiHistoricData/FiiHistoricalChecker.jsx';
 import FiiSimulator from '../../pages/FiiSimulator.jsx';
 import RentabilityComparisonCalculator from '../../pages/RentabilityComparisonCalculator.jsx';
 import ReverseImpactCalculator from '../../pages/ReverseImpactCalculator.jsx';
 import IpcaCalculator from '../../pages/IpcaCalculator.jsx';
 import PricePositionCalculator from '../stockHistoricData/PricePositionCalculator.jsx';
+import WalletDashboard from '../wallet/WalletDashboard.jsx';
 
 const menuItems = [
+  {
+    id: 'wallet-dashboard',
+    label: 'Minha Carteira',
+    icon: '💼',
+    component: WalletDashboard,
+  },
   {
     id: 'fii-historical-checker',
     label: 'Histórico de FIIs (HG Brasil)',
@@ -65,7 +73,6 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
   const sidebarContent = (
     <>
       {}
-      {}
       <div className="h-20 flex items-center justify-center border-b border-gray-300 dark:border-gray-700 mb-4 transition-colors duration-200 shrink-0">
         <div className="flex items-center space-x-2">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/30">
@@ -106,10 +113,7 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
       </nav>
 
       {}
-      {}
       <div className="p-4 border-t border-gray-300 dark:border-gray-700 mt-auto bg-gray-100 dark:bg-gray-800/50">
-        {}
-        {}
         <div className="flex items-center gap-3 p-2 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 shadow-sm mb-3">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-white dark:ring-gray-600 shrink-0">
             {userInitial}
@@ -143,7 +147,7 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
         </div>
 
         <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center font-medium">
-          Version 1.0.0
+          Version 1.1.0
         </p>
       </div>
     </>
@@ -160,7 +164,6 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
       />
 
       {}
-      {}
       <div
         className={`fixed top-0 left-0 h-full w-72 bg-white dark:bg-gray-800 flex flex-col z-50 transform transition-transform shadow-2xl md:hidden border-r border-gray-300 dark:border-gray-700 ${
           isMobileOpen ? 'translate-x-0' : '-translate-x-full'
@@ -169,7 +172,6 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
         {sidebarContent}
       </div>
 
-      {}
       {}
       <div className="hidden md:flex md:flex-col md:w-72 bg-white dark:bg-gray-800 h-screen shadow-xl border-r border-gray-300 dark:border-gray-700 z-20 transition-colors duration-200">
         {sidebarContent}
