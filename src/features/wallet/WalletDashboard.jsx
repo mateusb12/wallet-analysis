@@ -126,14 +126,14 @@ function WalletDashboard() {
                 {}
                 <div
                   className={`
-            flex-shrink-0 p-3 rounded-xl mr-4 transition-colors duration-300
-            ${isActive ? 'bg-white/20' : 'bg-gray-100 dark:bg-gray-700 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30'}
-          `}
+    flex-shrink-0 w-16 h-16 rounded-xl mr-4 transition-colors duration-300 overflow-hidden flex items-center justify-center
+    ${isActive ? 'bg-white/20' : 'bg-gray-100 dark:bg-gray-700 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30'}
+  `}
                 >
                   <img
                     src={config.icon}
                     alt={config.label}
-                    className={`w-12 h-12 object-contain transition-all duration-300 ${
+                    className={`w-full h-full object-cover transition-all duration-300 ${
                       !isActive &&
                       'opacity-80 grayscale-[0.3] group-hover:grayscale-0 group-hover:scale-110'
                     }`}
