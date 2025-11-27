@@ -45,17 +45,32 @@ const CustomTooltip = ({ active, payload, label, isDark }) => {
   return null;
 };
 
-function WalletHistoryChart({ data, benchmarkName = 'Benchmark' }) {
+function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark' }) {
   const themeContext = tryUseTheme();
   const isDark = themeContext === 'dark';
+
+  const hasData = Array.isArray(data) && data.length > 0;
+
+  if (!hasData) {
+    return (
+      <div style={{ width: '100%', height: 350 }} className="flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+        <div className="text-center">
+          <p className="text-gray-500 dark:text-gray-400 font-medium">Sem dados históricos disponíveis</p>
+          <p className="text-xs text-gray-400 mt-1">Realize aportes nesta categoria para visualizar a evolução.</p>
+        </div>
+      </div>
+    );
+  }
 
   const gridColor = isDark ? '#374151' : '#e0e0e0';
   const textColor = isDark ? '#9ca3af' : '#666666';
 
+  const safeData = Array.isArray(data) ? data : [];
+
   return (
     <div style={{ width: '100%', height: 350 }}>
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+        <ComposedChart data={safeData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3} />

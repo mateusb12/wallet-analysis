@@ -75,6 +75,33 @@ const RAW_WALLET_DATA = [
   },
 ];
 
+const combineHistories = (curves) => {
+  if (!curves || curves.length === 0) return [];
+
+  const baseCurve = curves[0];
+
+  return baseCurve.map((point, index) => {
+    const combined = curves.reduce(
+      (acc, curve) => {
+        const item = curve[index] || {};
+        return {
+          portfolio_value: acc.portfolio_value + (item.portfolio_value || 0),
+          invested_amount: acc.invested_amount + (item.invested_amount || 0),
+        };
+      },
+      { portfolio_value: 0, invested_amount: 0 }
+    );
+
+    return {
+      trade_date: point.trade_date,
+      portfolio_value: parseFloat(combined.portfolio_value.toFixed(2)),
+      invested_amount: parseFloat(combined.invested_amount.toFixed(2)),
+
+      benchmark_value: point.benchmark_value,
+    };
+  });
+};
+
 export const fetchWalletPositions = async () => {
   return new Promise((resolve) => {
     setTimeout(() => {
@@ -93,32 +120,17 @@ const generateCurve = (
   const history = [];
   const today = new Date();
 
-  if (currentTotal === 0) {
-    for (let i = timeRangeMonths * 30; i >= 0; i -= 5) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      history.push({
-        trade_date: date.toISOString().split('T')[0],
-        portfolio_value: 0,
-        invested_amount: 0,
-        benchmark_value: 0,
-      });
-    }
-    return history;
-  }
+  if (currentTotal === 0) return [];
 
   for (let i = timeRangeMonths * 30; i >= 0; i -= 5) {
     const date = new Date(today);
     date.setDate(date.getDate() - i);
 
     const progress = 1 - i / (timeRangeMonths * 30);
-
     const randomNoise = (Math.random() - 0.5) * (currentTotal * volatilityBase);
-
     const value = currentTotal * 0.8 + currentTotal * 0.2 * progress * trendFactor + randomNoise;
 
     const invested = currentTotal * 0.85 + Math.random() * currentTotal * 0.05;
-
     const benchmark = invested * Math.pow(1 + benchmarkRate, (timeRangeMonths * 30 - i) / 365);
 
     history.push({
@@ -147,12 +159,18 @@ export const fetchWalletPerformanceHistory = async (timeRangeMonths = 12) => {
 
   return new Promise((resolve) => {
     setTimeout(() => {
+      const stockCurve = generateCurve(stockTotal, timeRangeMonths, 0.15, 1.2, 0.12);
+      const etfCurve = generateCurve(etfTotal, timeRangeMonths, 0.1, 1.1, 0.1);
+      const fiiCurve = generateCurve(fiiTotal, timeRangeMonths, 0.05, 1.05, 0.11);
+
+      const validCurves = [stockCurve, etfCurve, fiiCurve].filter((c) => c.length > 0);
+      const totalCurve = combineHistories(validCurves);
+
       resolve({
-        stock: generateCurve(stockTotal, timeRangeMonths, 0.15, 1.2, 0.12),
-
-        etf: generateCurve(etfTotal, timeRangeMonths, 0.1, 1.1, 0.1),
-
-        fii: generateCurve(fiiTotal, timeRangeMonths, 0.05, 1.05, 0.11),
+        stock: stockCurve,
+        etf: etfCurve,
+        fii: fiiCurve,
+        total: totalCurve,
       });
     }, 800);
   });

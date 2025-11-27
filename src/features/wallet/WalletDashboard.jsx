@@ -27,6 +27,7 @@ const CustomPieTooltip = ({ active, payload }) => {
 };
 
 const CATEGORIES = {
+  total: { label: 'Total', benchmark: 'CDI' },
   stock: { label: 'Ações', benchmark: 'IBOV' },
   etf: { label: 'ETFs', benchmark: 'S&P 500' },
   fii: { label: 'FIIs', benchmark: 'IFIX' },
