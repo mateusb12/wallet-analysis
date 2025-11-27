@@ -414,7 +414,7 @@ export const fetchSpecificAssetHistory = async (ticker, months = 12) => {
       if (!data || data.length === 0) return [];
 
       const sortedData = data
-        .filter((d) => d.trade_date <= todayStr)
+        .filter((d) => d.trade_date >= asset.purchaseDate && d.trade_date <= todayStr)
         .sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
 
       if (sortedData.length === 0) return [];
@@ -426,9 +426,15 @@ export const fetchSpecificAssetHistory = async (ticker, months = 12) => {
       const ifixMap = {};
       ifixData.forEach((i) => (ifixMap[i.trade_date] = parseFloat(i.close_value)));
 
-      const anchorDate = startDate;
-      const anchorIfix = ifixMap[anchorDate] || Object.values(ifixMap)[0];
-      const initialInvested = asset.qty * parseFloat(sortedData[0].price_close);
+      const anchorDate = sortedData[0].trade_date;
+
+      let anchorIfix = ifixMap[anchorDate];
+      if (!anchorIfix) {
+        const firstValidIfix = ifixData.find((i) => i.trade_date >= anchorDate);
+        anchorIfix = firstValidIfix ? parseFloat(firstValidIfix.close_value) : null;
+      }
+
+      const initialFixedInvestment = asset.total_value;
 
       let currentQty = asset.qty;
       let lastKnownIfix = anchorIfix;
@@ -441,35 +447,36 @@ export const fetchSpecificAssetHistory = async (ticker, months = 12) => {
           const totalDiv = div * currentQty;
           currentQty += totalDiv / price;
         }
-
         const portfolioValue = currentQty * price;
 
         let currentIfix = ifixMap[day.trade_date];
+
         if (!currentIfix && lastKnownIfix) currentIfix = lastKnownIfix;
         if (currentIfix) lastKnownIfix = currentIfix;
 
-        let benchmarkVal = initialInvested;
+        let benchmarkVal = initialFixedInvestment;
+
         if (anchorIfix && currentIfix) {
-          benchmarkVal = initialInvested * (currentIfix / anchorIfix);
+          const variationRatio = currentIfix / anchorIfix;
+          benchmarkVal = initialFixedInvestment * variationRatio;
         }
 
         return {
           trade_date: day.trade_date,
           portfolio_value: parseFloat(portfolioValue.toFixed(2)),
-          invested_amount: parseFloat(initialInvested.toFixed(2)),
+
+          invested_amount: parseFloat(initialFixedInvestment.toFixed(2)),
+
           benchmark_value: parseFloat(benchmarkVal.toFixed(2)),
         };
       });
     } catch (error) {
       console.error('Error fetching specific FII history', error);
-
       const fake = generateFakeCurve(asset.total_value, months, 0.05, 1.05, 0.11);
       return fake.sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
     }
   } else {
-    const volatility = asset.type === 'stock' ? 0.15 : 0.1;
-    const trend = asset.type === 'stock' ? 1.2 : 1.1;
-    const fake = generateFakeCurve(asset.total_value, months, volatility, trend, 0.1);
+    const fake = generateFakeCurve(asset.total_value, months, 0.15, 1.2, 0.1);
     return fake.sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
   }
 };

@@ -143,7 +143,14 @@ function WalletDashboard() {
     const rawData = selectedAssetTicker ? specificAssetHistory : fullHistoryData[activeTab] || [];
 
     if (rawData.length === 0) return [];
-    if (timeRange === 'MAX') return rawData;
+
+    let processedData = rawData;
+
+    if (selectedAssetTicker && earliestPurchaseDate) {
+      processedData = processedData.filter((item) => item.trade_date >= earliestPurchaseDate);
+    }
+
+    if (timeRange === 'MAX') return processedData;
 
     const today = new Date();
     let startDate = new Date();
@@ -157,8 +164,15 @@ function WalletDashboard() {
       }
     }
 
-    return rawData.filter((item) => new Date(item.trade_date) >= startDate);
-  }, [fullHistoryData, activeTab, timeRange, selectedAssetTicker, specificAssetHistory]);
+    return processedData.filter((item) => new Date(item.trade_date) >= startDate);
+  }, [
+    fullHistoryData,
+    activeTab,
+    timeRange,
+    selectedAssetTicker,
+    specificAssetHistory,
+    earliestPurchaseDate,
+  ]);
 
   const totalValue = filteredPositions.reduce((acc, curr) => acc + curr.total_value, 0);
   const totalAssets = filteredPositions.length;
