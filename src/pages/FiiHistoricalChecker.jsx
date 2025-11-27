@@ -181,13 +181,18 @@ function FiiHistoricalChecker() {
   const totalPages = Math.ceil(total / pageSize);
 
   return (
-    <div className="p-8">
-      <h2 className="text-3xl font-bold mb-6 text-gray-800">Histórico de Dividendos de FIIs</h2>
+    <div className="p-8 dark:bg-gray-900 min-h-screen">
+      <h2 className="text-3xl font-bold mb-6 text-gray-800 dark:text-gray-100">
+        Histórico de Dividendos de FIIs
+      </h2>
 
-      <div className="border border-gray-500 bg-white rounded-lg shadow-md p-6 max-w-2xl mb-8">
+      {}
+      <div className="border border-gray-500 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 max-w-2xl mb-8">
         <form onSubmit={handleSearch} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Ticker do FII</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Ticker do FII
+            </label>
             <div className="relative" ref={comboboxRef} onBlur={handleBlur}>
               <input
                 ref={inputRef}
@@ -199,7 +204,7 @@ function FiiHistoricalChecker() {
                 }}
                 onFocus={() => setIsDropdownOpen(true)}
                 placeholder="Digite ou selecione um ticker"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white pr-10"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 pr-10"
               />
               <button
                 type="button"
@@ -207,7 +212,7 @@ function FiiHistoricalChecker() {
                   setIsDropdownOpen(!isDropdownOpen);
                   inputRef.current.focus();
                 }}
-                className="absolute inset-y-0 right-0 flex items-center justify-center w-10 h-full text-gray-500"
+                className="absolute inset-y-0 right-0 flex items-center justify-center w-10 h-full text-gray-500 dark:text-gray-400"
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path
@@ -218,11 +223,11 @@ function FiiHistoricalChecker() {
                 </svg>
               </button>
               {isDropdownOpen && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                   {filteredTickers.map((t) => (
                     <div
                       key={t}
-                      className="px-4 py-2 hover:bg-blue-100 cursor-pointer"
+                      className="px-4 py-2 hover:bg-blue-100 dark:hover:bg-gray-600 cursor-pointer text-gray-800 dark:text-gray-200"
                       onMouseDown={(e) => {
                         e.preventDefault();
                         setTicker(t);
@@ -249,41 +254,40 @@ function FiiHistoricalChecker() {
         {error && <p className="mt-6 text-red-500">{error}</p>}
 
         {!error && searchedTicker && (
-          <div className="border border-gray-300 bg-white rounded-lg shadow-lg p-6">
+          <div className="border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
             <div className="mb-8">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                {}
                 <div className="flex flex-col gap-2">
-                  <h3 className="text-lg font-semibold text-gray-700">
+                  <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200">
                     Evolução ({getRangeLabel(timeRange)})
                   </h3>
 
-                  {}
                   <div className="flex items-center space-x-2">
                     <input
                       id="totalReturnCheck"
                       type="checkbox"
                       checked={showTotalReturn}
                       onChange={(e) => setShowTotalReturn(e.target.checked)}
-                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                      className="w-4 h-4 text-blue-600 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 cursor-pointer"
                     />
                     <label
                       htmlFor="totalReturnCheck"
-                      className="text-sm font-medium text-purple-700 cursor-pointer select-none"
+                      className="text-sm font-medium text-purple-700 dark:text-purple-400 cursor-pointer select-none"
                     >
                       Mostrar Retorno Total (Cota + Div)
                     </label>
                   </div>
                 </div>
 
-                {}
                 <div className="w-full md:w-1/3">
                   <label
                     htmlFor="timeRange"
-                    className="block text-sm font-medium text-gray-600 mb-1"
+                    className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1"
                   >
                     Janela de Tempo:{' '}
-                    <span className="text-blue-600 font-bold">{getRangeLabel(timeRange)}</span>
+                    <span className="text-blue-600 dark:text-blue-400 font-bold">
+                      {getRangeLabel(timeRange)}
+                    </span>
                   </label>
                   <input
                     id="timeRange"
@@ -293,7 +297,7 @@ function FiiHistoricalChecker() {
                     step="6"
                     value={timeRange}
                     onChange={(e) => setTimeRange(Number(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    className="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-600"
                   />
                   <div className="flex justify-between text-xs text-gray-400 mt-1">
                     <span>6m</span>
@@ -304,7 +308,8 @@ function FiiHistoricalChecker() {
                 </div>
               </div>
 
-              <div className="border border-gray-200 rounded p-4 bg-gray-50">
+              {}
+              <div className="border border-gray-200 dark:border-gray-700 rounded p-4 bg-gray-50 dark:bg-gray-900">
                 {chartData.length > 0 ? (
                   <HistoryChart data={chartData} showTotalReturn={showTotalReturn} />
                 ) : (
@@ -315,35 +320,52 @@ function FiiHistoricalChecker() {
 
             {tableData.length > 0 ? (
               <>
-                <p className="text-gray-700 text-sm mb-4">
+                <p className="text-gray-700 dark:text-gray-300 text-sm mb-4">
                   Exibindo página {page} de {totalPages} ({total} registros totais)
                 </p>
 
                 <div
                   className={`overflow-x-auto transition-opacity duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}
                 >
-                  <table className="w-full border-collapse border border-gray-300 text-sm">
-                    <thead className="bg-gray-100">
+                  <table className="w-full border-collapse border border-gray-300 dark:border-gray-700 text-sm">
+                    <thead className="bg-gray-100 dark:bg-gray-900">
                       <tr>
-                        <th className="border border-gray-300 px-2 py-1 text-left">Data</th>
-                        <th className="border border-gray-300 px-2 py-1 text-left">Abertura</th>
-                        <th className="border border-gray-300 px-2 py-1 text-left">Fechamento</th>
-                        <th className="border border-gray-300 px-2 py-1 text-left">Yield</th>
-                        <th className="border border-gray-300 px-2 py-1 text-left">Dividendo</th>
+                        <th className="border border-gray-300 dark:border-gray-700 px-2 py-1 text-left dark:text-gray-200">
+                          Data
+                        </th>
+                        <th className="border border-gray-300 dark:border-gray-700 px-2 py-1 text-left dark:text-gray-200">
+                          Abertura
+                        </th>
+                        <th className="border border-gray-300 dark:border-gray-700 px-2 py-1 text-left dark:text-gray-200">
+                          Fechamento
+                        </th>
+                        <th className="border border-gray-300 dark:border-gray-700 px-2 py-1 text-left dark:text-gray-200">
+                          Yield
+                        </th>
+                        <th className="border border-gray-300 dark:border-gray-700 px-2 py-1 text-left dark:text-gray-200">
+                          Dividendo
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {tableData.map((row) => (
-                        <tr key={`${row.ticker}-${row.trade_date}`} className="hover:bg-gray-50">
-                          <td className="border px-2 py-1">{row.trade_date}</td>
-                          <td className="border px-2 py-1">R$ {parseFloat(row.open).toFixed(2)}</td>
-                          <td className="border px-2 py-1">
+                        <tr
+                          key={`${row.ticker}-${row.trade_date}`}
+                          className="hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300"
+                        >
+                          <td className="border border-gray-300 dark:border-gray-700 px-2 py-1">
+                            {row.trade_date}
+                          </td>
+                          <td className="border border-gray-300 dark:border-gray-700 px-2 py-1">
+                            R$ {parseFloat(row.open).toFixed(2)}
+                          </td>
+                          <td className="border border-gray-300 dark:border-gray-700 px-2 py-1">
                             R$ {parseFloat(row.price_close).toFixed(2)}
                           </td>
-                          <td className="border px-2 py-1 text-blue-600">
+                          <td className="border border-gray-300 dark:border-gray-700 px-2 py-1 text-blue-600 dark:text-blue-400">
                             {(parseFloat(row.dividend_yield_month) * 100).toFixed(2)}%
                           </td>
-                          <td className="border px-2 py-1 text-green-700 font-medium">
+                          <td className="border border-gray-300 dark:border-gray-700 px-2 py-1 text-green-700 dark:text-green-400 font-medium">
                             R$ {parseFloat(row.dividend_value).toFixed(4)}
                           </td>
                         </tr>
@@ -361,7 +383,7 @@ function FiiHistoricalChecker() {
                 </div>
               </>
             ) : (
-              <p className="text-gray-600">Nenhum dado encontrado na tabela.</p>
+              <p className="text-gray-600 dark:text-gray-400">Nenhum dado encontrado na tabela.</p>
             )}
           </div>
         )}
