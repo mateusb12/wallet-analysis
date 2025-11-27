@@ -1,6 +1,8 @@
 import { fetchFiiChartData } from './b3service.js';
 import { getIfixRange } from './ifixService.js';
 
+const SIMULATED_TODAY = new Date('2025-11-27');
+
 const RAW_WALLET_DATA = [
   {
     ticker: 'BBAS3',
@@ -99,7 +101,8 @@ const getMaxHistoryMonths = () => {
   if (dates.length === 0) return 6;
 
   const minDate = new Date(Math.min(...dates));
-  const today = new Date();
+
+  const today = new Date(SIMULATED_TODAY);
 
   const months =
     (today.getFullYear() - minDate.getFullYear()) * 12 + (today.getMonth() - minDate.getMonth());
@@ -144,7 +147,8 @@ const generateFakeCurve = (
   benchmarkRate
 ) => {
   const history = [];
-  const today = new Date();
+
+  const today = new Date(SIMULATED_TODAY);
 
   if (currentTotal === 0) return [];
 
@@ -199,8 +203,9 @@ const fetchRealFiiPerformance = async (months) => {
 
     const allDates = validHistories.flatMap((h) => h.data.map((d) => d.trade_date));
 
+    const todayStr = SIMULATED_TODAY.toISOString().split('T')[0];
     const uniqueDates = [...new Set(allDates)]
-      .filter((date) => date >= earliestPurchaseDate)
+      .filter((date) => date >= earliestPurchaseDate && date <= todayStr)
       .sort();
 
     if (uniqueDates.length === 0) return [];
@@ -340,4 +345,76 @@ export const fetchWalletPerformanceHistory = async (overrideMonths = null) => {
     fii: fiiCurve,
     total: totalCurve,
   };
+};
+
+export const fetchSpecificAssetHistory = async (ticker, months = 12) => {
+  const asset = RAW_WALLET_DATA.find((a) => a.ticker === ticker);
+  if (!asset) return [];
+
+  const todayStr = SIMULATED_TODAY.toISOString().split('T')[0];
+
+  if (asset.type === 'fii') {
+    try {
+      const data = await fetchFiiChartData(asset.ticker, months);
+      if (!data || data.length === 0) return [];
+
+      const sortedData = data
+        .filter((d) => d.trade_date <= todayStr)
+        .sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
+
+      if (sortedData.length === 0) return [];
+
+      const startDate = sortedData[0].trade_date;
+      const endDate = sortedData[sortedData.length - 1].trade_date;
+
+      const ifixData = await getIfixRange(startDate, endDate);
+      const ifixMap = {};
+      ifixData.forEach((i) => (ifixMap[i.trade_date] = parseFloat(i.close_value)));
+
+      const anchorDate = startDate;
+      const anchorIfix = ifixMap[anchorDate] || Object.values(ifixMap)[0];
+      const initialInvested = asset.qty * parseFloat(sortedData[0].price_close);
+
+      let currentQty = asset.qty;
+      let lastKnownIfix = anchorIfix;
+
+      return sortedData.map((day) => {
+        const price = parseFloat(day.price_close);
+        const div = parseFloat(day.dividend_value || 0);
+
+        if (div > 0 && price > 0) {
+          const totalDiv = div * currentQty;
+          currentQty += totalDiv / price;
+        }
+
+        const portfolioValue = currentQty * price;
+
+        let currentIfix = ifixMap[day.trade_date];
+        if (!currentIfix && lastKnownIfix) currentIfix = lastKnownIfix;
+        if (currentIfix) lastKnownIfix = currentIfix;
+
+        let benchmarkVal = initialInvested;
+        if (anchorIfix && currentIfix) {
+          benchmarkVal = initialInvested * (currentIfix / anchorIfix);
+        }
+
+        return {
+          trade_date: day.trade_date,
+          portfolio_value: parseFloat(portfolioValue.toFixed(2)),
+          invested_amount: parseFloat(initialInvested.toFixed(2)),
+          benchmark_value: parseFloat(benchmarkVal.toFixed(2)),
+        };
+      });
+    } catch (error) {
+      console.error('Error fetching specific FII history', error);
+
+      const fake = generateFakeCurve(asset.total_value, months, 0.05, 1.05, 0.11);
+      return fake.sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
+    }
+  } else {
+    const volatility = asset.type === 'stock' ? 0.15 : 0.1;
+    const trend = asset.type === 'stock' ? 1.2 : 1.1;
+    const fake = generateFakeCurve(asset.total_value, months, volatility, trend, 0.1);
+    return fake.sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
+  }
 };

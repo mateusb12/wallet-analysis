@@ -30,7 +30,7 @@ const formatPercent = (value) =>
 const formatDate = (dateStr) => {
   if (!dateStr) return '';
   const [year, month, day] = dateStr.split('-');
-  return `${day}/${month}`;
+  return `${day}/${month}/${year.slice(2)}`;
 };
 
 const CustomTooltip = ({ active, payload, label, isDark, startValue }) => {
@@ -52,7 +52,6 @@ const CustomTooltip = ({ active, payload, label, isDark, startValue }) => {
       <div className={`${bgClass} border p-3 rounded-lg shadow-lg text-sm z-50`}>
         <p className="font-bold mb-2 border-b border-gray-500/20 pb-1">{formatDate(label)}</p>
 
-        {}
         <div className="flex flex-col mb-1">
           <div className="flex justify-between gap-6 items-center">
             <span style={{ color: statusColor }} className="font-medium text-xs">
@@ -61,7 +60,6 @@ const CustomTooltip = ({ active, payload, label, isDark, startValue }) => {
             <span className="font-mono font-bold text-sm">{formatCurrency(value)}</span>
           </div>
 
-          {}
           {startValue > 0 && (
             <div className="flex justify-end mt-0.5">
               <span
@@ -75,7 +73,6 @@ const CustomTooltip = ({ active, payload, label, isDark, startValue }) => {
           )}
         </div>
 
-        {}
         {payload.map((entry, index) => {
           if (entry.dataKey === 'actual_value' || entry.dataKey === 'theoretical_value')
             return null;
@@ -104,17 +101,22 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
   const processedData = useMemo(() => {
     if (!hasData) return [];
 
+    const sorted = [...data].sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
+
     if (!purchaseDate) {
-      return data.map((d) => ({ ...d, actual_value: d.portfolio_value, theoretical_value: null }));
+      return sorted.map((d) => ({
+        ...d,
+        actual_value: d.portfolio_value,
+        theoretical_value: null,
+      }));
     }
 
     const splitTime = new Date(purchaseDate).getTime();
 
-    return data.map((item) => {
+    return sorted.map((item) => {
       const itemTime = new Date(item.trade_date).getTime();
 
-      const isTheoretical = itemTime <= splitTime;
-
+      const isTheoretical = itemTime < splitTime;
       const isActual = itemTime >= splitTime;
 
       return {
@@ -190,7 +192,6 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
             ]}
           />
 
-          {}
           <Line
             type="monotone"
             dataKey="theoretical_value"
@@ -203,7 +204,6 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
             connectNulls={false}
           />
 
-          {}
           <Area
             type="monotone"
             dataKey="actual_value"
@@ -215,7 +215,6 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
             connectNulls={false}
           />
 
-          {}
           <Line
             type="monotone"
             dataKey="benchmark_value"
@@ -225,7 +224,6 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
             dot={false}
           />
 
-          {}
           <Line
             type="monotone"
             dataKey="invested_amount"
@@ -235,7 +233,6 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
             dot={false}
           />
 
-          {}
           {purchaseDate && (
             <ReferenceLine x={purchaseDate} stroke="#2563eb" strokeDasharray="3 3" opacity={0.6}>
               <Label

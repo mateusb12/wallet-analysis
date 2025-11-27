@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   fetchWalletPositions,
   fetchWalletPerformanceHistory,
+  fetchSpecificAssetHistory,
 } from '../../services/walletDataService.js';
 import WalletHistoryChart from './WalletHistoryChart.jsx';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
@@ -61,6 +62,10 @@ function WalletDashboard() {
   const [activeTab, setActiveTab] = useState('total');
   const [timeRange, setTimeRange] = useState('MAX');
 
+  const [selectedAssetTicker, setSelectedAssetTicker] = useState('');
+  const [specificAssetHistory, setSpecificAssetHistory] = useState([]);
+  const [loadingSpecific, setLoadingSpecific] = useState(false);
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
@@ -80,6 +85,31 @@ function WalletDashboard() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (!selectedAssetTicker) {
+      setSpecificAssetHistory([]);
+      return;
+    }
+
+    const loadSpecific = async () => {
+      setLoadingSpecific(true);
+      try {
+        const data = await fetchSpecificAssetHistory(selectedAssetTicker, 12);
+        setSpecificAssetHistory(data);
+      } catch (error) {
+        console.error('Failed to fetch specific asset history', error);
+      } finally {
+        setLoadingSpecific(false);
+      }
+    };
+
+    loadSpecific();
+  }, [selectedAssetTicker]);
+
+  useEffect(() => {
+    setSelectedAssetTicker('');
+  }, [activeTab]);
+
   const categoryTotals = useMemo(() => {
     const totals = { stock: 0, etf: 0, fii: 0, total: 0 };
     positions.forEach((p) => {
@@ -97,17 +127,23 @@ function WalletDashboard() {
   }, [positions, activeTab]);
 
   const earliestPurchaseDate = useMemo(() => {
+    if (selectedAssetTicker) {
+      const asset = positions.find((p) => p.ticker === selectedAssetTicker);
+      return asset ? asset.purchaseDate : null;
+    }
+
     if (filteredPositions.length === 0) return null;
 
     const dates = filteredPositions.map((p) => new Date(p.purchaseDate).getTime());
     const minDate = new Date(Math.min(...dates));
     return minDate.toISOString().split('T')[0];
-  }, [filteredPositions]);
+  }, [filteredPositions, selectedAssetTicker, positions]);
 
   const displayedHistory = useMemo(() => {
-    const data = fullHistoryData[activeTab] || [];
-    if (data.length === 0) return [];
-    if (timeRange === 'MAX') return data;
+    const rawData = selectedAssetTicker ? specificAssetHistory : fullHistoryData[activeTab] || [];
+
+    if (rawData.length === 0) return [];
+    if (timeRange === 'MAX') return rawData;
 
     const today = new Date();
     let startDate = new Date();
@@ -121,8 +157,8 @@ function WalletDashboard() {
       }
     }
 
-    return data.filter((item) => new Date(item.trade_date) >= startDate);
-  }, [fullHistoryData, activeTab, timeRange]);
+    return rawData.filter((item) => new Date(item.trade_date) >= startDate);
+  }, [fullHistoryData, activeTab, timeRange, selectedAssetTicker, specificAssetHistory]);
 
   const totalValue = filteredPositions.reduce((acc, curr) => acc + curr.total_value, 0);
   const totalAssets = filteredPositions.length;
@@ -231,9 +267,29 @@ function WalletDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
             <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-                Performance vs {CATEGORIES_CONFIG[activeTab].benchmark}
-              </h3>
+              <div className="flex flex-col gap-1">
+                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+                  {selectedAssetTicker
+                    ? `${selectedAssetTicker} vs Benchmark`
+                    : `Performance vs ${CATEGORIES_CONFIG[activeTab].benchmark}`}
+                </h3>
+
+                {}
+                {activeTab !== 'total' && (
+                  <select
+                    value={selectedAssetTicker}
+                    onChange={(e) => setSelectedAssetTicker(e.target.value)}
+                    className="mt-1 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2"
+                  >
+                    <option value="">Carteira Completa</option>
+                    {filteredPositions.map((pos) => (
+                      <option key={pos.ticker} value={pos.ticker}>
+                        {pos.ticker}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
 
               <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1">
                 {TIME_RANGES.map((range) => (
@@ -255,7 +311,11 @@ function WalletDashboard() {
               </div>
             </div>
 
-            {displayedHistory.length > 0 ? (
+            {loadingSpecific ? (
+              <div className="h-64 flex items-center justify-center text-gray-500 bg-gray-50 dark:bg-gray-900/50 rounded">
+                Carregando dados de {selectedAssetTicker}...
+              </div>
+            ) : displayedHistory.length > 0 ? (
               <WalletHistoryChart
                 data={displayedHistory}
                 benchmarkName={CATEGORIES_CONFIG[activeTab].benchmark}
@@ -288,7 +348,15 @@ function WalletDashboard() {
                         nameKey="name"
                       >
                         {filteredPositions.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={COLORS[index % COLORS.length]}
+                            stroke={selectedAssetTicker === entry.ticker ? '#fff' : 'none'}
+                            strokeWidth={selectedAssetTicker === entry.ticker ? 2 : 0}
+                            opacity={
+                              selectedAssetTicker && selectedAssetTicker !== entry.ticker ? 0.3 : 1
+                            }
+                          />
                         ))}
                       </Pie>
                       <Tooltip content={<CustomPieTooltip />} />
@@ -299,7 +367,10 @@ function WalletDashboard() {
                   {filteredPositions.map((p, index) => (
                     <div
                       key={p.ticker}
-                      className="flex items-center text-xs text-gray-600 dark:text-gray-300"
+                      onClick={() =>
+                        setSelectedAssetTicker(selectedAssetTicker === p.ticker ? '' : p.ticker)
+                      }
+                      className={`flex items-center text-xs cursor-pointer transition-opacity ${selectedAssetTicker && selectedAssetTicker !== p.ticker ? 'opacity-40' : 'opacity-100'} text-gray-600 dark:text-gray-300`}
                     >
                       <span
                         className="w-3 h-3 rounded-full mr-1"
@@ -353,7 +424,13 @@ function WalletDashboard() {
                     return (
                       <tr
                         key={row.ticker}
-                        className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                        className={`transition-colors ${selectedAssetTicker === row.ticker ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
+                        onClick={() =>
+                          setSelectedAssetTicker(
+                            selectedAssetTicker === row.ticker ? '' : row.ticker
+                          )
+                        }
+                        style={{ cursor: 'pointer' }}
                       >
                         <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">
                           <div className="flex items-center gap-3">
