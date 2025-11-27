@@ -3,7 +3,6 @@ import {
   ResponsiveContainer,
   ComposedChart,
   Area,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -33,59 +32,47 @@ const formatDate = (dateStr) => {
   return `${day}/${month}/${year.slice(2)}`;
 };
 
-const CustomTooltip = ({ active, payload, label, isDark, startValue }) => {
+const CustomTooltip = ({ active, payload, label, isDark }) => {
   if (active && payload && payload.length) {
     const bgClass = isDark
       ? 'bg-gray-800 border-gray-600 text-gray-200'
       : 'bg-white border-gray-300 text-gray-700';
 
-    const actualEntry = payload.find((p) => p.dataKey === 'actual_value');
-    const theoreticalEntry = payload.find((p) => p.dataKey === 'theoretical_value');
+    const benchmarkEntry = payload.find((p) => p.dataKey === 'benchmark_value');
+    const investedEntry = payload.find((p) => p.dataKey === 'invested_amount');
 
-    const mainEntry = actualEntry || theoreticalEntry;
-    const value = mainEntry ? mainEntry.value : 0;
+    const benchmarkVal = benchmarkEntry ? benchmarkEntry.value : 0;
+    const investedVal = investedEntry ? investedEntry.value : 0;
 
-    const statusLabel = actualEntry ? 'Carteira (Atual)' : 'Carteira (Simulação)';
-    const statusColor = actualEntry ? '#2563eb' : '#9ca3af';
+    const ratio = investedVal > 0 ? (investedVal - benchmarkVal) / investedVal : 0;
 
     return (
       <div className={`${bgClass} border p-3 rounded-lg shadow-lg text-sm z-50`}>
         <p className="font-bold mb-2 border-b border-gray-500/20 pb-1">{formatDate(label)}</p>
 
-        <div className="flex flex-col mb-1">
+        <div className="flex flex-col gap-1">
           <div className="flex justify-between gap-6 items-center">
-            <span style={{ color: statusColor }} className="font-medium text-xs">
-              {statusLabel}:
+            <span style={{ color: '#eab308' }} className="font-medium text-xs">
+              {benchmarkEntry?.name || 'Benchmark'}:
             </span>
-            <span className="font-mono font-bold text-sm">{formatCurrency(value)}</span>
+            <span className="font-mono font-bold text-sm">{formatCurrency(benchmarkVal)}</span>
           </div>
 
-          {startValue > 0 && (
-            <div className="flex justify-end mt-0.5">
-              <span
-                className={`text-xs font-bold ${value / startValue - 1 >= 0 ? 'text-green-500' : 'text-red-500'}`}
-              >
-                {value / startValue - 1 >= 0 ? '+' : ''}
-                {formatPercent(value / startValue - 1)}
-              </span>
-              <span className="text-[10px] text-gray-400 ml-1 self-center">(vs. início)</span>
-            </div>
-          )}
+          <div className="flex justify-between gap-6 items-center">
+            <span style={{ color: '#16a34a' }} className="font-medium text-xs">
+              Valor Investido:
+            </span>
+            <span className="font-mono font-bold text-sm">{formatCurrency(investedVal)}</span>
+          </div>
+
+          <div className="flex justify-end mt-1 pt-1 border-t border-gray-500/20">
+            <span className="text-[10px] text-gray-400 mr-2 self-center">Diff (Inv vs Bench):</span>
+            <span className={`text-xs font-bold ${ratio >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {ratio >= 0 ? '+' : ''}
+              {formatPercent(ratio)}
+            </span>
+          </div>
         </div>
-
-        {payload.map((entry, index) => {
-          if (entry.dataKey === 'actual_value' || entry.dataKey === 'theoretical_value')
-            return null;
-
-          return (
-            <div key={index} className="flex justify-between gap-6 items-center mb-1">
-              <span style={{ color: entry.color }} className="font-medium text-xs">
-                {entry.name}:
-              </span>
-              <span className="font-mono font-bold text-sm">{formatCurrency(entry.value)}</span>
-            </div>
-          );
-        })}
       </div>
     );
   }
@@ -100,32 +87,8 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
 
   const processedData = useMemo(() => {
     if (!hasData) return [];
-
-    const sorted = [...data].sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
-
-    if (!purchaseDate) {
-      return sorted.map((d) => ({
-        ...d,
-        actual_value: d.portfolio_value,
-        theoretical_value: null,
-      }));
-    }
-
-    const splitTime = new Date(purchaseDate).getTime();
-
-    return sorted.map((item) => {
-      const itemTime = new Date(item.trade_date).getTime();
-
-      const isTheoretical = itemTime < splitTime;
-      const isActual = itemTime >= splitTime;
-
-      return {
-        ...item,
-        theoretical_value: isTheoretical ? item.portfolio_value : null,
-        actual_value: isActual ? item.portfolio_value : null,
-      };
-    });
-  }, [data, purchaseDate]);
+    return [...data].sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
+  }, [data]);
 
   if (!hasData) {
     return (
@@ -145,19 +108,19 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
   const gridColor = isDark ? '#374151' : '#e0e0e0';
   const textColor = isDark ? '#9ca3af' : '#666666';
 
-  const startValue =
-    processedData.length > 0
-      ? processedData[0].theoretical_value || processedData[0].actual_value || 0
-      : 0;
-
   return (
     <div style={{ width: '100%', height: 350 }}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={processedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id="colorActual" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#2563eb" stopOpacity={0.4} />
-              <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+            <linearGradient id="colorBenchmark" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#eab308" stopOpacity={0.4} />
+              <stop offset="95%" stopColor="#eab308" stopOpacity={0} />
+            </linearGradient>
+
+            <linearGradient id="colorInvested" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#16a34a" stopOpacity={0.4} />
+              <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
@@ -176,61 +139,35 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
             domain={['auto', 'auto']}
           />
 
-          <Tooltip content={<CustomTooltip isDark={isDark} startValue={startValue} />} />
+          <Tooltip content={<CustomTooltip isDark={isDark} />} />
 
           <Legend
             payload={[
-              { value: 'Carteira (Atual)', type: 'rect', color: '#2563eb' },
-              {
-                value: 'Simulação (Pré-Aporte)',
-                type: 'line',
-                color: '#9ca3af',
-                payload: { strokeDasharray: '3 3' },
-              },
-              { value: benchmarkName, type: 'line', color: '#eab308' },
-              { value: 'Valor Investido', type: 'line', color: '#16a34a' },
+              { value: benchmarkName, type: 'rect', color: '#eab308' },
+              { value: 'Valor Investido', type: 'rect', color: '#16a34a' },
             ]}
           />
 
-          <Line
+          <Area
             type="monotone"
-            dataKey="theoretical_value"
-            name="Simulação"
-            stroke="#9ca3af"
+            dataKey="benchmark_value"
+            name={benchmarkName}
+            stroke="#eab308"
             strokeWidth={2}
-            strokeDasharray="5 5"
-            dot={false}
-            activeDot={false}
+            fill="url(#colorBenchmark)"
+            fillOpacity={1}
             connectNulls={false}
           />
 
           <Area
             type="monotone"
-            dataKey="actual_value"
-            name="Carteira Real"
-            stroke="#2563eb"
-            fillOpacity={1}
-            fill="url(#colorActual)"
-            strokeWidth={3}
-            connectNulls={false}
-          />
-
-          <Line
-            type="monotone"
-            dataKey="benchmark_value"
-            name={benchmarkName}
-            stroke="#eab308"
-            strokeDasharray="3 3"
-            dot={false}
-          />
-
-          <Line
-            type="monotone"
             dataKey="invested_amount"
             name="Valor Investido"
             stroke="#16a34a"
             strokeWidth={2}
-            dot={false}
+            fill="url(#colorInvested)"
+            fillOpacity={1}
+            connectNulls={false}
           />
 
           {purchaseDate && (
