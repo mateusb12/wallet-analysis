@@ -47,7 +47,6 @@ const RAW_WALLET_DATA = [
     type: 'etf',
     purchaseDate: '2025-11-18',
   },
-
   {
     ticker: 'BTLG11',
     name: 'BTG PACTUAL LOGISTICA FDO INV IMOB RESP LIM',
@@ -94,6 +93,20 @@ export const fetchWalletPositions = async () => {
   });
 };
 
+const getMaxHistoryMonths = () => {
+  const dates = RAW_WALLET_DATA.map((d) => new Date(d.purchaseDate).getTime());
+
+  if (dates.length === 0) return 6;
+
+  const minDate = new Date(Math.min(...dates));
+  const today = new Date();
+
+  const months =
+    (today.getFullYear() - minDate.getFullYear()) * 12 + (today.getMonth() - minDate.getMonth());
+
+  return Math.max(6, months + 1);
+};
+
 const combineHistories = (curves) => {
   if (!curves || curves.length === 0) return [];
 
@@ -135,16 +148,18 @@ const generateFakeCurve = (
 
   if (currentTotal === 0) return [];
 
-  for (let i = timeRangeMonths * 30; i >= 0; i -= 5) {
+  for (let i = timeRangeMonths * 30; i >= 0; i -= 2) {
     const date = new Date(today);
     date.setDate(date.getDate() - i);
     const dateStr = date.toISOString().split('T')[0];
 
     const progress = 1 - i / (timeRangeMonths * 30);
     const randomNoise = (Math.random() - 0.5) * (currentTotal * volatilityBase);
+
     const value = currentTotal * 0.8 + currentTotal * 0.2 * progress * trendFactor + randomNoise;
 
-    const invested = currentTotal * 0.85 + Math.random() * currentTotal * 0.05;
+    const invested = currentTotal;
+
     const benchmark = invested * Math.pow(1 + benchmarkRate, (timeRangeMonths * 30 - i) / 365);
 
     history.push({
@@ -165,16 +180,18 @@ const fetchRealFiiPerformance = async (months) => {
     const histories = await Promise.all(
       fiis.map(async (fii) => {
         const data = await fetchFiiChartData(fii.ticker, months);
-
         return {
           ticker: fii.ticker,
           initialQty: fii.qty,
-          data: data.sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date)),
+          data: data ? data.sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date)) : [],
         };
       })
     );
 
-    const allDates = histories.flatMap((h) => h.data.map((d) => d.trade_date));
+    const validHistories = histories.filter((h) => h.data.length > 0);
+    if (validHistories.length === 0) return [];
+
+    const allDates = validHistories.flatMap((h) => h.data.map((d) => d.trade_date));
     allDates.sort();
     const startDate = allDates[0];
     const endDate = allDates[allDates.length - 1];
@@ -188,17 +205,16 @@ const fetchRealFiiPerformance = async (months) => {
 
     const dateMap = {};
 
-    const portfolioState = histories.map((h) => ({
+    const portfolioState = validHistories.map((h) => ({
       ticker: h.ticker,
       qty: h.initialQty,
-
       currentCash: 0,
     }));
 
     const uniqueDates = [...new Set(allDates)].sort();
 
     let initialInvestedTotal = 0;
-    histories.forEach((h, idx) => {
+    validHistories.forEach((h) => {
       const firstPrice = h.data[0]?.price_close || 0;
       initialInvestedTotal += firstPrice * h.initialQty;
     });
@@ -207,30 +223,25 @@ const fetchRealFiiPerformance = async (months) => {
       let dailyTotalValue = 0;
 
       portfolioState.forEach((asset, idx) => {
-        const historyData = histories[idx].data;
-
+        const historyData = validHistories[idx].data;
         const dayRecord = historyData.find((d) => d.trade_date === date);
 
         if (dayRecord) {
           const price = parseFloat(dayRecord.price_close);
           const div = parseFloat(dayRecord.dividend_value || 0);
 
-          if (div > 0) {
+          if (div > 0 && price > 0) {
             const totalDiv = div * asset.qty;
-            if (price > 0) {
-              const newShares = totalDiv / price;
-              asset.qty += newShares;
-            }
+            const newShares = totalDiv / price;
+            asset.qty += newShares;
           }
 
           dailyTotalValue += asset.qty * price;
-        } else {
-          console.warn(`No data for ${asset.ticker} on ${date}`);
         }
       });
 
       const currentIfix = ifixMap[date] || 0;
-      const ifixPerformance = currentIfix / baseIfix;
+      const ifixPerformance = baseIfix > 0 ? currentIfix / baseIfix : 1;
       const benchmarkValue = initialInvestedTotal * ifixPerformance;
 
       if (dailyTotalValue > 0) {
@@ -250,7 +261,9 @@ const fetchRealFiiPerformance = async (months) => {
   }
 };
 
-export const fetchWalletPerformanceHistory = async (timeRangeMonths = 12) => {
+export const fetchWalletPerformanceHistory = async (overrideMonths = null) => {
+  const timeRangeMonths = overrideMonths || getMaxHistoryMonths();
+
   const stockTotal = RAW_WALLET_DATA.filter((i) => i.type === 'stock').reduce(
     (acc, item) => acc + item.total_value,
     0
@@ -259,16 +272,20 @@ export const fetchWalletPerformanceHistory = async (timeRangeMonths = 12) => {
     (acc, item) => acc + item.total_value,
     0
   );
+  const fiiTotal = RAW_WALLET_DATA.filter((i) => i.type === 'fii').reduce(
+    (acc, item) => acc + item.total_value,
+    0
+  );
 
-  const [stockCurve, etfCurve, fiiCurve] = await Promise.all([
-    new Promise((resolve) =>
-      resolve(generateFakeCurve(stockTotal, timeRangeMonths, 0.15, 1.2, 0.12))
-    ),
+  let fiiCurve = await fetchRealFiiPerformance(timeRangeMonths);
 
-    new Promise((resolve) => resolve(generateFakeCurve(etfTotal, timeRangeMonths, 0.1, 1.1, 0.1))),
+  if (!fiiCurve || fiiCurve.length === 0) {
+    console.warn('Using simulation for FIIs due to missing historical data.');
+    fiiCurve = generateFakeCurve(fiiTotal, timeRangeMonths, 0.05, 1.08, 0.11);
+  }
 
-    fetchRealFiiPerformance(timeRangeMonths),
-  ]);
+  const stockCurve = generateFakeCurve(stockTotal, timeRangeMonths, 0.15, 1.2, 0.12);
+  const etfCurve = generateFakeCurve(etfTotal, timeRangeMonths, 0.1, 1.1, 0.1);
 
   const validCurves = [stockCurve, etfCurve, fiiCurve].filter((c) => c && c.length > 0);
   const totalCurve = combineHistories(validCurves);

@@ -41,11 +41,25 @@ const CATEGORIES_CONFIG = {
   fii: { label: 'FIIs', benchmark: 'IFIX', icon: iconFiis },
 };
 
+const TIME_RANGES = [
+  { id: '1M', label: '1M', days: 30 },
+  { id: '3M', label: '3M', days: 90 },
+  { id: '6M', label: '6M', days: 180 },
+  { id: 'YTD', label: 'YTD', days: 'ytd' },
+  { id: 'MAX', label: 'Max', days: 'max' },
+];
+
 function WalletDashboard() {
   const [positions, setPositions] = useState([]);
-  const [historyData, setHistoryData] = useState({ stock: [], etf: [], fii: [] });
+  const [fullHistoryData, setFullHistoryData] = useState({
+    stock: [],
+    etf: [],
+    fii: [],
+    total: [],
+  });
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('stock');
+  const [activeTab, setActiveTab] = useState('total');
+  const [timeRange, setTimeRange] = useState('MAX');
 
   useEffect(() => {
     const loadData = async () => {
@@ -53,10 +67,10 @@ function WalletDashboard() {
       try {
         const [posData, histData] = await Promise.all([
           fetchWalletPositions(),
-          fetchWalletPerformanceHistory(12),
+          fetchWalletPerformanceHistory(),
         ]);
         setPositions(posData);
-        setHistoryData(histData);
+        setFullHistoryData(histData);
       } catch (error) {
         console.error('Failed to load wallet data', error);
       } finally {
@@ -82,7 +96,33 @@ function WalletDashboard() {
     return positions.filter((p) => p.type === activeTab);
   }, [positions, activeTab]);
 
-  const filteredHistory = historyData[activeTab] || [];
+  const earliestPurchaseDate = useMemo(() => {
+    if (filteredPositions.length === 0) return null;
+
+    const dates = filteredPositions.map((p) => new Date(p.purchaseDate).getTime());
+    const minDate = new Date(Math.min(...dates));
+    return minDate.toISOString().split('T')[0];
+  }, [filteredPositions]);
+
+  const displayedHistory = useMemo(() => {
+    const data = fullHistoryData[activeTab] || [];
+    if (data.length === 0) return [];
+    if (timeRange === 'MAX') return data;
+
+    const today = new Date();
+    let startDate = new Date();
+
+    if (timeRange === 'YTD') {
+      startDate = new Date(today.getFullYear(), 0, 1);
+    } else {
+      const rangeConfig = TIME_RANGES.find((r) => r.id === timeRange);
+      if (rangeConfig && typeof rangeConfig.days === 'number') {
+        startDate.setDate(today.getDate() - rangeConfig.days);
+      }
+    }
+
+    return data.filter((item) => new Date(item.trade_date) >= startDate);
+  }, [fullHistoryData, activeTab, timeRange]);
 
   const totalValue = filteredPositions.reduce((acc, curr) => acc + curr.total_value, 0);
   const totalAssets = filteredPositions.length;
@@ -102,12 +142,10 @@ function WalletDashboard() {
 
   return (
     <div className="p-8 dark:bg-gray-900 min-h-screen font-sans animate-fade-in">
-      {}
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">Meu Portfólio</h2>
 
-        {}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {Object.entries(CATEGORIES_CONFIG).map(([key, config]) => {
             const isActive = activeTab === key;
             return (
@@ -123,7 +161,6 @@ function WalletDashboard() {
           }
         `}
               >
-                {}
                 <div
                   className={`
     flex-shrink-0 w-16 h-16 rounded-xl mr-4 transition-colors duration-300 overflow-hidden flex items-center justify-center
@@ -140,7 +177,6 @@ function WalletDashboard() {
                   />
                 </div>
 
-                {}
                 <div className="flex flex-col">
                   <span
                     className={`text-sm font-medium mb-1 ${
@@ -159,7 +195,6 @@ function WalletDashboard() {
                   </span>
                 </div>
 
-                {}
                 {isActive && (
                   <span className="absolute top-3 right-3 w-2 h-2 bg-green-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(74,222,128,0.8)]"></span>
                 )}
@@ -169,9 +204,7 @@ function WalletDashboard() {
         </div>
       </div>
 
-      {}
       <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-        {}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
             <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -195,29 +228,46 @@ function WalletDashboard() {
           </div>
         </div>
 
-        {}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          {}
           <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-200 flex justify-between items-center">
-              <span>Performance vs {CATEGORIES_CONFIG[activeTab].benchmark}</span>
-              <span className="text-xs font-normal text-gray-500 border border-gray-300 dark:border-gray-600 rounded px-2 py-1">
-                Últimos 12 meses
-              </span>
-            </h3>
-            {filteredHistory.length > 0 ? (
+            <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+                Performance vs {CATEGORIES_CONFIG[activeTab].benchmark}
+              </h3>
+
+              <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1">
+                {TIME_RANGES.map((range) => (
+                  <button
+                    key={range.id}
+                    onClick={() => setTimeRange(range.id)}
+                    className={`
+                       px-3 py-1 text-xs font-medium rounded-md transition-all
+                       ${
+                         timeRange === range.id
+                           ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                           : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                       }
+                     `}
+                  >
+                    {range.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {displayedHistory.length > 0 ? (
               <WalletHistoryChart
-                data={filteredHistory}
+                data={displayedHistory}
                 benchmarkName={CATEGORIES_CONFIG[activeTab].benchmark}
+                purchaseDate={earliestPurchaseDate}
               />
             ) : (
               <div className="h-64 flex items-center justify-center text-gray-500 bg-gray-50 dark:bg-gray-900/50 rounded">
-                Dados insuficientes para gráfico
+                Dados insuficientes para este período
               </div>
             )}
           </div>
 
-          {}
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700 flex flex-col items-center">
             <h3 className="text-lg font-semibold mb-2 text-gray-800 dark:text-gray-200 w-full text-left">
               Alocação ({CATEGORIES_CONFIG[activeTab].label})
@@ -245,7 +295,6 @@ function WalletDashboard() {
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                {}
                 <div className="flex flex-wrap gap-2 justify-center mt-4 max-h-24 overflow-y-auto custom-scrollbar">
                   {filteredPositions.map((p, index) => (
                     <div
