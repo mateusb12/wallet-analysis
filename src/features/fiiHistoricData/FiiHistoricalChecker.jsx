@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { fetchFiiDividends, fetchUniqueTickers, fetchFiiChartData } from '../services/b3service.js';
-import { getIpcaRange } from '../services/ipcaService.js';
-import Pagination from '../components/Pagination.jsx';
-import HistoryChart from '../components/HistoryChart.jsx';
+import {
+  fetchFiiDividends,
+  fetchUniqueTickers,
+  fetchFiiChartData,
+} from '../../services/b3service.js';
+import { getIpcaRange } from '../../services/ipcaService.js';
+import Pagination from '../../components/Pagination.jsx';
+import HistoryChart from './HistoryChart.jsx';
+import { getIfixRange } from '../../services/ifixService.js';
 
 function FiiHistoricalChecker() {
   const [ticker, setTicker] = useState('');
@@ -75,7 +80,15 @@ function FiiHistoricalChecker() {
       const [startYear, startMonth] = startDate.split('-').map(Number);
       const [endYear, endMonth] = endDate.split('-').map(Number);
 
-      const ipcaData = await getIpcaRange(startYear, startMonth, endYear, endMonth);
+      const [ipcaData, ifixData] = await Promise.all([
+        getIpcaRange(startYear, startMonth, endYear, endMonth),
+        getIfixRange(startDate, endDate),
+      ]);
+
+      const ifixMap = {};
+      ifixData.forEach((item) => {
+        ifixMap[item.trade_date] = parseFloat(item.close_value);
+      });
 
       const ipcaMap = {};
       ipcaData.forEach((item) => {
@@ -85,6 +98,9 @@ function FiiHistoricalChecker() {
 
       const basePrice = parseFloat(sortedData[0].price_close);
 
+      const baseIfix =
+        ifixMap[startDate] || (ifixData.length > 0 ? parseFloat(ifixData[0].close_value) : null);
+
       let ipcaAccumulatedFactor = 1.0;
       let ipcaProcessedMonth = '';
 
@@ -93,6 +109,8 @@ function FiiHistoricalChecker() {
 
       const mergedData = sortedData.map((dayData, index) => {
         const dateKey = dayData.trade_date.substring(0, 7);
+        const fullDateKey = dayData.trade_date;
+
         const currentPrice = parseFloat(dayData.price_close);
         const currentDividend = parseFloat(dayData.dividend_value || 0);
 
@@ -107,9 +125,17 @@ function FiiHistoricalChecker() {
           dividendProcessedMonth = dateKey;
         }
 
+        let ifixProjection = null;
+        if (baseIfix && ifixMap[fullDateKey]) {
+          const currentIfix = ifixMap[fullDateKey];
+          const ifixFactor = currentIfix / baseIfix;
+          ifixProjection = basePrice * ifixFactor;
+        }
+
         return {
           ...dayData,
           ipca_projection: basePrice * ipcaAccumulatedFactor,
+          ifix_projection: ifixProjection,
           total_return: currentPrice + dividendsAccumulated,
         };
       });

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import FiiHistoricalChecker from '../../pages/FiiHistoricalChecker.jsx';
+import FiiHistoricalChecker from '../fiiHistoricData/FiiHistoricalChecker.jsx';
 import FiiSimulator from '../../pages/FiiSimulator.jsx';
 import RentabilityComparisonCalculator from '../../pages/RentabilityComparisonCalculator.jsx';
 import ReverseImpactCalculator from '../../pages/ReverseImpactCalculator.jsx';

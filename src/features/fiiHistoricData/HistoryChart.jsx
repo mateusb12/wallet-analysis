@@ -10,7 +10,7 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
-import { useTheme } from '../features/theme/ThemeContext'; // Import Hook
+import { useTheme } from '../theme/ThemeContext.jsx';
 
 const useMediaQuery = (query) => {
   const [matches, setMatches] = useState(() =>
@@ -53,22 +53,21 @@ const CustomTooltip = ({ active, payload, label, showTotalReturn, isDark }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     const yieldValue = data.dividend_yield_month ? data.dividend_yield_month * 100 : 0;
+    const ifixValue = data.ifix_projection ? data.ifix_projection : null;
     const ipcaValue = data.ipca_projection ? data.ipca_projection : null;
     const totalReturnValue = data.total_return ? data.total_return : null;
 
-    // Determine tooltip colors based on isDark prop
-    const bgClass = isDark ? 'bg-gray-800 border-gray-600 text-gray-200' : 'bg-white border-gray-300 text-gray-700';
+    const bgClass = isDark
+      ? 'bg-gray-800 border-gray-600 text-gray-200'
+      : 'bg-white border-gray-300 text-gray-700';
     const borderBottom = isDark ? 'border-gray-600' : 'border-gray-100';
-    const totalReturnBg = isDark ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-50 text-purple-700';
-
-    // Text colors (using style objects for Recharts tooltip content might be cleaner, but classes work if using HTML content)
-    // Note: Tailwind classes work here because it renders DOM nodes.
+    const totalReturnBg = isDark
+      ? 'bg-purple-900/30 text-purple-300'
+      : 'bg-purple-50 text-purple-700';
 
     return (
       <div className={`${bgClass} border p-3 rounded-lg shadow-lg text-sm z-50`}>
-        <p className={`font-bold mb-2 border-b ${borderBottom} pb-1`}>
-          {formatDate(label)}
-        </p>
+        <p className={`font-bold mb-2 border-b ${borderBottom} pb-1`}>{formatDate(label)}</p>
 
         <div className="space-y-1">
           {showTotalReturn && totalReturnValue && (
@@ -77,6 +76,11 @@ const CustomTooltip = ({ active, payload, label, showTotalReturn, isDark }) => {
               <span className="font-mono">{formatPrice(totalReturnValue)}</span>
             </p>
           )}
+
+          <p className="text-yellow-600 dark:text-yellow-400 flex justify-between gap-4">
+            <span>IFIX (Benchmark):</span>
+            <span className="font-mono">{formatPrice(ifixValue)}</span>
+          </p>
 
           <p className="text-orange-600 dark:text-orange-400 flex justify-between gap-4">
             <span>IPCA (Base 1º dia):</span>
@@ -95,7 +99,9 @@ const CustomTooltip = ({ active, payload, label, showTotalReturn, isDark }) => {
             <span className="font-mono">{formatDividend(data.dividend_value)}</span>
           </p>
 
-          <p className={`text-purple-600 dark:text-purple-400 flex justify-between gap-4 font-semibold mt-1 pt-1 border-t ${borderBottom}`}>
+          <p
+            className={`text-purple-600 dark:text-purple-400 flex justify-between gap-4 font-semibold mt-1 pt-1 border-t ${borderBottom}`}
+          >
             <span>Yield:</span>
             <span className="font-mono">{yieldValue.toFixed(2)}%</span>
           </p>
@@ -113,9 +119,8 @@ function HistoryChart({ data, showTotalReturn }) {
 
   const chartData = [...data].reverse();
 
-  // Colors based on theme
-  const gridColor = isDark ? '#374151' : '#e0e0e0'; // gray-700 vs gray-300
-  const textColor = isDark ? '#9ca3af' : '#666666'; // gray-400 vs gray-600
+  const gridColor = isDark ? '#374151' : '#e0e0e0';
+  const textColor = isDark ? '#9ca3af' : '#666666';
 
   return (
     <div style={{ width: '100%', height: 400 }}>
@@ -176,7 +181,7 @@ function HistoryChart({ data, showTotalReturn }) {
               type="monotone"
               dataKey="total_return"
               name="Retorno Total (Cota+Div)"
-              stroke="#7e22ce" // purple-700
+              stroke="#7e22ce"
               strokeWidth={3}
               dot={false}
               animationDuration={500}
@@ -185,10 +190,21 @@ function HistoryChart({ data, showTotalReturn }) {
 
           <Line
             yAxisId="left"
+            type="monotone"
+            dataKey="ifix_projection"
+            name="IFIX (Comparativo)"
+            stroke="#eab308"
+            strokeDasharray="3 3"
+            strokeWidth={2}
+            dot={false}
+          />
+
+          <Line
+            yAxisId="left"
             type="stepAfter"
             dataKey="ipca_projection"
             name="Inflação Acumulada (IPCA)"
-            stroke="#ea580c" // orange-600
+            stroke="#ea580c"
             strokeDasharray="5 5"
             strokeWidth={2}
             dot={false}
@@ -199,7 +215,7 @@ function HistoryChart({ data, showTotalReturn }) {
             type="monotone"
             dataKey="price_close"
             name="Preço Fechamento"
-            stroke="#2563eb" // blue-600
+            stroke="#2563eb"
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 6 }}
