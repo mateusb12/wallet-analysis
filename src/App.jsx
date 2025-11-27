@@ -1,33 +1,14 @@
 import { useState } from 'react';
-import Sidebar, { defaultCalculator } from './components/Sidebar';
+import Sidebar, { defaultCalculator } from './features/navbars/Sidebar.jsx';
 import { AuthProvider, useAuth } from './features/auth/AuthContext';
 import Login from './features/auth/Login';
 import Register from './features/auth/Register';
-
-function HamburgerIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={1.5}
-      stroke="currentColor"
-      className="w-6 h-6"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
-      />
-    </svg>
-  );
-}
+import TopBar from './features/navbars/Topbar.jsx';
 
 function AppContent() {
   const { session, loading } = useAuth();
   const [ActiveCalculator, setActiveCalculator] = useState(() => defaultCalculator.component);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
   const [authView, setAuthView] = useState('login');
 
   if (loading) {
@@ -51,26 +32,24 @@ function AppContent() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
+    <div className="flex h-screen bg-gray-100 dark:bg-gray-900 overflow-hidden">
+      {}
       <Sidebar
         onSelectCalculator={handleSelectCalculator}
         isMobileOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
       />
 
-      <div className="flex-1 flex flex-col overflow-auto">
-        <div className="md:hidden flex items-center justify-between p-4 bg-gray-800 text-white sticky top-0 z-10">
-          <h1 className="text-lg font-semibold">Calculadora</h1>
-          <button
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="p-2 rounded-md text-white hover:bg-gray-700"
-          >
-            <HamburgerIcon />
-          </button>
-        </div>
+      {}
+      <div className="flex-1 flex flex-col min-w-0">
+        {}
+        <TopBar onMobileMenuOpen={() => setIsMobileMenuOpen(true)} />
 
-        <div className="flex-1 overflow-auto">
-          <ActiveCalculator />
+        {}
+        <div className="flex-1 overflow-auto p-4 md:p-6 scroll-smooth">
+          <div className="max-w-7xl mx-auto">
+            <ActiveCalculator />
+          </div>
         </div>
       </div>
     </div>
