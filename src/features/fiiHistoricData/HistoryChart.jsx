@@ -72,7 +72,7 @@ const CustomTooltip = ({ active, payload, label, showTotalReturn, isDark }) => {
         <div className="space-y-1">
           {showTotalReturn && totalReturnValue && (
             <p className={`flex justify-between gap-4 font-bold px-1 rounded ${totalReturnBg}`}>
-              <span>Retorno Total:</span>
+              <span>Retorno Total (Reinvest.):</span>
               <span className="font-mono">{formatPrice(totalReturnValue)}</span>
             </p>
           )}

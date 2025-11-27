@@ -104,7 +104,7 @@ function FiiHistoricalChecker() {
       let ipcaAccumulatedFactor = 1.0;
       let ipcaProcessedMonth = '';
 
-      let dividendsAccumulated = 0;
+      let accumulatedShares = 1.0;
       let dividendProcessedMonth = '';
 
       const mergedData = sortedData.map((dayData, index) => {
@@ -120,8 +120,14 @@ function FiiHistoricalChecker() {
           ipcaProcessedMonth = dateKey;
         }
 
-        if (dateKey !== dividendProcessedMonth) {
-          dividendsAccumulated += currentDividend;
+        if (currentDividend > 0 && dateKey !== dividendProcessedMonth) {
+          const totalCashReceived = currentDividend * accumulatedShares;
+
+          if (currentPrice > 0) {
+            const newSharesPurchased = totalCashReceived / currentPrice;
+            accumulatedShares += newSharesPurchased;
+          }
+
           dividendProcessedMonth = dateKey;
         }
 
@@ -136,7 +142,8 @@ function FiiHistoricalChecker() {
           ...dayData,
           ipca_projection: basePrice * ipcaAccumulatedFactor,
           ifix_projection: ifixProjection,
-          total_return: currentPrice + dividendsAccumulated,
+
+          total_return: currentPrice * accumulatedShares,
         };
       });
 
