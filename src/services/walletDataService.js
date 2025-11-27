@@ -176,10 +176,16 @@ const fetchRealFiiPerformance = async (months) => {
   const fiis = RAW_WALLET_DATA.filter((item) => item.type === 'fii');
   if (fiis.length === 0) return [];
 
+  const earliestPurchaseDate = fiis.reduce(
+    (min, p) => (p.purchaseDate < min ? p.purchaseDate : min),
+    fiis[0].purchaseDate
+  );
+
   try {
     const histories = await Promise.all(
       fiis.map(async (fii) => {
         const data = await fetchFiiChartData(fii.ticker, months);
+
         return {
           ticker: fii.ticker,
           initialQty: fii.qty,
@@ -192,18 +198,29 @@ const fetchRealFiiPerformance = async (months) => {
     if (validHistories.length === 0) return [];
 
     const allDates = validHistories.flatMap((h) => h.data.map((d) => d.trade_date));
-    allDates.sort();
-    const startDate = allDates[0];
-    const endDate = allDates[allDates.length - 1];
 
-    if (!startDate) return [];
+    const uniqueDates = [...new Set(allDates)]
+      .filter((date) => date >= earliestPurchaseDate)
+      .sort();
+
+    if (uniqueDates.length === 0) return [];
+
+    const startDate = uniqueDates[0];
+    const endDate = uniqueDates[uniqueDates.length - 1];
 
     const ifixData = await getIfixRange(startDate, endDate);
     const ifixMap = {};
     ifixData.forEach((i) => (ifixMap[i.trade_date] = parseFloat(i.close_value)));
-    const baseIfix = ifixData.length > 0 ? parseFloat(ifixData[0].close_value) : 1;
 
-    const dateMap = {};
+    let initialInvestedTotal = 0;
+
+    validHistories.forEach((h) => {
+      const startRecord = h.data.find((d) => d.trade_date >= earliestPurchaseDate);
+      const startPrice = startRecord
+        ? parseFloat(startRecord.price_close)
+        : h.data[0]?.price_close || 0;
+      initialInvestedTotal += startPrice * h.initialQty;
+    });
 
     const portfolioState = validHistories.map((h) => ({
       ticker: h.ticker,
@@ -211,50 +228,63 @@ const fetchRealFiiPerformance = async (months) => {
       currentCash: 0,
     }));
 
-    const uniqueDates = [...new Set(allDates)].sort();
+    const dailyData = uniqueDates
+      .map((date) => {
+        let dailyTotalValue = 0;
 
-    let initialInvestedTotal = 0;
-    validHistories.forEach((h) => {
-      const firstPrice = h.data[0]?.price_close || 0;
-      initialInvestedTotal += firstPrice * h.initialQty;
-    });
+        portfolioState.forEach((asset, idx) => {
+          const historyData = validHistories[idx].data;
+          const dayRecord = historyData.find((d) => d.trade_date === date);
 
-    uniqueDates.forEach((date) => {
-      let dailyTotalValue = 0;
+          if (dayRecord) {
+            const price = parseFloat(dayRecord.price_close);
+            const div = parseFloat(dayRecord.dividend_value || 0);
 
-      portfolioState.forEach((asset, idx) => {
-        const historyData = validHistories[idx].data;
-        const dayRecord = historyData.find((d) => d.trade_date === date);
-
-        if (dayRecord) {
-          const price = parseFloat(dayRecord.price_close);
-          const div = parseFloat(dayRecord.dividend_value || 0);
-
-          if (div > 0 && price > 0) {
-            const totalDiv = div * asset.qty;
-            const newShares = totalDiv / price;
-            asset.qty += newShares;
+            if (div > 0 && price > 0) {
+              const totalDiv = div * asset.qty;
+              const newShares = totalDiv / price;
+              asset.qty += newShares;
+            }
+            dailyTotalValue += asset.qty * price;
           }
+        });
 
-          dailyTotalValue += asset.qty * price;
-        }
-      });
-
-      const currentIfix = ifixMap[date] || 0;
-      const ifixPerformance = baseIfix > 0 ? currentIfix / baseIfix : 1;
-      const benchmarkValue = initialInvestedTotal * ifixPerformance;
-
-      if (dailyTotalValue > 0) {
-        dateMap[date] = {
+        return {
           trade_date: date,
           portfolio_value: parseFloat(dailyTotalValue.toFixed(2)),
           invested_amount: parseFloat(initialInvestedTotal.toFixed(2)),
-          benchmark_value: parseFloat(benchmarkValue.toFixed(2)),
         };
+      })
+      .filter((d) => d.portfolio_value > 0);
+
+    if (dailyData.length === 0) return [];
+
+    const anchorDate = dailyData[0].trade_date;
+    const anchorInvested = dailyData[0].invested_amount;
+    const anchorIfix = ifixMap[anchorDate];
+
+    let lastKnownIfix = anchorIfix;
+
+    const finalResult = dailyData.map((day) => {
+      let currentIfix = ifixMap[day.trade_date];
+
+      if (!currentIfix && lastKnownIfix) currentIfix = lastKnownIfix;
+      if (currentIfix) lastKnownIfix = currentIfix;
+
+      let benchmarkVal = day.invested_amount;
+
+      if (anchorIfix && currentIfix) {
+        const performanceRatio = currentIfix / anchorIfix;
+        benchmarkVal = anchorInvested * performanceRatio;
       }
+
+      return {
+        ...day,
+        benchmark_value: parseFloat(benchmarkVal.toFixed(2)),
+      };
     });
 
-    return Object.values(dateMap);
+    return finalResult;
   } catch (err) {
     console.error('Error calculating real FII performance:', err);
     return [];
@@ -279,9 +309,23 @@ export const fetchWalletPerformanceHistory = async (overrideMonths = null) => {
 
   let fiiCurve = await fetchRealFiiPerformance(timeRangeMonths);
 
+  const getFiiStartDate = () => {
+    const fiis = RAW_WALLET_DATA.filter((i) => i.type === 'fii');
+    if (!fiis.length) return null;
+    return fiis.reduce(
+      (min, p) => (p.purchaseDate < min ? p.purchaseDate : min),
+      fiis[0].purchaseDate
+    );
+  };
+  const fiiStartDate = getFiiStartDate();
+
   if (!fiiCurve || fiiCurve.length === 0) {
     console.warn('Using simulation for FIIs due to missing historical data.');
     fiiCurve = generateFakeCurve(fiiTotal, timeRangeMonths, 0.05, 1.08, 0.11);
+
+    if (fiiStartDate) {
+      fiiCurve = fiiCurve.filter((d) => d.trade_date >= fiiStartDate);
+    }
   }
 
   const stockCurve = generateFakeCurve(stockTotal, timeRangeMonths, 0.15, 1.2, 0.12);
