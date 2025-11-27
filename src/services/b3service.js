@@ -15,6 +15,40 @@ export async function fetchB3Prices(ticker, page = 1, pageSize = 50) {
   return { data, count };
 }
 
+export async function fetchUniqueStockTickers() {
+  const { data, error } = await supabase.from('unique_stocks_view').select('ticker');
+
+  if (error) {
+    console.error(
+      "Erro: Crie a view 'unique_stocks_view' no Supabase para performance: 'create view unique_stocks_view as select distinct ticker from b3_prices;'"
+    );
+    throw error;
+  }
+
+  return data.map((item) => item.ticker).sort();
+}
+
+export async function fetchFullStockHistory(ticker) {
+  const { data, error } = await supabase
+    .from('b3_prices')
+    .select('trade_date, close')
+    .eq('ticker', ticker.toUpperCase())
+    .order('trade_date', { ascending: true })
+    .limit(1300);
+
+  if (error) throw error;
+
+  return data.map((item) => {
+    const dateObj = new Date(item.trade_date);
+
+    return {
+      date: dateObj.getTime(),
+      dateStr: item.trade_date,
+      close: parseFloat(item.close),
+    };
+  });
+}
+
 export async function fetchUniqueTickers() {
   const { data, error } = await supabase.from('unique_tickers_view').select('ticker');
 

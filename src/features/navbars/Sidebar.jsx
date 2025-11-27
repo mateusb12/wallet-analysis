@@ -15,6 +15,12 @@ const menuItems = [
     component: FiiHistoricalChecker,
   },
   {
+    id: 'price-analyzer',
+    label: 'Analisador de Preço (Ações)',
+    icon: '💹',
+    component: PricePositionCalculator,
+  },
+  {
     id: 'fii-simulator',
     label: 'Simulador de Investimento (FIIs)',
     icon: '📈',
@@ -37,12 +43,6 @@ const menuItems = [
     label: 'Calculadora de Correção (IPCA)',
     icon: '📊',
     component: IpcaCalculator,
-  },
-  {
-    id: 'price-analyzer',
-    label: 'Analisador de Preço (Ações)',
-    icon: '💹',
-    component: PricePositionCalculator,
   },
 ];
 
