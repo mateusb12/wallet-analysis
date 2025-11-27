@@ -86,10 +86,10 @@ export async function fetchFiiDividends(ticker = null, page = 1, pageSize = 50) 
 
 export async function fetchFiiChartData(ticker, months) {
   let query = supabase
-    .from('b3_fiis_dividends')
-    .select('*')
+    .from('b3_prices')
+    .select('*, price_close:close')
     .eq('ticker', ticker.toUpperCase())
-    .gt('dividend_value', 0)
+
     .order('trade_date', { ascending: false });
 
   if (months > 0) {
