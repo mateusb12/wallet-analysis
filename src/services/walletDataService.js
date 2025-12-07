@@ -1,7 +1,7 @@
 import { fetchFiiChartData } from './b3service.js';
 import { getIfixRange } from './ifixService.js';
 
-const SIMULATED_TODAY = new Date('2025-11-27');
+const SIMULATED_TODAY = new Date();
 
 const RAW_WALLET_DATA = [
   {
@@ -185,22 +185,10 @@ const fetchRealFiiPerformance = async (months) => {
     fiis[0].purchaseDate
   );
 
-  console.log('--- START FII GROUP DEBUG ---');
-  console.log('Earliest Purchase Date:', earliestPurchaseDate);
-  console.log('Target Range:', earliestPurchaseDate, 'to', SIMULATED_TODAY);
-
   try {
     const histories = await Promise.all(
       fiis.map(async (fii) => {
         const data = await fetchFiiChartData(fii.ticker, months);
-
-        if (data && data.length > 0) {
-          const lastDate = data[data.length - 1].trade_date;
-          console.log(`Fetched ${fii.ticker}: ${data.length} points. Last date: ${lastDate}`);
-        } else {
-          console.warn(`Fetched ${fii.ticker}: NO DATA`);
-        }
-
         return {
           ticker: fii.ticker,
           initialQty: fii.qty,
@@ -210,28 +198,14 @@ const fetchRealFiiPerformance = async (months) => {
     );
 
     const validHistories = histories.filter((h) => h.data.length > 0);
-    if (validHistories.length === 0) {
-      console.error('EXIT: No valid histories found for any FII');
-      return [];
-    }
+    if (validHistories.length === 0) return [];
 
     const allDates = validHistories.flatMap((h) => h.data.map((d) => d.trade_date));
-
     const todayStr = SIMULATED_TODAY.toISOString().split('T')[0];
+
     const uniqueDates = [...new Set(allDates)]
       .filter((date) => date >= earliestPurchaseDate && date <= todayStr)
       .sort();
-
-    console.log('Unique Dates Count (Filtered):', uniqueDates.length);
-    if (uniqueDates.length > 0) {
-      console.log('First Date:', uniqueDates[0]);
-      console.log('Last Date:', uniqueDates[uniqueDates.length - 1]);
-    } else {
-      console.error(
-        'EXIT: All fetched dates are older than purchase date (' + earliestPurchaseDate + ')'
-      );
-      return [];
-    }
 
     if (uniqueDates.length === 0) return [];
 
@@ -243,20 +217,23 @@ const fetchRealFiiPerformance = async (months) => {
     ifixData.forEach((i) => (ifixMap[i.trade_date] = parseFloat(i.close_value)));
 
     let initialInvestedTotal = 0;
-
     validHistories.forEach((h) => {
       const startRecord = h.data.find((d) => d.trade_date >= earliestPurchaseDate);
       const startPrice = startRecord
         ? parseFloat(startRecord.price_close)
-        : h.data[0]?.price_close || 0;
+        : parseFloat(h.data[0]?.price_close || 0);
       initialInvestedTotal += startPrice * h.initialQty;
     });
 
-    const portfolioState = validHistories.map((h) => ({
-      ticker: h.ticker,
-      qty: h.initialQty,
-      currentCash: 0,
-    }));
+    const portfolioState = validHistories.map((h) => {
+      const firstData = h.data.find((d) => d.trade_date >= earliestPurchaseDate) || h.data[0];
+      return {
+        ticker: h.ticker,
+        qty: h.initialQty,
+        currentCash: 0,
+        lastPrice: firstData ? parseFloat(firstData.price_close) : 0,
+      };
+    });
 
     const dailyData = uniqueDates
       .map((date) => {
@@ -270,13 +247,16 @@ const fetchRealFiiPerformance = async (months) => {
             const price = parseFloat(dayRecord.price_close);
             const div = parseFloat(dayRecord.dividend_value || 0);
 
-            if (div > 0 && price > 0) {
+            if (price > 0) asset.lastPrice = price;
+
+            if (div > 0 && asset.lastPrice > 0) {
               const totalDiv = div * asset.qty;
-              const newShares = totalDiv / price;
+              const newShares = totalDiv / asset.lastPrice;
               asset.qty += newShares;
             }
-            dailyTotalValue += asset.qty * price;
           }
+
+          dailyTotalValue += asset.qty * asset.lastPrice;
         });
 
         return {
@@ -292,42 +272,10 @@ const fetchRealFiiPerformance = async (months) => {
     const anchorDate = dailyData[0].trade_date;
     const anchorInvested = dailyData[0].invested_amount;
     const anchorIfix = ifixMap[anchorDate];
-
-    console.group('🔍 FII BENCHMARK DIAGNOSIS');
-    console.log('1. Calculation Anchor:', {
-      anchorDate,
-      anchorInvested,
-      anchorIfix,
-    });
-
-    console.log('2. IFIX Map Integrity:', {
-      hasAnchorIfix: !!anchorIfix,
-      totalIfixPoints: Object.keys(ifixMap).length,
-      sampleIfixValue: Object.values(ifixMap)[0],
-    });
-
-    if (anchorIfix) {
-      const firstRealData = dailyData.find((d) => d.trade_date !== anchorDate);
-      if (firstRealData) {
-        const nextIfix = ifixMap[firstRealData.trade_date];
-        const ratio = nextIfix / anchorIfix;
-        console.log('3. Test Projection (Day 2):', {
-          day2Date: firstRealData.trade_date,
-          day2Ifix: nextIfix,
-          ratio: ratio,
-          projectedValue: anchorInvested * ratio,
-        });
-      }
-    } else {
-      console.error('🚨 CRITICAL: Anchor IFIX is missing or Zero! This causes infinity.');
-    }
-    console.groupEnd();
-
     let lastKnownIfix = anchorIfix;
 
     const finalResult = dailyData.map((day) => {
       let currentIfix = ifixMap[day.trade_date];
-
       if (!currentIfix && lastKnownIfix) currentIfix = lastKnownIfix;
       if (currentIfix) lastKnownIfix = currentIfix;
 

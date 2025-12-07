@@ -39,12 +39,13 @@ const CustomTooltip = ({ active, payload, label, isDark }) => {
       : 'bg-white border-gray-300 text-gray-700';
 
     const benchmarkEntry = payload.find((p) => p.dataKey === 'benchmark_value');
-    const investedEntry = payload.find((p) => p.dataKey === 'invested_amount');
+
+    const portfolioEntry = payload.find((p) => p.dataKey === 'portfolio_value');
 
     const benchmarkVal = benchmarkEntry ? benchmarkEntry.value : 0;
-    const investedVal = investedEntry ? investedEntry.value : 0;
+    const portfolioVal = portfolioEntry ? portfolioEntry.value : 0;
 
-    const ratio = investedVal > 0 ? (investedVal - benchmarkVal) / investedVal : 0;
+    const ratio = portfolioVal > 0 ? (portfolioVal - benchmarkVal) / portfolioVal : 0;
 
     return (
       <div className={`${bgClass} border p-3 rounded-lg shadow-lg text-sm z-50`}>
@@ -59,14 +60,17 @@ const CustomTooltip = ({ active, payload, label, isDark }) => {
           </div>
 
           <div className="flex justify-between gap-6 items-center">
+            {}
             <span style={{ color: '#16a34a' }} className="font-medium text-xs">
-              Valor Investido:
+              Patrimônio:
             </span>
-            <span className="font-mono font-bold text-sm">{formatCurrency(investedVal)}</span>
+            <span className="font-mono font-bold text-sm">{formatCurrency(portfolioVal)}</span>
           </div>
 
           <div className="flex justify-end mt-1 pt-1 border-t border-gray-500/20">
-            <span className="text-[10px] text-gray-400 mr-2 self-center">Diff (Inv vs Bench):</span>
+            <span className="text-[10px] text-gray-400 mr-2 self-center">
+              Diff (Patr. vs Bench):
+            </span>
             <span className={`text-xs font-bold ${ratio >= 0 ? 'text-green-500' : 'text-red-500'}`}>
               {ratio >= 0 ? '+' : ''}
               {formatPercent(ratio)}
@@ -144,7 +148,7 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
           <Legend
             payload={[
               { value: benchmarkName, type: 'rect', color: '#eab308' },
-              { value: 'Valor Investido', type: 'rect', color: '#16a34a' },
+              { value: 'Patrimônio', type: 'rect', color: '#16a34a' },
             ]}
           />
 
@@ -159,10 +163,11 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
             connectNulls={false}
           />
 
+          {}
           <Area
             type="monotone"
-            dataKey="invested_amount"
-            name="Valor Investido"
+            dataKey="portfolio_value"
+            name="Patrimônio"
             stroke="#16a34a"
             strokeWidth={2}
             fill="url(#colorInvested)"
