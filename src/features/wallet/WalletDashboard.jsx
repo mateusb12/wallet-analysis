@@ -5,6 +5,8 @@ import {
   fetchSpecificAssetHistory,
 } from '../../services/walletDataService.js';
 import WalletHistoryChart from './WalletHistoryChart.jsx';
+
+import DataConsistencyAlert from '../../components/DataConsistencyAlert.jsx';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 import iconStocks from '../../assets/stocks.png';
@@ -201,47 +203,7 @@ function WalletDashboard() {
   return (
     <div className="p-8 dark:bg-gray-900 min-h-screen font-sans animate-fade-in">
       {}
-      {dataWarnings.length > 0 && (
-        <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 rounded-r-lg flex items-start gap-3 shadow-sm">
-          <div className="text-yellow-500 mt-0.5">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-              <path d="M12 9v4" />
-              <path d="M12 17h.01" />
-            </svg>
-          </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-bold text-yellow-800 dark:text-yellow-200">
-              Dados desatualizados detectados
-            </h3>
-            <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-              Os seguintes ativos não possuem dados recentes (Dezembro), o que pode distorcer o
-              gráfico:
-            </p>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {dataWarnings.map((ticker) => (
-                <span
-                  key={ticker}
-                  className="px-2 py-1 bg-yellow-100 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-100 text-xs rounded font-mono font-bold"
-                >
-                  {ticker}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-      {}
+      <DataConsistencyAlert warnings={dataWarnings} className="mb-6" />
 
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">Meu Portfólio</h2>

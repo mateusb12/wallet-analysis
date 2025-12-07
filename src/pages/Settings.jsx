@@ -2,9 +2,14 @@ import React, { useState } from 'react';
 import { useTheme } from '../features/theme/ThemeContext';
 import { useAuth } from '../features/auth/AuthContext';
 
+import { useDataConsistency } from '../hooks/useDataConsistency';
+import DataConsistencyAlert from '../components/DataConsistencyAlert';
+
 export default function Settings() {
   const { theme, toggleTheme } = useTheme();
   const { user } = useAuth();
+
+  const { warnings } = useDataConsistency();
 
   const [notifications, setNotifications] = useState({
     email: true,
@@ -24,6 +29,9 @@ export default function Settings() {
           Gerencie suas preferências e configurações da conta
         </p>
       </div>
+
+      {}
+      <DataConsistencyAlert warnings={warnings} className="mb-8" />
 
       <div className="space-y-6">
         {}
@@ -148,10 +156,30 @@ export default function Settings() {
                   d="M14.25 9.75L16.5 12l-2.25 2.25m-4.5 0L7.5 12l2.25-2.25M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z"
                 />
               </svg>
-              Integrações e API
+              Integridade de Dados & API
             </h3>
           </div>
           <div className="p-6 space-y-4">
+            {}
+            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  Status da Sincronização
+                </p>
+                <p className="text-xs text-gray-500">Verificação automática de datas</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${warnings.length > 0 ? 'bg-red-500' : 'bg-green-500'}`}
+                ></span>
+                <span
+                  className={`text-sm font-medium ${warnings.length > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}
+                >
+                  {warnings.length > 0 ? 'Atenção Requerida' : 'Sistemas Operacionais'}
+                </span>
+              </div>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Chave HG Brasil (Opcional)
