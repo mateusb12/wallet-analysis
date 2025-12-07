@@ -6,6 +6,9 @@ import FiiSimulator from '../../pages/FiiSimulator.jsx';
 import IpcaCalculator from '../../pages/IpcaCalculator.jsx';
 import PricePositionCalculator from '../stockHistoricData/PricePositionCalculator.jsx';
 import WalletDashboard from '../wallet/WalletDashboard.jsx';
+import Settings from '../../pages/Settings.jsx';
+
+import { Settings as SettingsIcon, LogOut } from 'lucide-react';
 
 const menuItems = [
   {
@@ -53,6 +56,12 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
   const handleItemClick = (item) => {
     setActiveItem(item.id);
     onSelectCalculator(item.component);
+    if (onClose) onClose();
+  };
+
+  const handleSettingsClick = () => {
+    setActiveItem('settings');
+    onSelectCalculator(Settings);
     if (onClose) onClose();
   };
 
@@ -104,31 +113,25 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-white dark:ring-gray-600 shrink-0">
             {userInitial}
           </div>
+
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-gray-800 dark:text-white truncate">{userName}</p>
             <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate font-medium">
               {userEmail}
             </p>
           </div>
+
+          {}
           <button
-            onClick={signOut}
-            title="Sair"
-            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+            onClick={handleSettingsClick}
+            title="Configurações"
+            className={`p-1.5 rounded-lg transition-colors ${
+              activeItem === 'settings'
+                ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/30'
+                : 'text-gray-400 hover:text-blue-500 hover:bg-gray-50 dark:hover:bg-gray-600'
+            }`}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className="w-5 h-5"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"
-              />
-            </svg>
+            <SettingsIcon className="w-5 h-5" strokeWidth={1.75} />
           </button>
         </div>
 
