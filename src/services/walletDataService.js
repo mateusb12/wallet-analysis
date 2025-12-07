@@ -192,21 +192,10 @@ const fetchRealFiiPerformance = async (months) => {
     fiis[0].purchaseDate
   );
 
-  console.log('--- START FII GROUP DEBUG ---');
-  console.log('Earliest Purchase Date:', earliestPurchaseDate);
-
   try {
     const histories = await Promise.all(
       fiis.map(async (fii) => {
         const data = await fetchFiiChartData(fii.ticker, months);
-
-        if (data && data.length > 0) {
-          const lastDate = data[data.length - 1].trade_date;
-          console.log(`Fetched ${fii.ticker}: ${data.length} points. Last date: ${lastDate}`);
-        } else {
-          console.warn(`Fetched ${fii.ticker}: NO DATA`);
-        }
-
         return {
           ticker: fii.ticker,
           initialQty: fii.qty,
@@ -216,42 +205,43 @@ const fetchRealFiiPerformance = async (months) => {
     );
 
     const validHistories = histories.filter((h) => h.data.length > 0);
-    if (validHistories.length === 0) {
-      console.error('EXIT: No valid histories found for any FII');
-      return { chartData: [], warnings: [] };
-    }
+    if (validHistories.length === 0) return { chartData: [], warnings: [] };
+
+    const allDates = validHistories.flatMap((h) => h.data.map((d) => d.trade_date));
+    const uniqueDates = [...new Set(allDates)]
+      .filter((date) => date >= earliestPurchaseDate)
+      .sort();
+
+    if (uniqueDates.length === 0) return { chartData: [], warnings: [] };
+
+    const startDate = uniqueDates[0];
+
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const ifixData = await getIfixRange(startDate, todayStr);
+    const ifixMap = {};
+    ifixData.forEach((i) => (ifixMap[i.trade_date] = parseFloat(i.close_value)));
 
     const assetLastDates = validHistories.map((h) => ({
       ticker: h.ticker,
       lastDate: h.data[h.data.length - 1].trade_date,
     }));
 
-    const globalMaxDate = assetLastDates.reduce(
-      (max, item) => (item.lastDate > max ? item.lastDate : max),
-      assetLastDates[0].lastDate
+    const ifixLastDate = ifixData.length > 0 ? ifixData[ifixData.length - 1].trade_date : startDate;
+
+    const allLastDates = [...assetLastDates.map((a) => a.lastDate), ifixLastDate];
+    const globalMaxDate = allLastDates.reduce(
+      (max, item) => (item > max ? item : max),
+      allLastDates[0]
     );
 
     const warnings = assetLastDates
       .filter((item) => getDaysDiff(item.lastDate, globalMaxDate) > 3)
       .map((item) => item.ticker);
 
-    const allDates = validHistories.flatMap((h) => h.data.map((d) => d.trade_date));
-
-    const todayStr = SIMULATED_TODAY.toISOString().split('T')[0];
-    const uniqueDates = [...new Set(allDates)]
-      .filter((date) => date >= earliestPurchaseDate && date <= todayStr)
-      .sort();
-
-    console.log('Unique Dates Count (Filtered):', uniqueDates.length);
-
-    if (uniqueDates.length === 0) return { chartData: [], warnings };
-
-    const startDate = uniqueDates[0];
-    const endDate = uniqueDates[uniqueDates.length - 1];
-
-    const ifixData = await getIfixRange(startDate, endDate);
-    const ifixMap = {};
-    ifixData.forEach((i) => (ifixMap[i.trade_date] = parseFloat(i.close_value)));
+    if (getDaysDiff(ifixLastDate, globalMaxDate) > 3) {
+      warnings.push('Benchmark (IFIX)');
+    }
 
     let initialInvestedTotal = 0;
 
@@ -266,12 +256,13 @@ const fetchRealFiiPerformance = async (months) => {
       return {
         ticker: h.ticker,
         qty: h.initialQty,
-        currentCash: 0,
         lastPrice: startPrice,
       };
     });
 
-    const dailyData = uniqueDates
+    const calculationDates = uniqueDates.filter((d) => d <= todayStr);
+
+    const dailyData = calculationDates
       .map((date) => {
         let dailyTotalValue = 0;
 
@@ -283,17 +274,13 @@ const fetchRealFiiPerformance = async (months) => {
             const price = parseFloat(dayRecord.price_close);
             const div = parseFloat(dayRecord.dividend_value || 0);
 
-            if (price > 0) {
-              asset.lastPrice = price;
-            }
+            if (price > 0) asset.lastPrice = price;
 
             if (div > 0 && asset.lastPrice > 0) {
               const totalDiv = div * asset.qty;
-              const newShares = totalDiv / asset.lastPrice;
-              asset.qty += newShares;
+              asset.qty += totalDiv / asset.lastPrice;
             }
           }
-
           dailyTotalValue += asset.qty * asset.lastPrice;
         });
 
@@ -310,7 +297,6 @@ const fetchRealFiiPerformance = async (months) => {
     const anchorDate = dailyData[0].trade_date;
     const anchorInvested = dailyData[0].invested_amount;
     const anchorIfix = ifixMap[anchorDate];
-
     let lastKnownIfix = anchorIfix;
 
     const finalResult = dailyData.map((day) => {
