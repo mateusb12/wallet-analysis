@@ -3,8 +3,6 @@ import { useAuth } from '../auth/AuthContext';
 
 import FiiHistoricalChecker from '../fiiHistoricData/FiiHistoricalChecker.jsx';
 import FiiSimulator from '../../pages/FiiSimulator.jsx';
-import RentabilityComparisonCalculator from '../../pages/RentabilityComparisonCalculator.jsx';
-import ReverseImpactCalculator from '../../pages/ReverseImpactCalculator.jsx';
 import IpcaCalculator from '../../pages/IpcaCalculator.jsx';
 import PricePositionCalculator from '../stockHistoricData/PricePositionCalculator.jsx';
 import WalletDashboard from '../wallet/WalletDashboard.jsx';
@@ -33,18 +31,6 @@ const menuItems = [
     label: 'Simulador de Investimento (FIIs)',
     icon: '📈',
     component: FiiSimulator,
-  },
-  {
-    id: 'rentability-comparison',
-    label: 'Comparação (LCI/LCA vs CDB)',
-    icon: '💰',
-    component: RentabilityComparisonCalculator,
-  },
-  {
-    id: 'reverse-impact',
-    label: 'Calculadora de Impacto Reverso',
-    icon: '⏱️',
-    component: ReverseImpactCalculator,
   },
   {
     id: 'ipca-calculator',
