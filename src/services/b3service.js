@@ -1,5 +1,7 @@
 import { supabase } from './supabaseClient.js';
 
+const CORS_PROXY = 'https://corsproxy.io/?';
+
 export async function fetchB3Prices(ticker, page = 1, pageSize = 50) {
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
@@ -165,4 +167,28 @@ export async function fetchFirstEverPrice(ticker, oldestDate) {
   }
 
   return data;
+}
+
+export async function syncTickerHistory(ticker) {
+  try {
+    const response = await fetch('http://localhost:5000/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ticker: ticker }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Server error');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Sync failed:', error);
+
+    return { success: false, error: error.message || 'Failed to connect to Python backend' };
+  }
 }

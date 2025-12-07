@@ -4,6 +4,7 @@ import { useAuth } from '../features/auth/AuthContext';
 
 import { useDataConsistency } from '../hooks/useDataConsistency';
 import DataConsistencyAlert from '../components/DataConsistencyAlert';
+import ManualPriceSync from '../components/ManualPriceSync.jsx';
 
 export default function Settings() {
   const { theme, toggleTheme } = useTheme();
@@ -34,7 +35,7 @@ export default function Settings() {
       <DataConsistencyAlert warnings={warnings} className="mb-8" />
 
       <div className="space-y-6">
-        {}
+        <ManualPriceSync />
         <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">

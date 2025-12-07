@@ -17,6 +17,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.80.0",
     "axios": "^1.13.2",
+    "date-fns": "^4.1.0",
     "lucide-react": "^0.556.0",
     "papaparse": "^5.5.3",
     "react": "^19.1.1",
