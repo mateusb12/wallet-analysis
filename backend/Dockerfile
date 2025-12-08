@@ -15,19 +15,20 @@ WORKDIR /app
 # Copy poetry configs
 COPY backend/pyproject.toml backend/poetry.lock* ./
 
-# Install dependencies (NO dev deps in production!)
+# Install dependencies
+# --no-root means we don't install the project itself, just deps
 RUN poetry install --no-root --no-interaction --no-ansi
 
-# Copy the actual app source
-COPY backend /app
+# IMPORTANT: Copy the backend folder into /app/backend
+COPY backend /app/backend
 
-# Default mode
 ENV APP_ENV=production
 
+# We run from /app, so 'backend.main:app' is found in /app/backend/main.py
 CMD ["sh", "-c", "\
     if [ \"$APP_ENV\" = \"development\" ]; then \
-        poetry run uvicorn app:app --host 0.0.0.0 --port 8000 --reload; \
+        poetry run uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload; \
     else \
-        poetry run uvicorn app:app --host 0.0.0.0 --port 8000; \
+        poetry run uvicorn backend.main:app --host 0.0.0.0 --port 8000; \
     fi \
 "]

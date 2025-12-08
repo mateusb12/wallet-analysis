@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { supabase } from '../../services/supabaseClient';
 import { useTheme } from '../theme/ThemeContext';
+import { authService } from '../../services/api';
+import { useAuth } from './AuthContext';
 
 export default function Login({ onSwitchToRegister }) {
   const [loading, setLoading] = useState(false);
@@ -9,6 +10,7 @@ export default function Login({ onSwitchToRegister }) {
   const [message, setMessage] = useState({ type: '', content: '' });
 
   const { theme, toggleTheme } = useTheme();
+  const { setBackendSession } = useAuth();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -16,11 +18,9 @@ export default function Login({ onSwitchToRegister }) {
     setMessage({ type: '', content: '' });
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (error) throw error;
+      const data = await authService.login(email, password);
+
+      await setBackendSession(data.session);
     } catch (error) {
       setMessage({ type: 'error', content: error.message });
       setLoading(false);
@@ -29,7 +29,6 @@ export default function Login({ onSwitchToRegister }) {
 
   return (
     <div className="relative flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 p-4 transition-colors duration-300">
-      {}
       <button
         onClick={toggleTheme}
         className="absolute top-6 right-6 p-3 rounded-full bg-white dark:bg-gray-800 shadow-lg hover:shadow-xl transform hover:scale-110 transition-all duration-300 border border-gray-200 dark:border-gray-700 group"

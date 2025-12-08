@@ -17,18 +17,11 @@ export const AuthProvider = ({ children }) => {
         const {
           data: { session },
         } = await supabase.auth.getSession();
-
-        if (mounted) {
-          if (session) {
-            setSession(session);
-          }
-        }
+        if (mounted && session) setSession(session);
       } catch (error) {
         console.error('Error checking session:', error);
       } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       }
     }
 
@@ -49,6 +42,17 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
+  const setBackendSession = async (sessionData) => {
+    if (sessionData) {
+      const { error } = await supabase.auth.setSession({
+        access_token: sessionData.access_token,
+        refresh_token: sessionData.refresh_token,
+      });
+      if (error) throw error;
+      setSession(sessionData);
+    }
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
@@ -59,6 +63,7 @@ export const AuthProvider = ({ children }) => {
     user: session?.user,
     loading,
     signOut,
+    setBackendSession,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -25,3 +25,4 @@ dist-ssr
 /repomix-output.md
 /.env
 /frontend/.env
+/backend/.env

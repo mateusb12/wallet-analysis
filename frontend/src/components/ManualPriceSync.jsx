@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import { syncTickerHistory } from '../services/b3service';
+import { syncService } from '../services/api.js';
 
 export default function ManualPriceSync() {
   const [ticker, setTicker] = useState('');
@@ -17,7 +18,7 @@ export default function ManualPriceSync() {
     setMsg('');
 
     try {
-      const result = await syncTickerHistory(ticker);
+      const result = await syncService.syncTicker(ticker);
 
       if (result.success) {
         setStatus('success');
