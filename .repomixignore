@@ -1,10 +1,55 @@
-# Add patterns to ignore here, one per line
-# Example:
-# *.log
-# tmp/
+# ---------------------------
+# Repomix Ignore Patterns
+# ---------------------------
 
+# Ignore binary/media/design assets
 *.svg
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.pdf
+*.mp4
+*.mov
+
+# Ignore repo metadata
 .gitignore
 .repomixignore
 README.md
+
+# Ignore lockfiles & package managers
 package-lock.json
+pnpm-lock.yaml
+yarn.lock
+poetry.lock
+
+# Ignore environment files
+.env
+.env.*
+*.env
+
+# Ignore build output
+dist/
+build/
+out/
+node_modules/
+.cache/
+coverage/
+.vite/
+
+# Ignore editor/OS artifacts
+.DS_Store
+Thumbs.db
+
+# Ignore test snapshots
+__snapshots__/
+
+# Ignore temp files
+tmp/
+*.log
+*.tmp
+*.swp
+
+frontend/src/assets/**
+frontend/public/**
