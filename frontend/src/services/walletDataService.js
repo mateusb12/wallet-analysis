@@ -182,17 +182,19 @@ const getPriceFromRecord = (record) => {
 };
 
 const fetchRealFiiPerformance = async (months) => {
-  const fiis = RAW_WALLET_DATA.filter((item) => item.type === 'fii');
-  if (fiis.length === 0) return { chartData: [], warnings: [] };
+  const assetsToCheck = RAW_WALLET_DATA.filter((item) =>
+    ['fii', 'etf', 'stock'].includes(item.type)
+  );
+  if (assetsToCheck.length === 0) return { chartData: [], warnings: [] };
 
-  const earliestPurchaseDate = fiis.reduce(
+  const earliestPurchaseDate = assetsToCheck.reduce(
     (min, p) => (p.purchaseDate < min ? p.purchaseDate : min),
-    fiis[0].purchaseDate
+    assetsToCheck[0].purchaseDate
   );
 
   try {
     const histories = await Promise.all(
-      fiis.map(async (fii) => {
+      assetsToCheck.map(async (fii) => {
         const data = await fetchFiiChartData(fii.ticker, months);
         return {
           ticker: fii.ticker,
