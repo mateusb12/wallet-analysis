@@ -176,6 +176,14 @@ function WalletDashboard() {
     return positions.filter((p) => p.type === activeTab);
   }, [positions, activeTab]);
 
+  // Determine the events (dots) to show on chart
+  const chartEvents = useMemo(() => {
+    if (selectedAssetTicker) {
+      return positions.filter((p) => p.ticker === selectedAssetTicker);
+    }
+    return filteredPositions;
+  }, [selectedAssetTicker, filteredPositions, positions]);
+
   const earliestPurchaseDate = useMemo(() => {
     if (selectedAssetTicker) {
       const asset = positions.find((p) => p.ticker === selectedAssetTicker);
@@ -189,15 +197,6 @@ function WalletDashboard() {
     return minDate.toISOString().split('T')[0];
   }, [filteredPositions, selectedAssetTicker, positions]);
 
-  const chartEvents = useMemo(() => {
-    // If a specific asset is selected, only show its purchase event
-    if (selectedAssetTicker) {
-      return positions.filter((p) => p.ticker === selectedAssetTicker);
-    }
-    // Otherwise, show all purchases relevant to the current tab (Stock, FII, or Total)
-    return filteredPositions;
-  }, [selectedAssetTicker, filteredPositions, positions]);
-
   const displayedHistory = useMemo(() => {
     const rawData = selectedAssetTicker ? specificAssetHistory : fullHistoryData[activeTab] || [];
 
@@ -205,7 +204,8 @@ function WalletDashboard() {
 
     let processedData = rawData;
 
-    if (selectedAssetTicker && earliestPurchaseDate) {
+    // Strict Filtering: Ensure no data points exist before the earliest purchase date.
+    if (earliestPurchaseDate) {
       processedData = processedData.filter((item) => item.trade_date >= earliestPurchaseDate);
     }
 
@@ -221,6 +221,12 @@ function WalletDashboard() {
       if (rangeConfig && typeof rangeConfig.days === 'number') {
         startDate.setDate(today.getDate() - rangeConfig.days);
       }
+    }
+
+    // Double check: if the calculated time range start date is older than purchase date,
+    // snap it to the purchase date.
+    if (earliestPurchaseDate && startDate < new Date(earliestPurchaseDate)) {
+      startDate = new Date(earliestPurchaseDate);
     }
 
     return processedData.filter((item) => new Date(item.trade_date) >= startDate);
@@ -297,7 +303,7 @@ function WalletDashboard() {
     <div className="p-8 dark:bg-gray-900 min-h-screen font-sans animate-fade-in">
       <DataConsistencyAlert warnings={dataWarnings} className="mb-6" />
 
-      {}
+      {/* Header Cards (Summary Categories) */}
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">Meu Portfólio</h2>
 
@@ -357,7 +363,7 @@ function WalletDashboard() {
       </div>
 
       <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-        {}
+        {/* Quick Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
             <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -381,7 +387,7 @@ function WalletDashboard() {
           </div>
         </div>
 
-        {}
+        {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
             <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
@@ -507,7 +513,7 @@ function WalletDashboard() {
           </div>
         </div>
 
-        {}
+        {/* Detailed Table Section */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
@@ -569,7 +575,7 @@ function WalletDashboard() {
                         }
                         style={{ cursor: 'pointer' }}
                       >
-                        {}
+                        {/* Ticker & Name */}
                         <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">
                           <div className="flex items-center gap-3">
                             <span
@@ -590,41 +596,41 @@ function WalletDashboard() {
                           </div>
                         </td>
 
-                        {}
+                        {/* Quantity */}
                         <td className="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-mono">
                           {row.qty}
                         </td>
 
-                        {}
+                        {/* Purchase Price */}
                         <td className="px-6 py-4 text-right text-gray-500 dark:text-gray-400 font-mono">
                           {formatCurrency(row.purchase_price)}
                         </td>
 
-                        {}
+                        {/* Current Price */}
                         <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white font-mono">
                           {formatCurrency(currentPrice)}
                         </td>
 
-                        {}
+                        {/* Total Value */}
                         <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-gray-100 font-mono">
                           {formatCurrency(marketValue)}
                         </td>
 
-                        {}
+                        {/* Variation R$ */}
                         <td className="px-6 py-4">
                           <div className="flex justify-center">
                             {renderVariation(variationValue, false)}
                           </div>
                         </td>
 
-                        {}
+                        {/* Rentability % */}
                         <td className="px-6 py-4">
                           <div className="flex justify-center">
                             {renderVariation(rentabilityPercent, true)}
                           </div>
                         </td>
 
-                        {}
+                        {/* Share % */}
                         <td className="px-6 py-4 text-center">
                           <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-semibold px-2.5 py-0.5 rounded">
                             {share.toFixed(1)}%
