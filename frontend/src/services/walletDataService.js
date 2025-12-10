@@ -3,13 +3,12 @@ import { getIfixRange } from './ifixService.js';
 
 const SIMULATED_TODAY = new Date();
 
-const RAW_WALLET_DATA = [
+const SOURCE_POSITIONS = [
   {
     ticker: 'BBAS3',
     name: 'BANCO DO BRASIL S/A',
     qty: 5,
     purchase_price: 21.79,
-    total_value: 108.95,
     type: 'stock',
     purchaseDate: '2025-11-24',
   },
@@ -18,7 +17,6 @@ const RAW_WALLET_DATA = [
     name: 'BB SEGURIDADE PARTICIPACOES S.A.',
     qty: 9,
     purchase_price: 33.85,
-    total_value: 304.65,
     type: 'stock',
     purchaseDate: '2025-11-21',
   },
@@ -27,7 +25,6 @@ const RAW_WALLET_DATA = [
     name: 'WEG S.A.',
     qty: 5,
     purchase_price: 43.85,
-    total_value: 219.25,
     type: 'stock',
     purchaseDate: '2025-11-21',
   },
@@ -36,7 +33,6 @@ const RAW_WALLET_DATA = [
     name: 'ISHARE S&P 500 FIC EM FUNDO DE INDICE IE',
     qty: 1,
     purchase_price: 398.6,
-    total_value: 398.6,
     type: 'etf',
     purchaseDate: '2025-11-21',
   },
@@ -45,7 +41,6 @@ const RAW_WALLET_DATA = [
     name: 'BUENA VISTA NASDAQ-100 HIGH BETA INDEX FUNDO DE INDICE',
     qty: 3,
     purchase_price: 95.9,
-    total_value: 287.7,
     type: 'etf',
     purchaseDate: '2025-11-21',
   },
@@ -54,7 +49,6 @@ const RAW_WALLET_DATA = [
     name: 'BTG PACTUAL LOGISTICA FUNDO DE INVESTIMENTO IMOBILIARIO',
     qty: 1,
     purchase_price: 104.14,
-    total_value: 104.14,
     type: 'fii',
     purchaseDate: '2025-11-21',
   },
@@ -63,7 +57,6 @@ const RAW_WALLET_DATA = [
     name: 'KINEA RENDIMENTOS IMOBILIÁRIOS FDO INV IMOB - FII',
     qty: 1,
     purchase_price: 104.99,
-    total_value: 104.99,
     type: 'fii',
     purchaseDate: '2025-11-21',
   },
@@ -72,7 +65,6 @@ const RAW_WALLET_DATA = [
     name: 'KINEA HEDGE FUND FII',
     qty: 4,
     purchase_price: 92.21,
-    total_value: 368.84,
     type: 'fii',
     purchaseDate: '2025-11-21',
   },
@@ -81,11 +73,15 @@ const RAW_WALLET_DATA = [
     name: 'XP CORPORATE MACAÉ FDO INV IMO',
     qty: 10,
     purchase_price: 8.23,
-    total_value: 82.3,
     type: 'fii',
     purchaseDate: '2025-11-21',
   },
 ];
+
+const RAW_WALLET_DATA = SOURCE_POSITIONS.map((position) => ({
+  ...position,
+  total_value: parseFloat((position.qty * position.purchase_price).toFixed(2)),
+}));
 
 const getDaysDiff = (dateStr1, dateStr2) => {
   const d1 = new Date(dateStr1);
