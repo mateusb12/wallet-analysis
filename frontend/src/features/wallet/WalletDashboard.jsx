@@ -52,11 +52,11 @@ const CATEGORIES_CONFIG = {
 };
 
 const TIME_RANGES = [
-  { id: '1M', label: '1M', days: 30 },
-  { id: '3M', label: '3M', days: 90 },
-  { id: '6M', label: '6M', days: 180 },
-  { id: 'YTD', label: 'YTD', days: 'ytd' },
-  { id: 'MAX', label: 'Max', days: 'max' },
+  { id: 'DEFAULT', label: 'Desde Compra', offsetMonths: 0 },
+  { id: 'PRE_1M', label: '1M Antes', offsetMonths: 1 },
+  { id: 'PRE_3M', label: '3M Antes', offsetMonths: 3 },
+  { id: 'PRE_6M', label: '6M Antes', offsetMonths: 6 },
+  { id: 'MAX', label: 'Max Hist.', offsetMonths: 999 },
 ];
 
 function WalletDashboard() {
@@ -69,7 +69,8 @@ function WalletDashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('total');
-  const [timeRange, setTimeRange] = useState('MAX');
+
+  const [timeRange, setTimeRange] = useState('DEFAULT');
 
   const [selectedAssetTicker, setSelectedAssetTicker] = useState('');
   const [specificAssetHistory, setSpecificAssetHistory] = useState([]);
@@ -143,7 +144,7 @@ function WalletDashboard() {
     const loadSpecific = async () => {
       setLoadingSpecific(true);
       try {
-        const data = await fetchSpecificAssetHistory(selectedAssetTicker, 12);
+        const data = await fetchSpecificAssetHistory(selectedAssetTicker, 60);
         setSpecificAssetHistory(data);
       } catch (error) {
         console.error('Failed to fetch specific asset history', error);
@@ -157,6 +158,8 @@ function WalletDashboard() {
 
   useEffect(() => {
     setSelectedAssetTicker('');
+
+    setTimeRange('DEFAULT');
   }, [activeTab]);
 
   const categoryTotals = useMemo(() => {
@@ -176,7 +179,6 @@ function WalletDashboard() {
     return positions.filter((p) => p.type === activeTab);
   }, [positions, activeTab]);
 
-  // Determine the events (dots) to show on chart
   const chartEvents = useMemo(() => {
     if (selectedAssetTicker) {
       return positions.filter((p) => p.ticker === selectedAssetTicker);
@@ -203,33 +205,24 @@ function WalletDashboard() {
     if (rawData.length === 0) return [];
 
     let processedData = rawData;
+    const anchorDateString = earliestPurchaseDate;
 
-    // Strict Filtering: Ensure no data points exist before the earliest purchase date.
-    if (earliestPurchaseDate) {
-      processedData = processedData.filter((item) => item.trade_date >= earliestPurchaseDate);
-    }
-
-    if (timeRange === 'MAX') return processedData;
-
-    const today = new Date();
-    let startDate = new Date();
-
-    if (timeRange === 'YTD') {
-      startDate = new Date(today.getFullYear(), 0, 1);
-    } else {
+    if (anchorDateString) {
+      const purchaseDateObj = new Date(anchorDateString);
       const rangeConfig = TIME_RANGES.find((r) => r.id === timeRange);
-      if (rangeConfig && typeof rangeConfig.days === 'number') {
-        startDate.setDate(today.getDate() - rangeConfig.days);
+
+      if (timeRange === 'MAX') return processedData;
+
+      let startDate = new Date(purchaseDateObj);
+
+      if (rangeConfig && rangeConfig.offsetMonths > 0) {
+        startDate.setMonth(startDate.getMonth() - rangeConfig.offsetMonths);
       }
+
+      return processedData.filter((item) => new Date(item.trade_date) >= startDate);
     }
 
-    // Double check: if the calculated time range start date is older than purchase date,
-    // snap it to the purchase date.
-    if (earliestPurchaseDate && startDate < new Date(earliestPurchaseDate)) {
-      startDate = new Date(earliestPurchaseDate);
-    }
-
-    return processedData.filter((item) => new Date(item.trade_date) >= startDate);
+    return processedData;
   }, [
     fullHistoryData,
     activeTab,
@@ -303,7 +296,7 @@ function WalletDashboard() {
     <div className="p-8 dark:bg-gray-900 min-h-screen font-sans animate-fade-in">
       <DataConsistencyAlert warnings={dataWarnings} className="mb-6" />
 
-      {/* Header Cards (Summary Categories) */}
+      {}
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">Meu Portfólio</h2>
 
@@ -363,7 +356,7 @@ function WalletDashboard() {
       </div>
 
       <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-        {/* Quick Stats Grid */}
+        {}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
             <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -387,7 +380,7 @@ function WalletDashboard() {
           </div>
         </div>
 
-        {/* Charts Section */}
+        {}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
             <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
@@ -414,6 +407,7 @@ function WalletDashboard() {
                 )}
               </div>
 
+              {}
               <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1">
                 {TIME_RANGES.map((range) => (
                   <button
@@ -513,7 +507,7 @@ function WalletDashboard() {
           </div>
         </div>
 
-        {/* Detailed Table Section */}
+        {}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
@@ -575,7 +569,7 @@ function WalletDashboard() {
                         }
                         style={{ cursor: 'pointer' }}
                       >
-                        {/* Ticker & Name */}
+                        {}
                         <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">
                           <div className="flex items-center gap-3">
                             <span
@@ -596,41 +590,41 @@ function WalletDashboard() {
                           </div>
                         </td>
 
-                        {/* Quantity */}
+                        {}
                         <td className="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-mono">
                           {row.qty}
                         </td>
 
-                        {/* Purchase Price */}
+                        {}
                         <td className="px-6 py-4 text-right text-gray-500 dark:text-gray-400 font-mono">
                           {formatCurrency(row.purchase_price)}
                         </td>
 
-                        {/* Current Price */}
+                        {}
                         <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white font-mono">
                           {formatCurrency(currentPrice)}
                         </td>
 
-                        {/* Total Value */}
+                        {}
                         <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-gray-100 font-mono">
                           {formatCurrency(marketValue)}
                         </td>
 
-                        {/* Variation R$ */}
+                        {}
                         <td className="px-6 py-4">
                           <div className="flex justify-center">
                             {renderVariation(variationValue, false)}
                           </div>
                         </td>
 
-                        {/* Rentability % */}
+                        {}
                         <td className="px-6 py-4">
                           <div className="flex justify-center">
                             {renderVariation(rentabilityPercent, true)}
                           </div>
                         </td>
 
-                        {/* Share % */}
+                        {}
                         <td className="px-6 py-4 text-center">
                           <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-semibold px-2.5 py-0.5 rounded">
                             {share.toFixed(1)}%

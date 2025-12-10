@@ -375,19 +375,20 @@ export const fetchWalletPerformanceHistory = async (overrideMonths = null) => {
   };
 };
 
-export const fetchSpecificAssetHistory = async (ticker, months = 12) => {
+export const fetchSpecificAssetHistory = async (ticker, months = 60) => {
   const asset = RAW_WALLET_DATA.find((a) => a.ticker === ticker);
   if (!asset) return [];
 
   const todayStr = SIMULATED_TODAY.toISOString().split('T')[0];
 
-  if (asset.type === 'fii') {
+  const processHistory = async () => {
     try {
-      const data = await fetchFiiChartData(asset.ticker, months);
+      const data = await fetchFiiChartData(asset.ticker, 60);
+
       if (!data || data.length === 0) return [];
 
       const sortedData = data
-        .filter((d) => d.trade_date >= asset.purchaseDate && d.trade_date <= todayStr)
+        .filter((d) => d.trade_date <= todayStr)
         .sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
 
       if (sortedData.length === 0) return [];
@@ -399,12 +400,17 @@ export const fetchSpecificAssetHistory = async (ticker, months = 12) => {
       const ifixMap = {};
       ifixData.forEach((i) => (ifixMap[i.trade_date] = parseFloat(i.close_value)));
 
-      const anchorDate = sortedData[0].trade_date;
+      const anchorDate = asset.purchaseDate > startDate ? asset.purchaseDate : startDate;
 
       let anchorIfix = ifixMap[anchorDate];
       if (!anchorIfix) {
-        const firstValidIfix = ifixData.find((i) => i.trade_date >= anchorDate);
-        anchorIfix = firstValidIfix ? parseFloat(firstValidIfix.close_value) : null;
+        const exactMatch = ifixData.find((i) => i.trade_date === anchorDate);
+        anchorIfix = exactMatch ? parseFloat(exactMatch.close_value) : null;
+
+        if (!anchorIfix) {
+          const closest = ifixData.find((i) => i.trade_date >= anchorDate);
+          anchorIfix = closest ? parseFloat(closest.close_value) : null;
+        }
       }
 
       const initialFixedInvestment = asset.total_value;
@@ -416,14 +422,9 @@ export const fetchSpecificAssetHistory = async (ticker, months = 12) => {
         const price = parseFloat(day.purchase_price);
         const div = parseFloat(day.dividend_value || 0);
 
-        if (div > 0 && price > 0) {
-          const totalDiv = div * currentQty;
-          currentQty += totalDiv / price;
-        }
         const portfolioValue = currentQty * price;
 
         let currentIfix = ifixMap[day.trade_date];
-
         if (!currentIfix && lastKnownIfix) currentIfix = lastKnownIfix;
         if (currentIfix) lastKnownIfix = currentIfix;
 
@@ -442,12 +443,10 @@ export const fetchSpecificAssetHistory = async (ticker, months = 12) => {
         };
       });
     } catch (error) {
-      console.error('Error fetching specific FII history', error);
-      const fake = generateFakeCurve(asset.total_value, months, 0.05, 1.05, 0.11);
-      return fake.sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
+      console.error('Error fetching specific asset history', error);
+      return [];
     }
-  } else {
-    const fake = generateFakeCurve(asset.total_value, months, 0.15, 1.2, 0.1);
-    return fake.sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
-  }
+  };
+
+  return processHistory();
 };
