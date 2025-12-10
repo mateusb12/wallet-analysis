@@ -2,7 +2,14 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from .routers import auth, sync, analysis
+
+from backend.source.features.analysis import analysis_router
+from backend.source.features.analysis.analysis_router import analysis_bp
+from backend.source.features.auth import auth_router
+from backend.source.features.auth.auth_router import auth_bp
+from backend.source.features.market_data.market_data_router import market_data_bp
+
+# Updated imports pointing to the features folder
 
 # Load env from the root of your project
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
@@ -19,9 +26,9 @@ app.add_middleware(
 )
 
 # Include Routers
-app.include_router(auth.router)
-app.include_router(sync.router)
-app.include_router(analysis.router)
+app.include_router(auth_bp)
+app.include_router(market_data_bp)
+app.include_router(analysis_bp)
 
 @app.get("/")
 def health_check():

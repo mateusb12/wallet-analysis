@@ -1,17 +1,18 @@
-from fastapi import APIRouter, HTTPException
+import os
 from datetime import datetime, timedelta
 import yfinance as yf
 import pandas as pd
-import os
-from supabase import create_client, Client
+from fastapi import APIRouter, HTTPException
+from supabase import Client, create_client
 
-from ..core.connections import get_supabase
-from ..schemas import TickerSync
+# Corrected absolute import
+from backend.source.core.db import get_supabase
+from backend.source.features.market_data.market_data_schemas import TickerSync
 
-router = APIRouter(prefix="/sync", tags=["Market Data"])
+market_data_bp = APIRouter(prefix="/sync", tags=["Market Data"])
 
 def normalize_yahoo(df):
-    # (Same helper logic as your original app.py)
+    """Helper to normalize Yahoo Finance DataFrame columns."""
     df = df.copy()
     df.reset_index(inplace=True)
     df.columns = [str(col).lower().strip().replace(" ", "") for col in df.columns]
@@ -51,7 +52,7 @@ def normalize_yahoo(df):
 
     return df[list(required)]
 
-@router.post("/")
+@market_data_bp.post("/")
 def sync_ticker(payload: TickerSync):
     ticker = payload.ticker
     if not ticker:
@@ -77,10 +78,8 @@ def sync_ticker(payload: TickerSync):
 
         df_norm = normalize_yahoo(df_raw)
 
-        supa_url = os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL")
-        supa_key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("VITE_SUPABASE_SERVICE_KEY") or os.getenv("VITE_SUPABASE_ANON_KEY")
-
-        supabase: Client = create_client(supa_url, supa_key)
+        # Use the standard get_supabase helper
+        supabase = get_supabase()
 
         records = []
         current_time = datetime.now().isoformat()
@@ -112,7 +111,7 @@ def sync_ticker(payload: TickerSync):
         print(f"❌ Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/ifix")
+@market_data_bp.post("/ifix")
 def sync_ifix(payload: TickerSync):
     ticker = payload.ticker
     if not ticker:
@@ -138,8 +137,6 @@ def sync_ifix(payload: TickerSync):
 
         df_norm = normalize_yahoo(df_raw)
 
-        # FIX: Use the shared connection helper
-        # This ensures load_dotenv() is called and credentials are valid
         supabase = get_supabase()
 
         records = []

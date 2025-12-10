@@ -1,27 +1,12 @@
-import os
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import List, Optional
-from dotenv import load_dotenv
-from supabase import create_client, Client
+from backend.source.core.db import get_supabase
+from backend.source.features.analysis.analysis_schema import SimulationRequest
 
-from backend.core.connections import get_supabase
+analysis_bp = APIRouter(prefix="/analysis", tags=["Analysis"])
 
-router = APIRouter(prefix="/analysis", tags=["Analysis"])
-
-# --- Schemas ---
-class SimulationRequest(BaseModel):
-    ticker: str
-    initial_investment: float
-    monthly_deposit: float
-    months: int
-
-# --- Endpoints ---
-
-@router.get("/zscore/{ticker}")
+@analysis_bp.get("/zscore/{ticker}")
 def calculate_zscore(ticker: str, window_months: int = 12):
     supabase = get_supabase()
 
@@ -101,7 +86,7 @@ def calculate_zscore(ticker: str, window_months: int = 12):
         "chart_data": chart_data
     }
 
-@router.post("/simulation/fii")
+@analysis_bp.post("/simulation/fii")
 def simulate_fii(payload: SimulationRequest):
     supabase = get_supabase()
     ticker = payload.ticker.upper()
@@ -136,7 +121,6 @@ def simulate_fii(payload: SimulationRequest):
     end_sim_date = df_sim['trade_date'].max()
 
     # B. IPCA (Fetch range)
-    # FIX: Corrected date format strings (removed erroneous %)
     ipca_resp = supabase.table("ipca_history") \
         .select("ref_date,ipca") \
         .gte("ref_date", start_sim_date.strftime('%Y-%m-01')) \

@@ -1,10 +1,10 @@
 from fastapi import APIRouter, HTTPException
-from ..core.connections import get_supabase
-from ..schemas import UserLogin, UserRegister
+from backend.source.core.db import get_supabase
+from backend.source.features.auth.auth_schemas import UserLogin, UserRegister
 
-router = APIRouter(prefix="/auth", tags=["Auth"])
+auth_bp = APIRouter(prefix="/auth", tags=["Auth"])
 
-@router.post("/login")
+@auth_bp.post("/login")
 def login(user: UserLogin):
     supabase = get_supabase()
     try:
@@ -17,10 +17,9 @@ def login(user: UserLogin):
             "session": response.session
         }
     except Exception as e:
-        # Map Supabase errors to HTTP exceptions
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.post("/register")
+@auth_bp.post("/register")
 def register(user: UserRegister):
     if user.password != user.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match")
