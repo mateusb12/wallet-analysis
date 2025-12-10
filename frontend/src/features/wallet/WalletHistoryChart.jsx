@@ -12,6 +12,7 @@ import {
   Label,
 } from 'recharts';
 import { useTheme } from '../theme/ThemeContext.jsx';
+import { formatChartDate } from '../../utils/dateUtils.js';
 
 const formatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', {
@@ -25,12 +26,6 @@ const formatPercent = (value) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
-
-const formatDate = (dateStr) => {
-  if (!dateStr) return '';
-  const [year, month, day] = dateStr.split('-');
-  return `${day}/${month}/${year.slice(2)}`;
-};
 
 const CustomTooltip = ({ active, payload, label, isDark }) => {
   if (active && payload && payload.length) {
@@ -49,7 +44,7 @@ const CustomTooltip = ({ active, payload, label, isDark }) => {
 
     return (
       <div className={`${bgClass} border p-3 rounded-lg shadow-lg text-sm z-50`}>
-        <p className="font-bold mb-2 border-b border-gray-500/20 pb-1">{formatDate(label)}</p>
+        <p className="font-bold mb-2 border-b border-gray-500/20 pb-1">{formatChartDate(label)}</p>
 
         <div className="flex flex-col gap-1">
           <div className="flex justify-between gap-6 items-center">
@@ -131,7 +126,7 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
 
           <XAxis
             dataKey="trade_date"
-            tickFormatter={formatDate}
+            tickFormatter={formatChartDate}
             tick={{ fontSize: 12, fill: textColor }}
             minTickGap={40}
           />

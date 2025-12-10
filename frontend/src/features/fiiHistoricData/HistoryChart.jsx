@@ -11,6 +11,7 @@ import {
   Legend,
 } from 'recharts';
 import { useTheme } from '../theme/ThemeContext.jsx';
+import { formatChartDate } from '../../utils/dateUtils.js';
 
 const useMediaQuery = (query) => {
   const [matches, setMatches] = useState(() =>
@@ -43,12 +44,6 @@ const formatDividend = (value) =>
     maximumFractionDigits: 6,
   }).format(value);
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return '';
-  const [year, month, day] = dateStr.split('-');
-  return `${day}/${month}/${year.slice(2)}`;
-};
-
 const CustomTooltip = ({ active, payload, label, showTotalReturn, isDark }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
@@ -67,7 +62,7 @@ const CustomTooltip = ({ active, payload, label, showTotalReturn, isDark }) => {
 
     return (
       <div className={`${bgClass} border p-3 rounded-lg shadow-lg text-sm z-50`}>
-        <p className={`font-bold mb-2 border-b ${borderBottom} pb-1`}>{formatDate(label)}</p>
+        <p className={`font-bold mb-2 border-b ${borderBottom} pb-1`}>{formatChartDate(label)}</p>
 
         <div className="space-y-1">
           {showTotalReturn && totalReturnValue && (
@@ -138,7 +133,7 @@ function HistoryChart({ data, showTotalReturn }) {
 
           <XAxis
             dataKey="trade_date"
-            tickFormatter={formatDate}
+            tickFormatter={formatChartDate}
             minTickGap={30}
             tick={{ fontSize: 12, fill: textColor }}
           />
