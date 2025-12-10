@@ -1,6 +1,7 @@
 import { fetchFiiChartData } from './b3service.js';
 import { getIfixRange } from './ifixService.js';
 import { getLastIpcaDate } from './ipcaService.js';
+import { cdiService } from './cdiService.js';
 
 const SIMULATED_TODAY = new Date();
 
@@ -139,6 +140,41 @@ const combineHistories = (curves) => {
       invested_amount: parseFloat(dateMap[date].invested_amount.toFixed(2)),
       benchmark_value: 0,
     }));
+};
+
+const calculateCdiCurve = (totalCurve, cdiHistory) => {
+  if (!totalCurve || totalCurve.length === 0) return [];
+
+  const cdiMap = {};
+  if (cdiHistory) {
+    cdiHistory.forEach((item) => {
+      cdiMap[item.trade_date] = item.value;
+    });
+  }
+
+  let accumulatedBenchmark = totalCurve[0].invested_amount;
+  let previousInvested = totalCurve[0].invested_amount;
+
+  return totalCurve.map((day, index) => {
+    if (index > 0) {
+      const dailyRate = cdiMap[day.trade_date] || 0;
+
+      const factor = 1 + dailyRate / 100;
+      accumulatedBenchmark = accumulatedBenchmark * factor;
+
+      const netDeposit = day.invested_amount - previousInvested;
+      if (netDeposit !== 0) {
+        accumulatedBenchmark += netDeposit;
+      }
+    }
+
+    previousInvested = day.invested_amount;
+
+    return {
+      ...day,
+      benchmark_value: parseFloat(accumulatedBenchmark.toFixed(2)),
+    };
+  });
 };
 
 const generateFakeCurve = (
@@ -354,7 +390,20 @@ export const fetchWalletPerformanceHistory = async (overrideMonths = null) => {
   const uniqueWarnings = [...new Set(allWarnings)];
 
   const validCurves = [stockCurve, etfCurve, fiiCurve].filter((c) => c && c.length > 0);
-  const totalCurve = combineHistories(validCurves);
+  let totalCurve = combineHistories(validCurves);
+
+  if (totalCurve.length > 0) {
+    const startDate = totalCurve[0].trade_date;
+    const endDate = totalCurve[totalCurve.length - 1].trade_date;
+
+    try {
+      const cdiData = await cdiService.getCdiRange(startDate, endDate);
+
+      totalCurve = calculateCdiCurve(totalCurve, cdiData);
+    } catch (err) {
+      console.error('Failed to apply CDI benchmark:', err);
+    }
+  }
 
   return {
     stock: stockCurve,

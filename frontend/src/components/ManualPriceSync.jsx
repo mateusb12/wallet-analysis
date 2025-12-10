@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { RefreshCw, CheckCircle, AlertCircle, TrendingUp, BarChart3 } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertCircle, TrendingUp, BarChart3, Landmark } from 'lucide-react';
 import { syncService } from '../services/api.js';
 import { syncIpcaHistory } from '../services/ipcaService.js';
+import { cdiService } from '../services/cdiService.js';
 
 export default function ManualPriceSync() {
   const [ticker, setTicker] = useState('');
@@ -23,7 +24,6 @@ export default function ManualPriceSync() {
   const handleIpcaSync = async () => {
     executeSync(async () => {
       const result = await syncIpcaHistory();
-
       if (result && (result.inserted >= 0 || result.message)) {
         return {
           success: true,
@@ -33,6 +33,10 @@ export default function ManualPriceSync() {
       }
       return { success: false, error: 'Falha ao sincronizar IPCA' };
     });
+  };
+
+  const handleCdiSync = async () => {
+    executeSync(() => cdiService.syncCdi());
   };
 
   const executeSync = async (syncFunction) => {
@@ -117,6 +121,17 @@ export default function ManualPriceSync() {
             >
               <BarChart3 className="w-4 h-4" />
               <span className="hidden sm:inline">Sync IPCA</span>
+            </button>
+
+            {}
+            <button
+              onClick={handleCdiSync}
+              disabled={loading}
+              title="Sincronizar CDI (Selic Diária - BCB)"
+              className="px-4 py-2 rounded-lg font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center justify-center gap-2"
+            >
+              <Landmark className="w-4 h-4" />
+              <span className="hidden sm:inline">Sync CDI</span>
             </button>
           </div>
         </div>
