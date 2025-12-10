@@ -26,6 +26,24 @@ export const authService = {
   },
 };
 
+export const systemService = {
+  async checkHealth() {
+    try {
+      const baseUrl = API_URL.replace(/\/api\/?$/, '');
+
+      const response = await fetch(`${baseUrl}/`, {
+        method: 'GET',
+
+        signal: AbortSignal.timeout(3000),
+      });
+
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
+  },
+};
+
 export const syncService = {
   async syncTicker(ticker) {
     const response = await fetch(`${API_URL}/sync/`, {
