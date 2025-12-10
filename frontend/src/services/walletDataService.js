@@ -1,4 +1,4 @@
-import { fetchFiiChartData } from './b3service.js';
+import { fetchFiiChartData, fetchB3Prices } from './b3service.js';
 import { getIfixRange } from './ifixService.js';
 import { getLastIpcaDate } from './ipcaService.js';
 import { cdiService } from './cdiService.js';
@@ -8,7 +8,7 @@ const SIMULATED_TODAY = new Date();
 const SOURCE_POSITIONS = [
   {
     ticker: 'BBAS3',
-    name: 'BANCO DO BRASIL S/A',
+    name: 'BANCO DO BRASIL',
     qty: 5,
     purchase_price: 21.79,
     type: 'stock',
@@ -16,7 +16,7 @@ const SOURCE_POSITIONS = [
   },
   {
     ticker: 'BBSE3',
-    name: 'BB SEGURIDADE PARTICIPACOES S.A.',
+    name: 'BB SEGURIDADE',
     qty: 9,
     purchase_price: 33.85,
     type: 'stock',
@@ -32,7 +32,7 @@ const SOURCE_POSITIONS = [
   },
   {
     ticker: 'IVVB11',
-    name: 'ISHARE S&P 500 FIC EM FUNDO DE INDICE IE',
+    name: 'ISHARE S&P 500',
     qty: 1,
     purchase_price: 398.6,
     type: 'etf',
@@ -40,7 +40,7 @@ const SOURCE_POSITIONS = [
   },
   {
     ticker: 'QQQQ11',
-    name: 'BUENA VISTA NASDAQ-100 HIGH BETA INDEX FUNDO DE INDICE',
+    name: 'NASDAQ-100',
     qty: 3,
     purchase_price: 95.9,
     type: 'etf',
@@ -48,7 +48,7 @@ const SOURCE_POSITIONS = [
   },
   {
     ticker: 'BTLG11',
-    name: 'BTG PACTUAL LOGISTICA FUNDO DE INVESTIMENTO IMOBILIARIO',
+    name: 'BTG PACTUAL LOG',
     qty: 1,
     purchase_price: 104.14,
     type: 'fii',
@@ -56,7 +56,7 @@ const SOURCE_POSITIONS = [
   },
   {
     ticker: 'KNCR11',
-    name: 'KINEA RENDIMENTOS IMOBILIÁRIOS FDO INV IMOB - FII',
+    name: 'KINEA RENDIM.',
     qty: 1,
     purchase_price: 104.99,
     type: 'fii',
@@ -64,7 +64,7 @@ const SOURCE_POSITIONS = [
   },
   {
     ticker: 'KNHF11',
-    name: 'KINEA HEDGE FUND FII',
+    name: 'KINEA HEDGE',
     qty: 4,
     purchase_price: 92.21,
     type: 'fii',
@@ -72,7 +72,7 @@ const SOURCE_POSITIONS = [
   },
   {
     ticker: 'XPCM11',
-    name: 'XP CORPORATE MACAÉ FDO INV IMO',
+    name: 'XP MACAÉ',
     qty: 10,
     purchase_price: 8.23,
     type: 'fii',
@@ -85,142 +85,165 @@ const RAW_WALLET_DATA = SOURCE_POSITIONS.map((position) => ({
   total_value: parseFloat((position.qty * position.purchase_price).toFixed(2)),
 }));
 
-const getDaysDiff = (dateStr1, dateStr2) => {
-  const d1 = new Date(dateStr1);
-  const d2 = new Date(dateStr2);
-  const diffTime = Math.abs(d2 - d1);
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+const normalizeDate = (dateInput) => {
+  if (!dateInput) return null;
+  if (typeof dateInput === 'string') return dateInput.split('T')[0];
+  if (dateInput instanceof Date) return dateInput.toISOString().split('T')[0];
+  return null;
 };
 
 export const fetchWalletPositions = async () => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(RAW_WALLET_DATA);
-    }, 500);
-  });
-};
-
-const getMaxHistoryMonths = () => {
-  const dates = RAW_WALLET_DATA.map((d) => new Date(d.purchaseDate).getTime());
-
-  if (dates.length === 0) return 6;
-
-  const minDate = new Date(Math.min(...dates));
-  const today = new Date(SIMULATED_TODAY);
-  const months =
-    (today.getFullYear() - minDate.getFullYear()) * 12 + (today.getMonth() - minDate.getMonth());
-
-  return Math.max(6, months + 1);
-};
-
-const combineHistories = (curves) => {
-  if (!curves || curves.length === 0) return [];
-
-  const dateMap = {};
-
-  curves.forEach((curve) => {
-    curve.forEach((point) => {
-      if (!dateMap[point.trade_date]) {
-        dateMap[point.trade_date] = {
-          portfolio_value: 0,
-          invested_amount: 0,
-          benchmark_value: 0,
-        };
-      }
-      dateMap[point.trade_date].portfolio_value += point.portfolio_value || 0;
-      dateMap[point.trade_date].invested_amount += point.invested_amount || 0;
-    });
-  });
-
-  return Object.keys(dateMap)
-    .sort()
-    .map((date) => ({
-      trade_date: date,
-      portfolio_value: parseFloat(dateMap[date].portfolio_value.toFixed(2)),
-      invested_amount: parseFloat(dateMap[date].invested_amount.toFixed(2)),
-      benchmark_value: 0,
-    }));
-};
-
-const calculateCdiCurve = (totalCurve, cdiHistory) => {
-  if (!totalCurve || totalCurve.length === 0) return [];
-
-  const cdiMap = {};
-  if (cdiHistory) {
-    cdiHistory.forEach((item) => {
-      cdiMap[item.trade_date] = item.value;
-    });
-  }
-
-  let accumulatedBenchmark = totalCurve[0].invested_amount;
-  let previousInvested = totalCurve[0].invested_amount;
-
-  return totalCurve.map((day, index) => {
-    if (index > 0) {
-      const dailyRate = cdiMap[day.trade_date] || 0;
-
-      const factor = 1 + dailyRate / 100;
-      accumulatedBenchmark = accumulatedBenchmark * factor;
-
-      const netDeposit = day.invested_amount - previousInvested;
-      if (netDeposit !== 0) {
-        accumulatedBenchmark += netDeposit;
-      }
-    }
-
-    previousInvested = day.invested_amount;
-
-    return {
-      ...day,
-      benchmark_value: parseFloat(accumulatedBenchmark.toFixed(2)),
-    };
-  });
-};
-
-const generateFakeCurve = (
-  currentTotal,
-  timeRangeMonths,
-  volatilityBase,
-  trendFactor,
-  benchmarkRate
-) => {
-  const history = [];
-  const today = new Date(SIMULATED_TODAY);
-
-  if (currentTotal === 0) return [];
-
-  for (let i = timeRangeMonths * 30; i >= 0; i -= 2) {
-    const date = new Date(today);
-    date.setDate(date.getDate() - i);
-    const dateStr = date.toISOString().split('T')[0];
-
-    const progress = 1 - i / (timeRangeMonths * 30);
-    const randomNoise = (Math.random() - 0.5) * (currentTotal * volatilityBase);
-
-    const value = currentTotal * 0.8 + currentTotal * 0.2 * progress * trendFactor + randomNoise;
-    const invested = currentTotal;
-    const benchmark = invested * Math.pow(1 + benchmarkRate, (timeRangeMonths * 30 - i) / 365);
-
-    history.push({
-      trade_date: dateStr,
-      portfolio_value: parseFloat(Math.max(0, value).toFixed(2)),
-      invested_amount: parseFloat(invested.toFixed(2)),
-      benchmark_value: parseFloat(benchmark.toFixed(2)),
-    });
-  }
-  return history;
+  return new Promise((resolve) => setTimeout(() => resolve(RAW_WALLET_DATA), 500));
 };
 
 const getPriceFromRecord = (record) => {
   if (!record) return 0;
 
-  const val = record.close || record.price_close || record.purchase_price;
+  const val =
+    record.close ||
+    record.price_close ||
+    record.close_value ||
+    record.value ||
+    record.purchase_price;
   return val ? parseFloat(val) : 0;
+};
+
+const detectAnomalies = (data, assetName) => {
+  const warnings = [];
+  if (!data || data.length < 2) return warnings;
+
+  const THRESHOLD = 0.3;
+
+  for (let i = 1; i < data.length; i++) {
+    const curr = getPriceFromRecord(data[i]);
+    const prev = getPriceFromRecord(data[i - 1]);
+    const date = data[i].trade_date || data[i].ref_date;
+
+    if (isNaN(curr) || isNaN(prev) || prev === 0 || curr === 0) continue;
+
+    const variation = Math.abs((curr - prev) / prev);
+
+    if (variation > THRESHOLD) {
+      const type = curr < prev ? 'QUEDA' : 'ALTA';
+      const msg = `[ALERTA DADOS] ${assetName}: ${type} de ${(variation * 100).toFixed(0)}% em ${date} (${prev.toFixed(2)} -> ${curr.toFixed(2)}).`;
+      console.warn(msg);
+      warnings.push(msg);
+    }
+  }
+  return warnings;
+};
+
+const fetchBenchmarkData = async (type, startDate, endDate) => {
+  try {
+    let result = [];
+    if (type === 'fii') {
+      result = await getIfixRange(startDate, endDate);
+    } else {
+      let tickerIndex = '^BVSP';
+      if (type === 'etf') tickerIndex = 'IVVB11';
+      const { data } = await fetchB3Prices(tickerIndex, 1, 365 * 5);
+      if (data) {
+        result = data
+          .filter((d) => d.trade_date >= startDate && d.trade_date <= endDate)
+          .map((d) => ({ trade_date: d.trade_date, close_value: d.close }))
+          .sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error(`[Benchmark] Erro fatal buscando ${type}`, error);
+    return [];
+  }
+};
+
+const getMaxHistoryMonths = () => {
+  const dates = RAW_WALLET_DATA.map((d) => new Date(d.purchaseDate).getTime());
+  if (dates.length === 0) return 6;
+  const minDate = new Date(Math.min(...dates));
+  const today = new Date(SIMULATED_TODAY);
+  return Math.max(
+    6,
+    (today.getFullYear() - minDate.getFullYear()) * 12 + (today.getMonth() - minDate.getMonth()) + 1
+  );
+};
+
+const calculateBenchmarkCurve = (portfolioCurve, benchmarkHistory, isRate = false) => {
+  if (!portfolioCurve || portfolioCurve.length === 0) return [];
+
+  const indexMap = {};
+  if (benchmarkHistory && Array.isArray(benchmarkHistory)) {
+    benchmarkHistory.forEach((item) => {
+      const val = parseFloat(item.close_value || item.close || item.value || 0);
+      if (!isNaN(val) && item.trade_date) {
+        indexMap[normalizeDate(item.trade_date)] = val;
+      }
+    });
+  }
+
+  const availableDates = Object.keys(indexMap).sort();
+
+  const getClosestIndexValue = (targetDate) => {
+    if (indexMap[targetDate] !== undefined) return indexMap[targetDate];
+    let closestDate = null;
+    for (let i = 0; i < availableDates.length; i++) {
+      if (availableDates[i] > targetDate) break;
+      closestDate = availableDates[i];
+    }
+    if (!closestDate && availableDates.length > 0) closestDate = availableDates[0];
+    return closestDate ? indexMap[closestDate] : null;
+  };
+
+  let accumulatedBenchmarkCapital = 0;
+  let lastKnownIndexValue = null;
+
+  return portfolioCurve.map((day, index) => {
+    const dateKey = normalizeDate(day.trade_date);
+    const currentIndexValue = getClosestIndexValue(dateKey);
+    const currentInvested = day.invested_amount;
+
+    if (index === 0) {
+      accumulatedBenchmarkCapital = day.portfolio_value;
+      if (currentIndexValue !== null && currentIndexValue > 0) {
+        lastKnownIndexValue = currentIndexValue;
+      }
+      return {
+        ...day,
+        benchmark_value: parseFloat(accumulatedBenchmarkCapital.toFixed(2)),
+      };
+    }
+
+    const previousInvested = portfolioCurve[index - 1].invested_amount;
+    const netDeposit = currentInvested - previousInvested;
+
+    if (lastKnownIndexValue !== null && currentIndexValue !== null && lastKnownIndexValue > 0) {
+      let dailyFactor = 1.0;
+
+      if (isRate) {
+        dailyFactor = 1 + currentIndexValue / 100;
+      } else {
+        dailyFactor = currentIndexValue / lastKnownIndexValue;
+      }
+
+      accumulatedBenchmarkCapital = accumulatedBenchmarkCapital * dailyFactor;
+    }
+
+    if (netDeposit !== 0) {
+      accumulatedBenchmarkCapital += netDeposit;
+    }
+
+    if (currentIndexValue !== null && currentIndexValue > 0) {
+      lastKnownIndexValue = currentIndexValue;
+    }
+
+    return {
+      ...day,
+      benchmark_value: parseFloat(accumulatedBenchmarkCapital.toFixed(2)),
+    };
+  });
 };
 
 const fetchRealAssetPerformance = async (months, assetType) => {
   const assetsToCheck = RAW_WALLET_DATA.filter((item) => item.type === assetType);
-
   if (assetsToCheck.length === 0) return { chartData: [], warnings: [] };
 
   const earliestPurchaseDate = assetsToCheck.reduce(
@@ -235,6 +258,7 @@ const fetchRealAssetPerformance = async (months, assetType) => {
         return {
           ticker: asset.ticker,
           initialQty: asset.qty,
+          purchaseDate: asset.purchaseDate,
           data: data ? data.sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date)) : [],
         };
       })
@@ -243,60 +267,44 @@ const fetchRealAssetPerformance = async (months, assetType) => {
     const validHistories = histories.filter((h) => h.data.length > 0);
     if (validHistories.length === 0) return { chartData: [], warnings: [] };
 
+    let assetWarnings = [];
+    validHistories.forEach((hist) => {
+      const w = detectAnomalies(hist.data, hist.ticker);
+      if (w.length > 0) assetWarnings = [...assetWarnings, ...w];
+    });
+
     const allDates = validHistories.flatMap((h) => h.data.map((d) => d.trade_date));
     const uniqueDates = [...new Set(allDates)].sort();
+    if (uniqueDates.length === 0) return { chartData: [], warnings: assetWarnings };
 
-    if (uniqueDates.length === 0) return { chartData: [], warnings: [] };
+    const startDateChart = uniqueDates[0];
+    const endDate = uniqueDates[uniqueDates.length - 1];
 
-    const startDate = uniqueDates[0];
-    const todayStr = new Date().toISOString().split('T')[0];
-
-    const ifixData = await getIfixRange(startDate, todayStr);
-    const ifixMap = {};
-    ifixData.forEach((i) => (ifixMap[i.trade_date] = parseFloat(i.close_value)));
-
-    const assetLastDates = validHistories.map((h) => ({
-      ticker: h.ticker,
-      lastDate: h.data[h.data.length - 1].trade_date,
-    }));
-    const ifixLastDate = ifixData.length > 0 ? ifixData[ifixData.length - 1].trade_date : startDate;
-    const allLastDates = [...assetLastDates.map((a) => a.lastDate), ifixLastDate];
-    const globalMaxDate = allLastDates.reduce(
-      (max, item) => (item > max ? item : max),
-      allLastDates[0]
-    );
-
-    const warnings = assetLastDates
-      .filter((item) => getDaysDiff(item.lastDate, globalMaxDate) > 3)
-      .map((item) => item.ticker);
-
-    if (getDaysDiff(ifixLastDate, globalMaxDate) > 3) {
-      warnings.push('Benchmark (IFIX)');
-    }
+    const bufferDate = new Date(startDateChart);
+    bufferDate.setDate(bufferDate.getDate() - 20);
+    const startDateBenchmark = normalizeDate(bufferDate);
 
     let initialInvestedTotal = 0;
 
     const portfolioState = validHistories.map((h) => {
-      const startRecord = h.data.find((d) => d.trade_date >= earliestPurchaseDate);
-      const startPrice = startRecord
-        ? getPriceFromRecord(startRecord)
+      const purchaseRecord = h.data.find((d) => d.trade_date >= h.purchaseDate);
+      const referencePrice = purchaseRecord
+        ? getPriceFromRecord(purchaseRecord)
         : getPriceFromRecord(h.data[0]);
 
-      initialInvestedTotal += startPrice * h.initialQty;
+      initialInvestedTotal += referencePrice * h.initialQty;
 
       return {
         ticker: h.ticker,
         qty: h.initialQty,
-        lastPrice: startPrice,
+        lastPrice: referencePrice,
+        purchaseDate: h.purchaseDate,
       };
     });
 
-    const calculationDates = uniqueDates.filter((d) => d <= todayStr);
-
-    const dailyData = calculationDates
+    const dailyData = uniqueDates
       .map((date) => {
         let dailyTotalValue = 0;
-
         portfolioState.forEach((asset, idx) => {
           const historyData = validHistories[idx].data;
           const dayRecord = historyData.find((d) => d.trade_date === date);
@@ -304,12 +312,12 @@ const fetchRealAssetPerformance = async (months, assetType) => {
           if (dayRecord) {
             const price = getPriceFromRecord(dayRecord);
             const div = parseFloat(dayRecord.dividend_value || 0);
-
             if (price > 0) asset.lastPrice = price;
 
-            if (div > 0 && asset.lastPrice > 0) {
-              const totalDiv = div * asset.qty;
-              asset.qty += totalDiv / asset.lastPrice;
+            if (date >= asset.purchaseDate) {
+              if (div > 0 && asset.lastPrice > 0) {
+                asset.qty += (div * asset.qty) / asset.lastPrice;
+              }
             }
           }
           dailyTotalValue += asset.qty * asset.lastPrice;
@@ -323,31 +331,15 @@ const fetchRealAssetPerformance = async (months, assetType) => {
       })
       .filter((d) => d.portfolio_value > 0);
 
-    if (dailyData.length === 0) return { chartData: [], warnings };
+    const benchmarkData = await fetchBenchmarkData(assetType, startDateBenchmark, endDate);
 
-    const anchorDate = dailyData[0].trade_date;
-    const anchorInvested = dailyData[0].invested_amount;
-    const anchorIfix = ifixMap[anchorDate];
-    let lastKnownIfix = anchorIfix;
+    const benchName =
+      assetType === 'fii' ? 'IFIX' : assetType === 'etf' ? 'S&P 500 (IVVB11)' : 'IBOV';
+    const benchWarnings = detectAnomalies(benchmarkData, benchName);
 
-    const finalResult = dailyData.map((day) => {
-      let currentIfix = ifixMap[day.trade_date];
-      if (!currentIfix && lastKnownIfix) currentIfix = lastKnownIfix;
-      if (currentIfix) lastKnownIfix = currentIfix;
+    const finalResult = calculateBenchmarkCurve(dailyData, benchmarkData, false);
 
-      let benchmarkVal = day.invested_amount;
-      if (anchorIfix && currentIfix) {
-        const performanceRatio = currentIfix / anchorIfix;
-        benchmarkVal = anchorInvested * performanceRatio;
-      }
-
-      return {
-        ...day,
-        benchmark_value: parseFloat(benchmarkVal.toFixed(2)),
-      };
-    });
-
-    return { chartData: finalResult, warnings };
+    return { chartData: finalResult, warnings: [...assetWarnings, ...benchWarnings] };
   } catch (err) {
     console.error(`Error calculating real performance for ${assetType}:`, err);
     return { chartData: [], warnings: [] };
@@ -358,9 +350,29 @@ export const fetchRealFiiPerformance = (months) => fetchRealAssetPerformance(mon
 export const fetchRealStocksPerformance = (months) => fetchRealAssetPerformance(months, 'stock');
 export const fetchRealETFPerformance = (months) => fetchRealAssetPerformance(months, 'etf');
 
+const combineHistories = (curves) => {
+  if (!curves || curves.length === 0) return [];
+  const dateMap = {};
+  curves.forEach((curve) => {
+    curve.forEach((point) => {
+      if (!dateMap[point.trade_date])
+        dateMap[point.trade_date] = { portfolio_value: 0, invested_amount: 0 };
+      dateMap[point.trade_date].portfolio_value += point.portfolio_value || 0;
+      dateMap[point.trade_date].invested_amount += point.invested_amount || 0;
+    });
+  });
+  return Object.keys(dateMap)
+    .sort()
+    .map((date) => ({
+      trade_date: date,
+      portfolio_value: parseFloat(dateMap[date].portfolio_value.toFixed(2)),
+      invested_amount: parseFloat(dateMap[date].invested_amount.toFixed(2)),
+      benchmark_value: 0,
+    }));
+};
+
 export const fetchWalletPerformanceHistory = async (overrideMonths = null) => {
   const timeRangeMonths = overrideMonths || getMaxHistoryMonths();
-
   const [fiiResult, stockResult, etfResult, lastIpcaDate] = await Promise.all([
     fetchRealFiiPerformance(timeRangeMonths),
     fetchRealStocksPerformance(timeRangeMonths),
@@ -368,47 +380,35 @@ export const fetchWalletPerformanceHistory = async (overrideMonths = null) => {
     getLastIpcaDate(),
   ]);
 
-  const fiiCurve = fiiResult.chartData;
-  const stockCurve = stockResult.chartData;
-  const etfCurve = etfResult.chartData;
-
-  const allWarnings = [...fiiResult.warnings, ...stockResult.warnings, ...etfResult.warnings];
-
-  if (lastIpcaDate) {
-    const today = new Date().toISOString().split('T')[0];
-    const daysDiff = getDaysDiff(lastIpcaDate, today);
-
-    if (daysDiff > 50) {
-      allWarnings.push('Índice IPCA');
-    }
-  } else {
-    allWarnings.push('Índice IPCA (Sem dados)');
-  }
-
-  const uniqueWarnings = [...new Set(allWarnings)];
-
-  const validCurves = [stockCurve, etfCurve, fiiCurve].filter((c) => c && c.length > 0);
+  const validCurves = [stockResult.chartData, etfResult.chartData, fiiResult.chartData].filter(
+    (c) => c && c.length > 0
+  );
   let totalCurve = combineHistories(validCurves);
 
   if (totalCurve.length > 0) {
     const startDate = totalCurve[0].trade_date;
     const endDate = totalCurve[totalCurve.length - 1].trade_date;
+    const bufferDate = new Date(startDate);
+    bufferDate.setDate(bufferDate.getDate() - 15);
+    const bufferStart = normalizeDate(bufferDate);
 
     try {
-      const cdiData = await cdiService.getCdiRange(startDate, endDate);
-
-      totalCurve = calculateCdiCurve(totalCurve, cdiData);
+      const cdiData = await cdiService.getCdiRange(bufferStart, endDate);
+      totalCurve = calculateBenchmarkCurve(totalCurve, cdiData, true);
     } catch (err) {
       console.error('Failed to apply CDI benchmark:', err);
     }
   }
 
+  const allWarnings = [...fiiResult.warnings, ...stockResult.warnings, ...etfResult.warnings];
+  if (!lastIpcaDate) allWarnings.push('IPCA (Sem dados)');
+
   return {
-    stock: stockCurve,
-    etf: etfCurve,
-    fii: fiiCurve,
+    stock: stockResult.chartData,
+    etf: etfResult.chartData,
+    fii: fiiResult.chartData,
     total: totalCurve,
-    warnings: uniqueWarnings,
+    warnings: [...new Set(allWarnings)],
   };
 };
 
@@ -417,73 +417,34 @@ export const fetchSpecificAssetHistory = async (ticker, months = 60) => {
   if (!asset) return [];
 
   const todayStr = SIMULATED_TODAY.toISOString().split('T')[0];
+  try {
+    const data = await fetchFiiChartData(asset.ticker, 60);
+    if (!data || data.length === 0) return [];
 
-  const processHistory = async () => {
-    try {
-      const data = await fetchFiiChartData(asset.ticker, 60);
+    const sortedData = data
+      .filter((d) => d.trade_date <= todayStr)
+      .sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
+    if (sortedData.length === 0) return [];
 
-      if (!data || data.length === 0) return [];
+    const bufferDate = new Date(sortedData[0].trade_date);
+    bufferDate.setDate(bufferDate.getDate() - 15);
+    const startDate = normalizeDate(bufferDate);
+    const endDate = sortedData[sortedData.length - 1].trade_date;
 
-      const sortedData = data
-        .filter((d) => d.trade_date <= todayStr)
-        .sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
+    const benchmarkData = await fetchBenchmarkData(asset.type, startDate, endDate);
 
-      if (sortedData.length === 0) return [];
+    const assetCurve = sortedData.map((day) => {
+      const price = getPriceFromRecord(day);
+      return {
+        trade_date: day.trade_date,
+        portfolio_value: parseFloat((asset.qty * price).toFixed(2)),
+        invested_amount: parseFloat(asset.total_value.toFixed(2)),
+      };
+    });
 
-      const startDate = sortedData[0].trade_date;
-      const endDate = sortedData[sortedData.length - 1].trade_date;
-
-      const ifixData = await getIfixRange(startDate, endDate);
-      const ifixMap = {};
-      ifixData.forEach((i) => (ifixMap[i.trade_date] = parseFloat(i.close_value)));
-
-      const anchorDate = asset.purchaseDate > startDate ? asset.purchaseDate : startDate;
-
-      let anchorIfix = ifixMap[anchorDate];
-      if (!anchorIfix) {
-        const exactMatch = ifixData.find((i) => i.trade_date === anchorDate);
-        anchorIfix = exactMatch ? parseFloat(exactMatch.close_value) : null;
-
-        if (!anchorIfix) {
-          const closest = ifixData.find((i) => i.trade_date >= anchorDate);
-          anchorIfix = closest ? parseFloat(closest.close_value) : null;
-        }
-      }
-
-      const initialFixedInvestment = asset.total_value;
-
-      let currentQty = asset.qty;
-      let lastKnownIfix = anchorIfix;
-
-      return sortedData.map((day) => {
-        const price = getPriceFromRecord(day);
-        const div = parseFloat(day.dividend_value || 0);
-
-        const portfolioValue = currentQty * price;
-
-        let currentIfix = ifixMap[day.trade_date];
-        if (!currentIfix && lastKnownIfix) currentIfix = lastKnownIfix;
-        if (currentIfix) lastKnownIfix = currentIfix;
-
-        let benchmarkVal = initialFixedInvestment;
-
-        if (anchorIfix && currentIfix) {
-          const variationRatio = currentIfix / anchorIfix;
-          benchmarkVal = initialFixedInvestment * variationRatio;
-        }
-
-        return {
-          trade_date: day.trade_date,
-          portfolio_value: parseFloat(portfolioValue.toFixed(2)),
-          invested_amount: parseFloat(initialFixedInvestment.toFixed(2)),
-          benchmark_value: parseFloat(benchmarkVal.toFixed(2)),
-        };
-      });
-    } catch (error) {
-      console.error('Error fetching specific asset history', error);
-      return [];
-    }
-  };
-
-  return processHistory();
+    return calculateBenchmarkCurve(assetCurve, benchmarkData, false);
+  } catch (error) {
+    console.error('Error fetching specific asset history', error);
+    return [];
+  }
 };
