@@ -91,7 +91,7 @@ const CustomTooltip = ({ active, payload, label, showTotalReturn, isDark }) => {
 
           <p className="text-blue-600 dark:text-blue-400 flex justify-between gap-4">
             <span>Preço Cota:</span>
-            <span className="font-mono">{formatPrice(data.price_close)}</span>
+            <span className="font-mono">{formatPrice(data.purchase_price)}</span>
           </p>
 
           <p className="text-green-600 dark:text-green-400 flex justify-between gap-4">

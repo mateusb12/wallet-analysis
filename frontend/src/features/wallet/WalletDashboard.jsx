@@ -478,7 +478,7 @@ function WalletDashboard() {
                         </td>
                         <td className="px-6 py-4 text-gray-700 dark:text-gray-300">{row.qty}</td>
                         <td className="px-6 py-4 text-right text-gray-700 dark:text-gray-300">
-                          {formatCurrency(row.price_close)}
+                          {formatCurrency(row.purchase_price)}
                         </td>
                         <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-gray-100">
                           {formatCurrency(row.total_value)}

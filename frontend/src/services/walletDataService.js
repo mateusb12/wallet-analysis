@@ -8,7 +8,7 @@ const RAW_WALLET_DATA = [
     ticker: 'BBAS3',
     name: 'BCO BRASIL S.A.',
     qty: 5,
-    price_close: 22.22,
+    purchase_price: 22.22,
     total_value: 111.1,
     type: 'stock',
     purchaseDate: '2025-11-19',
@@ -17,7 +17,7 @@ const RAW_WALLET_DATA = [
     ticker: 'BBSE3',
     name: 'BB SEGURIDADE PARTICIPAÇÕES S.A.',
     qty: 9,
-    price_close: 34.6,
+    purchase_price: 34.6,
     total_value: 311.4,
     type: 'stock',
     purchaseDate: '2025-11-18',
@@ -26,7 +26,7 @@ const RAW_WALLET_DATA = [
     ticker: 'WEGE3',
     name: 'WEG S.A.',
     qty: 5,
-    price_close: 44.4,
+    purchase_price: 44.4,
     total_value: 222.0,
     type: 'stock',
     purchaseDate: '2025-11-18',
@@ -35,7 +35,7 @@ const RAW_WALLET_DATA = [
     ticker: 'IVVB11',
     name: 'ISHARES S&P 500 FUNDO DE ÍNDICE',
     qty: 1,
-    price_close: 408.65,
+    purchase_price: 408.65,
     total_value: 408.65,
     type: 'etf',
     purchaseDate: '2025-11-18',
@@ -44,7 +44,7 @@ const RAW_WALLET_DATA = [
     ticker: 'QQQQ11',
     name: 'BUENA VISTA V FUNDO DE ÍNDICE',
     qty: 3,
-    price_close: 97.3,
+    purchase_price: 97.3,
     total_value: 291.9,
     type: 'etf',
     purchaseDate: '2025-11-18',
@@ -53,7 +53,7 @@ const RAW_WALLET_DATA = [
     ticker: 'BTLG11',
     name: 'BTG PACTUAL LOGISTICA FDO INV IMOB RESP LIM',
     qty: 1,
-    price_close: 103.58,
+    purchase_price: 103.58,
     total_value: 103.58,
     type: 'fii',
     purchaseDate: '2025-11-18',
@@ -62,7 +62,7 @@ const RAW_WALLET_DATA = [
     ticker: 'KNCR11',
     name: 'KINEA RENDIMENTOS IMOBILIÁRIOS FII RESP LIM',
     qty: 1,
-    price_close: 105.55,
+    purchase_price: 105.55,
     total_value: 105.55,
     type: 'fii',
     purchaseDate: '2025-11-18',
@@ -71,7 +71,7 @@ const RAW_WALLET_DATA = [
     ticker: 'KNHF11',
     name: 'KINEA HEDGE FUND FII RESP LIM',
     qty: 4,
-    price_close: 91.92,
+    purchase_price: 91.92,
     total_value: 367.68,
     type: 'fii',
     purchaseDate: '2025-11-18',
@@ -80,7 +80,7 @@ const RAW_WALLET_DATA = [
     ticker: 'XPCM11',
     name: 'XP CORPORATE MACAÉ FII RESP LIM',
     qty: 10,
-    price_close: 7.91,
+    purchase_price: 7.91,
     total_value: 79.1,
     type: 'fii',
     purchaseDate: '2025-11-18',
@@ -248,8 +248,8 @@ const fetchRealFiiPerformance = async (months) => {
     const portfolioState = validHistories.map((h) => {
       const startRecord = h.data.find((d) => d.trade_date >= earliestPurchaseDate);
       const startPrice = startRecord
-        ? parseFloat(startRecord.price_close)
-        : parseFloat(h.data[0]?.price_close || 0);
+        ? parseFloat(startRecord.purchase_price)
+        : parseFloat(h.data[0]?.purchase_price || 0);
 
       initialInvestedTotal += startPrice * h.initialQty;
 
@@ -271,7 +271,7 @@ const fetchRealFiiPerformance = async (months) => {
           const dayRecord = historyData.find((d) => d.trade_date === date);
 
           if (dayRecord) {
-            const price = parseFloat(dayRecord.price_close);
+            const price = parseFloat(dayRecord.purchase_price);
             const div = parseFloat(dayRecord.dividend_value || 0);
 
             if (price > 0) asset.lastPrice = price;
@@ -417,7 +417,7 @@ export const fetchSpecificAssetHistory = async (ticker, months = 12) => {
       let lastKnownIfix = anchorIfix;
 
       return sortedData.map((day) => {
-        const price = parseFloat(day.price_close);
+        const price = parseFloat(day.purchase_price);
         const div = parseFloat(day.dividend_value || 0);
 
         if (div > 0 && price > 0) {

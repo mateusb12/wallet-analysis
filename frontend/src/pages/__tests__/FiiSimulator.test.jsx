@@ -32,7 +32,7 @@ describe('FiiSimulator Page', () => {
 
   it('runs simulation and displays results table', async () => {
     b3service.fetchFiiDividendForMonth.mockResolvedValue({
-      price_close: 100,
+      purchase_price: 100,
       dividend_value: 0.01,
     });
     ipcaService.getIpcaRange.mockResolvedValue([]);

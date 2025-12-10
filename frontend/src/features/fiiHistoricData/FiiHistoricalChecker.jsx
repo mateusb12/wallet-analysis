@@ -96,7 +96,7 @@ function FiiHistoricalChecker() {
         ipcaMap[key] = item.ipca;
       });
 
-      const basePrice = parseFloat(sortedData[0].price_close);
+      const basePrice = parseFloat(sortedData[0].purchase_price);
 
       const baseIfix =
         ifixMap[startDate] || (ifixData.length > 0 ? parseFloat(ifixData[0].close_value) : null);
@@ -111,7 +111,7 @@ function FiiHistoricalChecker() {
         const dateKey = dayData.trade_date.substring(0, 7);
         const fullDateKey = dayData.trade_date;
 
-        const currentPrice = parseFloat(dayData.price_close);
+        const currentPrice = parseFloat(dayData.purchase_price);
         const currentDividend = parseFloat(dayData.dividend_value || 0);
 
         if (dateKey !== ipcaProcessedMonth && ipcaMap[dateKey] !== undefined && index > 0) {
@@ -393,7 +393,7 @@ function FiiHistoricalChecker() {
                             R$ {parseFloat(row.open).toFixed(2)}
                           </td>
                           <td className="border border-gray-300 dark:border-gray-700 px-2 py-1">
-                            R$ {parseFloat(row.price_close).toFixed(2)}
+                            R$ {parseFloat(row.purchase_price).toFixed(2)}
                           </td>
                           <td className="border border-gray-300 dark:border-gray-700 px-2 py-1 text-blue-600 dark:text-blue-400">
                             {(parseFloat(row.dividend_yield_month) * 100).toFixed(2)}%
