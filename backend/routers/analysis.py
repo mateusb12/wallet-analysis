@@ -19,19 +19,13 @@ class SimulationRequest(BaseModel):
     monthly_deposit: float
     months: int
 
-# --- Helper Functions ---
-def add_months(date_obj, num_months):
-    # Pandas offsets are safer for date math
-    return date_obj + pd.DateOffset(months=num_months)
-
 # --- Endpoints ---
 
 @router.get("/zscore/{ticker}")
 def calculate_zscore(ticker: str, window_months: int = 12):
     supabase = get_supabase()
 
-    # 1. Fetch Price History (Optimized: Only needed columns)
-    # We fetch extra buffer to ensure we have enough trading days
+    # 1. Fetch Price History
     response = supabase.table("b3_prices") \
         .select("trade_date,close") \
         .eq("ticker", ticker.upper()) \
@@ -70,7 +64,7 @@ def calculate_zscore(ticker: str, window_months: int = 12):
     if std_dev != 0:
         z_score = (current_price - mean) / std_dev
 
-    # Percentile: % of days where price <= current
+    # Percentile
     days_below = prices[prices <= current_price].count()
     total_days = prices.count()
     percentile = (days_below / total_days) * 100 if total_days > 0 else 0
@@ -86,7 +80,6 @@ def calculate_zscore(ticker: str, window_months: int = 12):
 
     # Format chart data
     chart_data = df_window[['trade_date', 'close']].rename(columns={'trade_date': 'date'}).to_dict(orient='records')
-    # Convert timestamps to ISO strings for JSON serialization
     for item in chart_data:
         item['date'] = item['date'].strftime('%Y-%m-%d')
 
@@ -113,8 +106,7 @@ def simulate_fii(payload: SimulationRequest):
     supabase = get_supabase()
     ticker = payload.ticker.upper()
 
-    # 1. Fetch Data in Parallel (conceptually)
-    # We need: Dividends, Prices (for reinvestment costs), IPCA (for inflation)
+    # 1. Fetch Data
 
     # A. Dividends
     div_resp = supabase.table("b3_fiis_dividends") \
@@ -135,7 +127,6 @@ def simulate_fii(payload: SimulationRequest):
     max_date = df_div['trade_date'].max()
     min_date = max_date - pd.DateOffset(months=payload.months)
 
-    # Align to the start of the simulation period
     df_sim = df_div[df_div['trade_date'] >= min_date].copy()
 
     if df_sim.empty:
@@ -145,26 +136,24 @@ def simulate_fii(payload: SimulationRequest):
     end_sim_date = df_sim['trade_date'].max()
 
     # B. IPCA (Fetch range)
+    # FIX: Corrected date format strings (removed erroneous %)
     ipca_resp = supabase.table("ipca_history") \
         .select("ref_date,ipca") \
-        .gte("ref_date", start_sim_date.strftime('%Y-%m-%01')) \
-        .lte("ref_date", end_sim_date.strftime('%Y-%m-%28')) \
+        .gte("ref_date", start_sim_date.strftime('%Y-%m-01')) \
+        .lte("ref_date", end_sim_date.strftime('%Y-%m-28')) \
         .execute()
 
-    ipca_map = {} # Key: "YYYY-MM", Value: factor (e.g., 1.005)
+    ipca_map = {}
     if ipca_resp.data:
         for row in ipca_resp.data:
-            # ref_date is likely YYYY-MM-DD
             key = row['ref_date'][:7]
             val = float(row['ipca'])
             ipca_map[key] = 1 + (val / 100)
 
     # 2. Simulation Logic
-    # Initialize variables
     initial_inv = payload.initial_investment
     monthly_dep = payload.monthly_deposit
 
-    # Start Logic
     first_row = df_sim.iloc[0]
     start_price = first_row['price_close']
 
@@ -194,20 +183,15 @@ def simulate_fii(payload: SimulationRequest):
     })
 
     # Iterate subsequent rows
-    # We skip the first row for the loop because it's the "buy in" date
-    # However, FII dividends are usually paid on "Com Data" or similar.
-    # For simplicity, we assume one event per row in df_sim (monthly data).
-
     for i in range(1, len(df_sim)):
         row = df_sim.iloc[i]
         curr_price = row['price_close']
-        div_yield_val = row['dividend_value'] # This is usually Reais per share? Check schema.
-        # Assuming dividend_value is R$ per share based on frontend usage logic
+        div_yield_val = row['dividend_value']
 
         curr_date = row['trade_date']
         prev_date = df_sim.iloc[i-1]['trade_date']
 
-        # IPCA Correction (using previous month's IPCA for current period)
+        # IPCA Correction
         prev_month_key = prev_date.strftime('%Y-%m')
         inflation_factor = ipca_map.get(prev_month_key, 1.0)
 
@@ -218,7 +202,6 @@ def simulate_fii(payload: SimulationRequest):
         start_val_reinvest = shares_reinvest * curr_price
         divs_reinvest = shares_reinvest * div_yield_val
 
-        # Buy new shares with (Deposit + Dividends)
         total_cash_reinvest = monthly_dep + divs_reinvest
         new_shares_reinvest = total_cash_reinvest / curr_price
         shares_reinvest += new_shares_reinvest
@@ -227,17 +210,16 @@ def simulate_fii(payload: SimulationRequest):
 
         # --- Scenario 2: No Reinvest ---
         start_val_no_reinvest = shares_no_reinvest * curr_price
-        divs_no_reinvest = shares_no_reinvest * div_yield_val # Withdrawn
+        divs_no_reinvest = shares_no_reinvest * div_yield_val
         total_divs_withdrawn += divs_no_reinvest
 
-        # Buy new shares with (Deposit ONLY)
         new_shares_no_reinvest = monthly_dep / curr_price
         shares_no_reinvest += new_shares_no_reinvest
 
         end_val_no_reinvest = shares_no_reinvest * curr_price
 
         timeline.append({
-            "month": curr_date.strftime('%d/%m/%Y'), # Standardize format
+            "month": curr_date.strftime('%d/%m/%Y'),
             "deposit": monthly_dep,
             "reinvestStart": round(start_val_reinvest, 2),
             "reinvestDividends": round(divs_reinvest, 2),

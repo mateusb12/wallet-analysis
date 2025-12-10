@@ -38,3 +38,31 @@ export const syncService = {
     return data;
   },
 };
+
+export const analysisService = {
+  async getZScore(ticker, windowMonths = 12) {
+    const response = await fetch(
+      `${API_URL}/analysis/zscore/${ticker}?window_months=${windowMonths}`,
+      {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Failed to fetch analysis');
+    return data;
+  },
+
+  async runFiiSimulation(payload) {
+    const response = await fetch(`${API_URL}/analysis/simulation/fii`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Simulation failed');
+    return data;
+  },
+};
