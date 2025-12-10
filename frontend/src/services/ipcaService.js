@@ -86,3 +86,18 @@ export async function syncIpcaHistory() {
     to: rowsToInsert[rowsToInsert.length - 1].ref_date,
   };
 }
+
+export async function getLastIpcaDate() {
+  const { data, error } = await supabase
+    .from('ipca_history')
+    .select('ref_date')
+    .order('ref_date', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error) {
+    console.error('Erro ao buscar última data do IPCA:', error.message);
+    return null;
+  }
+  return data?.ref_date;
+}

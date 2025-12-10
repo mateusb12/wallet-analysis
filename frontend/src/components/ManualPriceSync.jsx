@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { RefreshCw, CheckCircle, AlertCircle, TrendingUp } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertCircle, TrendingUp, BarChart3 } from 'lucide-react';
 import { syncService } from '../services/api.js';
+import { syncIpcaHistory } from '../services/ipcaService.js';
 
 export default function ManualPriceSync() {
   const [ticker, setTicker] = useState('');
@@ -19,6 +20,21 @@ export default function ManualPriceSync() {
     executeSync(() => syncService.syncIfix(tickerToUse));
   };
 
+  const handleIpcaSync = async () => {
+    executeSync(async () => {
+      const result = await syncIpcaHistory();
+
+      if (result && (result.inserted >= 0 || result.message)) {
+        return {
+          success: true,
+          count: result.inserted,
+          message: result.message || `${result.inserted} meses do IPCA sincronizados.`,
+        };
+      }
+      return { success: false, error: 'Falha ao sincronizar IPCA' };
+    });
+  };
+
   const executeSync = async (syncFunction) => {
     setLoading(true);
     setStatus(null);
@@ -29,7 +45,8 @@ export default function ManualPriceSync() {
 
       if (result.success) {
         setStatus('success');
-        setMsg(`Sucesso! ${result.count} registros atualizados.`);
+        const countMsg = result.count !== undefined ? `${result.count} registros` : 'Dados';
+        setMsg(result.message || `Sucesso! ${countMsg} atualizados.`);
         setTicker('');
       } else {
         throw new Error(result.error || 'Erro desconhecido.');
@@ -48,18 +65,18 @@ export default function ManualPriceSync() {
       <div className="p-6 border-b border-gray-200 dark:border-gray-700">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
           <RefreshCw className="w-5 h-5 text-blue-600" />
-          Sincronização Manual (Proxy JS)
+          Sincronização Manual
         </h3>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Atualiza cotações recentes do Yahoo Finance. Use <b>XFIX11</b> para IFIX.
+          Atualiza cotações via Yahoo Finance (Proxy) e índices oficiais (BCB).
         </p>
       </div>
 
       <div className="p-6">
-        <form onSubmit={handleSync} className="flex flex-col md:flex-row gap-4 items-end">
+        <div className="flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-1 w-full">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Ticker (ex: BTLG11 ou XFIX11)
+              Ticker (ex: BTLG11)
             </label>
             <input
               type="text"
@@ -70,9 +87,9 @@ export default function ManualPriceSync() {
             />
           </div>
 
-          <div className="flex gap-2 w-full md:w-auto">
+          <div className="flex gap-2 w-full md:w-auto flex-wrap">
             <button
-              type="submit"
+              onClick={handleSync}
               disabled={loading || !ticker}
               className={`flex-1 md:flex-none px-4 py-2 rounded-lg font-medium text-white transition-colors flex items-center justify-center gap-2 ${
                 loading || !ticker
@@ -80,21 +97,29 @@ export default function ManualPriceSync() {
                   : 'bg-blue-600 hover:bg-blue-700'
               }`}
             >
-              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Sincronizar Ativo'}
+              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Sync Ativo'}
             </button>
 
             <button
-              type="button"
               onClick={handleIfixSync}
               disabled={loading}
-              title="Sincronizar tabela IFIX usando XFIX11 ou ticker atual"
               className="px-4 py-2 rounded-lg font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 transition-colors flex items-center justify-center gap-2"
             >
               <TrendingUp className="w-4 h-4" />
               <span className="hidden sm:inline">Sync IFIX</span>
             </button>
+
+            <button
+              onClick={handleIpcaSync}
+              disabled={loading}
+              title="Sincronizar IPCA do Banco Central (Série 433)"
+              className="px-4 py-2 rounded-lg font-medium text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/30 hover:bg-orange-100 dark:hover:bg-orange-900/50 border border-orange-200 dark:border-orange-800 transition-colors flex items-center justify-center gap-2"
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span className="hidden sm:inline">Sync IPCA</span>
+            </button>
           </div>
-        </form>
+        </div>
 
         {status === 'success' && (
           <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-lg flex items-center gap-2 text-sm">

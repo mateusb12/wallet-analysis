@@ -1,5 +1,6 @@
 import { fetchFiiChartData } from './b3service.js';
 import { getIfixRange } from './ifixService.js';
+import { getLastIpcaDate } from './ipcaService.js';
 
 const SIMULATED_TODAY = new Date();
 
@@ -326,10 +327,11 @@ export const fetchRealETFPerformance = (months) => fetchRealAssetPerformance(mon
 export const fetchWalletPerformanceHistory = async (overrideMonths = null) => {
   const timeRangeMonths = overrideMonths || getMaxHistoryMonths();
 
-  const [fiiResult, stockResult, etfResult] = await Promise.all([
+  const [fiiResult, stockResult, etfResult, lastIpcaDate] = await Promise.all([
     fetchRealFiiPerformance(timeRangeMonths),
     fetchRealStocksPerformance(timeRangeMonths),
     fetchRealETFPerformance(timeRangeMonths),
+    getLastIpcaDate(),
   ]);
 
   const fiiCurve = fiiResult.chartData;
@@ -337,6 +339,18 @@ export const fetchWalletPerformanceHistory = async (overrideMonths = null) => {
   const etfCurve = etfResult.chartData;
 
   const allWarnings = [...fiiResult.warnings, ...stockResult.warnings, ...etfResult.warnings];
+
+  if (lastIpcaDate) {
+    const today = new Date().toISOString().split('T')[0];
+    const daysDiff = getDaysDiff(lastIpcaDate, today);
+
+    if (daysDiff > 50) {
+      allWarnings.push('Índice IPCA');
+    }
+  } else {
+    allWarnings.push('Índice IPCA (Sem dados)');
+  }
+
   const uniqueWarnings = [...new Set(allWarnings)];
 
   const validCurves = [stockCurve, etfCurve, fiiCurve].filter((c) => c && c.length > 0);
