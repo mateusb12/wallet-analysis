@@ -104,9 +104,7 @@ const getMaxHistoryMonths = () => {
   if (dates.length === 0) return 6;
 
   const minDate = new Date(Math.min(...dates));
-
   const today = new Date(SIMULATED_TODAY);
-
   const months =
     (today.getFullYear() - minDate.getFullYear()) * 12 + (today.getMonth() - minDate.getMonth());
 
@@ -150,7 +148,6 @@ const generateFakeCurve = (
   benchmarkRate
 ) => {
   const history = [];
-
   const today = new Date(SIMULATED_TODAY);
 
   if (currentTotal === 0) return [];
@@ -164,9 +161,7 @@ const generateFakeCurve = (
     const randomNoise = (Math.random() - 0.5) * (currentTotal * volatilityBase);
 
     const value = currentTotal * 0.8 + currentTotal * 0.2 * progress * trendFactor + randomNoise;
-
     const invested = currentTotal;
-
     const benchmark = invested * Math.pow(1 + benchmarkRate, (timeRangeMonths * 30 - i) / 365);
 
     history.push({
@@ -177,6 +172,13 @@ const generateFakeCurve = (
     });
   }
   return history;
+};
+
+const getPriceFromRecord = (record) => {
+  if (!record) return 0;
+
+  const val = record.close || record.price_close || record.purchase_price;
+  return val ? parseFloat(val) : 0;
 };
 
 const fetchRealFiiPerformance = async (months) => {
@@ -211,7 +213,6 @@ const fetchRealFiiPerformance = async (months) => {
     if (uniqueDates.length === 0) return { chartData: [], warnings: [] };
 
     const startDate = uniqueDates[0];
-
     const todayStr = new Date().toISOString().split('T')[0];
 
     const ifixData = await getIfixRange(startDate, todayStr);
@@ -224,7 +225,6 @@ const fetchRealFiiPerformance = async (months) => {
     }));
 
     const ifixLastDate = ifixData.length > 0 ? ifixData[ifixData.length - 1].trade_date : startDate;
-
     const allLastDates = [...assetLastDates.map((a) => a.lastDate), ifixLastDate];
     const globalMaxDate = allLastDates.reduce(
       (max, item) => (item > max ? item : max),
@@ -243,9 +243,10 @@ const fetchRealFiiPerformance = async (months) => {
 
     const portfolioState = validHistories.map((h) => {
       const startRecord = h.data.find((d) => d.trade_date >= earliestPurchaseDate);
+
       const startPrice = startRecord
-        ? parseFloat(startRecord.purchase_price)
-        : parseFloat(h.data[0]?.purchase_price || 0);
+        ? getPriceFromRecord(startRecord)
+        : getPriceFromRecord(h.data[0]);
 
       initialInvestedTotal += startPrice * h.initialQty;
 
@@ -267,7 +268,7 @@ const fetchRealFiiPerformance = async (months) => {
           const dayRecord = historyData.find((d) => d.trade_date === date);
 
           if (dayRecord) {
-            const price = parseFloat(dayRecord.purchase_price);
+            const price = getPriceFromRecord(dayRecord);
             const div = parseFloat(dayRecord.dividend_value || 0);
 
             if (price > 0) asset.lastPrice = price;
@@ -419,7 +420,7 @@ export const fetchSpecificAssetHistory = async (ticker, months = 60) => {
       let lastKnownIfix = anchorIfix;
 
       return sortedData.map((day) => {
-        const price = parseFloat(day.purchase_price);
+        const price = getPriceFromRecord(day);
         const div = parseFloat(day.dividend_value || 0);
 
         const portfolioValue = currentQty * price;

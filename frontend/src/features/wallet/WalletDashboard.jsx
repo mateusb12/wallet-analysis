@@ -8,7 +8,7 @@ import { fetchB3Prices } from '../../services/b3service.js';
 import WalletHistoryChart from './WalletHistoryChart.jsx';
 import DataConsistencyAlert from '../../components/DataConsistencyAlert.jsx';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { ArrowUp, ArrowDown, Minus } from 'lucide-react';
+import { ArrowUp, ArrowDown, Minus, Wallet, TrendingUp, DollarSign, Percent } from 'lucide-react';
 
 import iconStocks from '../../assets/stocks.png';
 import iconEtf from '../../assets/etf.png';
@@ -107,7 +107,6 @@ function WalletDashboard() {
               };
             } catch (err) {
               console.error(`Erro ao buscar preço para ${p.ticker}`, err);
-
               return {
                 ...p,
                 current_price: p.purchase_price,
@@ -158,7 +157,6 @@ function WalletDashboard() {
 
   useEffect(() => {
     setSelectedAssetTicker('');
-
     setTimeRange('DEFAULT');
   }, [activeTab]);
 
@@ -178,6 +176,14 @@ function WalletDashboard() {
     if (activeTab === 'total') return positions;
     return positions.filter((p) => p.type === activeTab);
   }, [positions, activeTab]);
+
+  const summaryPositions = useMemo(() => {
+    if (selectedAssetTicker) {
+      return filteredPositions.filter((p) => p.ticker === selectedAssetTicker);
+    }
+
+    return filteredPositions;
+  }, [filteredPositions, selectedAssetTicker]);
 
   const chartEvents = useMemo(() => {
     if (selectedAssetTicker) {
@@ -214,7 +220,6 @@ function WalletDashboard() {
       if (timeRange === 'MAX') return processedData;
 
       let startDate = new Date(purchaseDateObj);
-
       if (rangeConfig && rangeConfig.offsetMonths > 0) {
         startDate.setMonth(startDate.getMonth() - rangeConfig.offsetMonths);
       }
@@ -232,20 +237,18 @@ function WalletDashboard() {
     earliestPurchaseDate,
   ]);
 
-  const totalValue = filteredPositions.reduce(
+  const totalValue = summaryPositions.reduce(
     (acc, curr) => acc + (curr.total_value_current || 0),
     0
   );
-  const totalAssets = filteredPositions.length;
 
-  const largestPosition = filteredPositions.reduce(
-    (prev, current) =>
-      (prev.total_value_current || 0) > (current.total_value_current || 0) ? prev : current,
-    { ticker: '-', total_value_current: 0, name: '' }
+  const totalInvested = summaryPositions.reduce(
+    (acc, curr) => acc + curr.purchase_price * curr.qty,
+    0
   );
 
-  const largestShare =
-    totalValue > 0 ? ((largestPosition.total_value_current || 0) / totalValue) * 100 : 0;
+  const totalProfit = totalValue - totalInvested;
+  const totalYield = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
 
   const COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#6366f1'];
 
@@ -278,6 +281,43 @@ function WalletDashboard() {
         <span className="font-bold text-xs">
           {isPercent ? formatPercent(numValue) : formatCurrency(numValue)}
         </span>
+      </div>
+    );
+  };
+
+  const SummaryCard = ({ title, value, subtext, type = 'neutral', rawValue }) => {
+    let colorClass = 'text-gray-900 dark:text-white';
+    let iconColor = 'text-blue-500';
+    let bgIcon = 'bg-blue-50 dark:bg-blue-900/20';
+
+    if (type === 'profit') {
+      const numericVal = rawValue !== undefined ? rawValue : parseFloat(value);
+
+      const isPositive = numericVal >= 0;
+      colorClass = isPositive
+        ? 'text-green-600 dark:text-green-400'
+        : 'text-red-600 dark:text-red-400';
+      iconColor = isPositive ? 'text-green-500' : 'text-red-500';
+      bgIcon = isPositive ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20';
+    }
+
+    return (
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700 relative overflow-hidden group hover:shadow-md transition-shadow">
+        <div className="flex justify-between items-start">
+          <div>
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{title}</p>
+            <p className={`text-2xl font-bold ${colorClass}`}>{value}</p>
+            {subtext && <p className="text-xs text-gray-400 mt-1">{subtext}</p>}
+          </div>
+          <div className={`p-3 rounded-xl ${bgIcon} ${iconColor}`}>
+            {title.includes('Investido') && <Wallet className="w-6 h-6" />}
+            {title.includes('Atual') && <TrendingUp className="w-6 h-6" />}
+            {(title.includes('Lucro') || title.includes('Prejuízo')) && (
+              <DollarSign className="w-6 h-6" />
+            )}
+            {title.includes('%') && <Percent className="w-6 h-6" />}
+          </div>
+        </div>
       </div>
     );
   };
@@ -357,27 +397,29 @@ function WalletDashboard() {
 
       <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
         {}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Patrimônio ({CATEGORIES_CONFIG[activeTab].label})
-            </p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">
-              {formatCurrency(totalValue)}
-            </p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Qtd. Ativos</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalAssets}</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Maior Posição</p>
-            <p className="text-2xl font-bold text-blue-500">{largestPosition.ticker}</p>
-            <p className="text-xs text-gray-400">
-              {largestPosition.ticker !== '-' &&
-                `${largestPosition.name.substring(0, 15)}... (${largestShare.toFixed(0)}%)`}
-            </p>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <SummaryCard
+            title="Total Investido"
+            value={formatCurrency(totalInvested)}
+            subtext={selectedAssetTicker ? selectedAssetTicker : 'Custo de aquisição'}
+          />
+          <SummaryCard
+            title="Valor Atual"
+            value={formatCurrency(totalValue)}
+            subtext={`Cotação Atual (${selectedAssetTicker ? selectedAssetTicker : CATEGORIES_CONFIG[activeTab].label})`}
+          />
+          <SummaryCard
+            title={totalProfit >= 0 ? 'Lucro (R$)' : 'Prejuízo (R$)'}
+            value={formatCurrency(totalProfit)}
+            rawValue={totalProfit}
+            type="profit"
+          />
+          <SummaryCard
+            title="Rentabilidade (%)"
+            value={formatPercent(totalYield)}
+            rawValue={totalYield}
+            type="profit"
+          />
         </div>
 
         {}
