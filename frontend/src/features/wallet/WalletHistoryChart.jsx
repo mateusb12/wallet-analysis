@@ -27,6 +27,19 @@ const formatPercent = (value) =>
     maximumFractionDigits: 2,
   }).format(value);
 
+const PurchaseDot = (props) => {
+  const { cx, cy, payload } = props;
+
+  if (payload && payload.purchaseEvents && payload.purchaseEvents.length > 0) {
+    return (
+      <svg x={cx - 6} y={cy - 6} width={12} height={12} fill="white" viewBox="0 0 10 10">
+        <circle cx="5" cy="5" r="5" fill="#2563eb" stroke="white" strokeWidth="2" />
+      </svg>
+    );
+  }
+  return null;
+};
+
 const CustomTooltip = ({ active, payload, label, isDark }) => {
   if (active && payload && payload.length) {
     const bgClass = isDark
@@ -34,17 +47,33 @@ const CustomTooltip = ({ active, payload, label, isDark }) => {
       : 'bg-white border-gray-300 text-gray-700';
 
     const benchmarkEntry = payload.find((p) => p.dataKey === 'benchmark_value');
-
     const portfolioEntry = payload.find((p) => p.dataKey === 'portfolio_value');
 
     const benchmarkVal = benchmarkEntry ? benchmarkEntry.value : 0;
     const portfolioVal = portfolioEntry ? portfolioEntry.value : 0;
-
     const ratio = portfolioVal > 0 ? (portfolioVal - benchmarkVal) / portfolioVal : 0;
+
+    const purchaseEvents = payload[0].payload.purchaseEvents || [];
 
     return (
       <div className={`${bgClass} border p-3 rounded-lg shadow-lg text-sm z-50`}>
         <p className="font-bold mb-2 border-b border-gray-500/20 pb-1">{formatChartDate(label)}</p>
+
+        {}
+        {purchaseEvents.length > 0 && (
+          <div className="mb-3 pb-2 border-b border-gray-500/20 bg-blue-50 dark:bg-blue-900/20 -mx-3 px-3 py-2">
+            <p className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-1 flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+              Evento de Compra
+            </p>
+            {purchaseEvents.map((event, idx) => (
+              <div key={idx} className="text-xs text-gray-700 dark:text-gray-300 mb-0.5 last:mb-0">
+                <span className="font-bold">{event.ticker}</span> — {event.qty} unidades por {' '}
+                {formatCurrency(event.purchase_price)}
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="flex flex-col gap-1">
           <div className="flex justify-between gap-6 items-center">
@@ -55,7 +84,6 @@ const CustomTooltip = ({ active, payload, label, isDark }) => {
           </div>
 
           <div className="flex justify-between gap-6 items-center">
-            {}
             <span style={{ color: '#16a34a' }} className="font-medium text-xs">
               Patrimônio:
             </span>
@@ -78,7 +106,12 @@ const CustomTooltip = ({ active, payload, label, isDark }) => {
   return null;
 };
 
-function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDate = null }) {
+function WalletHistoryChart({
+  data = [],
+  benchmarkName = 'Benchmark',
+  purchaseDate = null,
+  purchaseEvents = [],
+}) {
   const themeContext = tryUseTheme();
   const isDark = themeContext === 'dark';
 
@@ -86,8 +119,19 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
 
   const processedData = useMemo(() => {
     if (!hasData) return [];
-    return [...data].sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
-  }, [data]);
+
+    const sorted = [...data].sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
+
+    if (!purchaseEvents || purchaseEvents.length === 0) return sorted;
+
+    return sorted.map((point) => {
+      const eventsOnThisDay = purchaseEvents.filter((e) => e.purchaseDate === point.trade_date);
+      if (eventsOnThisDay.length > 0) {
+        return { ...point, purchaseEvents: eventsOnThisDay };
+      }
+      return point;
+    });
+  }, [data, purchaseEvents]);
 
   if (!hasData) {
     return (
@@ -144,6 +188,7 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
             payload={[
               { value: benchmarkName, type: 'rect', color: '#eab308' },
               { value: 'Patrimônio', type: 'rect', color: '#16a34a' },
+              { value: 'Compras', type: 'circle', color: '#2563eb' },
             ]}
           />
 
@@ -158,7 +203,6 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
             connectNulls={false}
           />
 
-          {}
           <Area
             type="monotone"
             dataKey="portfolio_value"
@@ -168,6 +212,8 @@ function WalletHistoryChart({ data = [], benchmarkName = 'Benchmark', purchaseDa
             fill="url(#colorInvested)"
             fillOpacity={1}
             connectNulls={false}
+            dot={<PurchaseDot />}
+            activeDot={{ r: 6, strokeWidth: 0 }}
           />
 
           {purchaseDate && (

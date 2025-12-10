@@ -189,6 +189,15 @@ function WalletDashboard() {
     return minDate.toISOString().split('T')[0];
   }, [filteredPositions, selectedAssetTicker, positions]);
 
+  const chartEvents = useMemo(() => {
+    // If a specific asset is selected, only show its purchase event
+    if (selectedAssetTicker) {
+      return positions.filter((p) => p.ticker === selectedAssetTicker);
+    }
+    // Otherwise, show all purchases relevant to the current tab (Stock, FII, or Total)
+    return filteredPositions;
+  }, [selectedAssetTicker, filteredPositions, positions]);
+
   const displayedHistory = useMemo(() => {
     const rawData = selectedAssetTicker ? specificAssetHistory : fullHistoryData[activeTab] || [];
 
@@ -428,6 +437,7 @@ function WalletDashboard() {
                 data={displayedHistory}
                 benchmarkName={CATEGORIES_CONFIG[activeTab].benchmark}
                 purchaseDate={earliestPurchaseDate}
+                purchaseEvents={chartEvents}
               />
             ) : (
               <div className="h-64 flex items-center justify-center text-gray-500 bg-gray-50 dark:bg-gray-900/50 rounded">
