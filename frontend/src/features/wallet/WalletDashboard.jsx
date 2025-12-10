@@ -15,6 +15,8 @@ import iconEtf from '../../assets/etf.png';
 import iconFiis from '../../assets/fiis.png';
 import iconTotal from '../../assets/all.png';
 
+const COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#6366f1'];
+
 const CustomPieTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     const data = payload[0];
@@ -23,7 +25,7 @@ const CustomPieTooltip = ({ active, payload }) => {
         <p className="font-bold text-gray-800 dark:text-gray-100 mb-1 max-w-[200px] leading-tight">
           {data.name}
         </p>
-        <p className="text-blue-600 dark:text-blue-400 font-mono font-bold">
+        <p className="font-mono font-bold" style={{ color: data.payload.color || data.fill }}>
           {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
             data.value
           )}
@@ -68,7 +70,10 @@ function WalletDashboard() {
     total: [],
   });
   const [loading, setLoading] = useState(true);
+
   const [activeTab, setActiveTab] = useState('total');
+
+  const [allocationView, setAllocationView] = useState('specific');
 
   const [timeRange, setTimeRange] = useState('DEFAULT');
 
@@ -158,6 +163,9 @@ function WalletDashboard() {
   useEffect(() => {
     setSelectedAssetTicker('');
     setTimeRange('DEFAULT');
+    if (activeTab !== 'total') {
+      setAllocationView('specific');
+    }
   }, [activeTab]);
 
   const categoryTotals = useMemo(() => {
@@ -181,9 +189,27 @@ function WalletDashboard() {
     if (selectedAssetTicker) {
       return filteredPositions.filter((p) => p.ticker === selectedAssetTicker);
     }
-
     return filteredPositions;
   }, [filteredPositions, selectedAssetTicker]);
+
+  const generalAllocationData = useMemo(() => {
+    return [
+      { name: 'Ações', value: categoryTotals.stock, color: '#3b82f6' },
+      { name: 'ETFs', value: categoryTotals.etf, color: '#f59e0b' },
+      { name: 'FIIs', value: categoryTotals.fii, color: '#10b981' },
+    ].filter((item) => item.value > 0);
+  }, [categoryTotals]);
+
+  const currentPieData = useMemo(() => {
+    if (activeTab === 'total' && allocationView === 'general') {
+      return generalAllocationData;
+    }
+
+    return filteredPositions.map((pos, index) => ({
+      ...pos,
+      color: COLORS[index % COLORS.length],
+    }));
+  }, [activeTab, allocationView, generalAllocationData, filteredPositions, COLORS]);
 
   const chartEvents = useMemo(() => {
     if (selectedAssetTicker) {
@@ -249,8 +275,6 @@ function WalletDashboard() {
 
   const totalProfit = totalValue - totalInvested;
   const totalYield = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
-
-  const COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#6366f1'];
 
   const renderVariation = (value, isPercent = false) => {
     const numValue = parseFloat(value);
@@ -336,7 +360,6 @@ function WalletDashboard() {
     <div className="p-8 dark:bg-gray-900 min-h-screen font-sans animate-fade-in">
       <DataConsistencyAlert warnings={dataWarnings} className="mb-6" />
 
-      {}
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">Meu Portfólio</h2>
 
@@ -396,7 +419,6 @@ function WalletDashboard() {
       </div>
 
       <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-        {}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <SummaryCard
             title="Total Investido"
@@ -422,7 +444,6 @@ function WalletDashboard() {
           />
         </div>
 
-        {}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
             <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
@@ -449,7 +470,6 @@ function WalletDashboard() {
                 )}
               </div>
 
-              {}
               <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1">
                 {TIME_RANGES.map((range) => (
                   <button
@@ -488,57 +508,114 @@ function WalletDashboard() {
             )}
           </div>
 
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700 flex flex-col items-center">
-            <h3 className="text-lg font-semibold mb-2 text-gray-800 dark:text-gray-200 w-full text-left">
-              Alocação ({CATEGORIES_CONFIG[activeTab].label})
-            </h3>
-            {filteredPositions.length > 0 ? (
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700 flex flex-col items-center relative">
+            <div className="w-full flex flex-col sm:flex-row justify-between items-center mb-4 gap-2">
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+                Alocação (
+                {allocationView === 'general' && activeTab === 'total'
+                  ? 'Categorias'
+                  : CATEGORIES_CONFIG[activeTab].label}
+                )
+              </h3>
+
+              {activeTab === 'total' && (
+                <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1">
+                  <button
+                    onClick={() => setAllocationView('general')}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                      allocationView === 'general'
+                        ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    Geral
+                  </button>
+                  <button
+                    onClick={() => setAllocationView('specific')}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                      allocationView === 'specific'
+                        ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    Específico
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {currentPieData.length > 0 ? (
               <>
                 <div className="w-full h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={filteredPositions}
+                        data={currentPieData}
                         cx="50%"
                         cy="50%"
                         innerRadius={60}
                         outerRadius={80}
                         paddingAngle={5}
-                        dataKey="total_value_current"
+                        dataKey={
+                          allocationView === 'general' && activeTab === 'total'
+                            ? 'value'
+                            : 'total_value_current'
+                        }
                         nameKey="name"
                       >
-                        {filteredPositions.map((entry, index) => (
-                          <Cell
-                            key={`cell-${index}`}
-                            fill={COLORS[index % COLORS.length]}
-                            stroke={selectedAssetTicker === entry.ticker ? '#fff' : 'none'}
-                            strokeWidth={selectedAssetTicker === entry.ticker ? 2 : 0}
-                            opacity={
-                              selectedAssetTicker && selectedAssetTicker !== entry.ticker ? 0.3 : 1
-                            }
-                          />
-                        ))}
+                        {currentPieData.map((entry, index) => {
+                          return (
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={entry.color}
+                              stroke={selectedAssetTicker === entry.ticker ? '#fff' : 'none'}
+                              strokeWidth={selectedAssetTicker === entry.ticker ? 2 : 0}
+                              opacity={
+                                selectedAssetTicker && selectedAssetTicker !== entry.ticker
+                                  ? 0.3
+                                  : 1
+                              }
+                            />
+                          );
+                        })}
                       </Pie>
                       <Tooltip content={<CustomPieTooltip />} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
+
                 <div className="flex flex-wrap gap-2 justify-center mt-4 max-h-24 overflow-y-auto custom-scrollbar">
-                  {filteredPositions.map((p, index) => (
-                    <div
-                      key={p.ticker}
-                      onClick={() =>
-                        setSelectedAssetTicker(selectedAssetTicker === p.ticker ? '' : p.ticker)
-                      }
-                      className={`flex items-center text-xs cursor-pointer transition-opacity ${selectedAssetTicker && selectedAssetTicker !== p.ticker ? 'opacity-40' : 'opacity-100'} text-gray-600 dark:text-gray-300`}
-                    >
-                      <span
-                        className="w-3 h-3 rounded-full mr-1"
-                        style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                      ></span>
-                      {p.ticker}
-                    </div>
-                  ))}
+                  {currentPieData.map((p, index) => {
+                    const isGeneral = allocationView === 'general' && activeTab === 'total';
+                    const label = isGeneral ? p.name : p.ticker;
+                    const color = isGeneral ? p.color : COLORS[index % COLORS.length];
+
+                    const value = isGeneral ? p.value : p.total_value_current;
+                    const percent = totalValue > 0 ? ((value / totalValue) * 100).toFixed(0) : 0;
+
+                    return (
+                      <div
+                        key={label}
+                        onClick={() => {
+                          if (!isGeneral) {
+                            setSelectedAssetTicker(
+                              selectedAssetTicker === p.ticker ? '' : p.ticker
+                            );
+                          }
+                        }}
+                        className={`flex items-center text-xs ${!isGeneral ? 'cursor-pointer' : ''} transition-opacity ${selectedAssetTicker && selectedAssetTicker !== p.ticker ? 'opacity-40' : 'opacity-100'} text-gray-600 dark:text-gray-300`}
+                      >
+                        <span
+                          className="w-3 h-3 rounded-full mr-1"
+                          style={{ backgroundColor: color }}
+                        ></span>
+                        {label}{' '}
+                        {isGeneral && (
+                          <span className="ml-1 text-gray-400 font-normal">({percent}%)</span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </>
             ) : (
@@ -549,7 +626,6 @@ function WalletDashboard() {
           </div>
         </div>
 
-        {}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
@@ -611,7 +687,6 @@ function WalletDashboard() {
                         }
                         style={{ cursor: 'pointer' }}
                       >
-                        {}
                         <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">
                           <div className="flex items-center gap-3">
                             <span
@@ -632,41 +707,34 @@ function WalletDashboard() {
                           </div>
                         </td>
 
-                        {}
                         <td className="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-mono">
                           {row.qty}
                         </td>
 
-                        {}
                         <td className="px-6 py-4 text-right text-gray-500 dark:text-gray-400 font-mono">
                           {formatCurrency(row.purchase_price)}
                         </td>
 
-                        {}
                         <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white font-mono">
                           {formatCurrency(currentPrice)}
                         </td>
 
-                        {}
                         <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-gray-100 font-mono">
                           {formatCurrency(marketValue)}
                         </td>
 
-                        {}
                         <td className="px-6 py-4">
                           <div className="flex justify-center">
                             {renderVariation(variationValue, false)}
                           </div>
                         </td>
 
-                        {}
                         <td className="px-6 py-4">
                           <div className="flex justify-center">
                             {renderVariation(rentabilityPercent, true)}
                           </div>
                         </td>
 
-                        {}
                         <td className="px-6 py-4 text-center">
                           <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-semibold px-2.5 py-0.5 rounded">
                             {share.toFixed(1)}%

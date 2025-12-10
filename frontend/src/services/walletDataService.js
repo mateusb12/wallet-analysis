@@ -244,9 +244,7 @@ const fetchRealAssetPerformance = async (months, assetType) => {
     if (validHistories.length === 0) return { chartData: [], warnings: [] };
 
     const allDates = validHistories.flatMap((h) => h.data.map((d) => d.trade_date));
-    const uniqueDates = [...new Set(allDates)]
-      .filter((date) => date >= earliestPurchaseDate)
-      .sort();
+    const uniqueDates = [...new Set(allDates)].sort();
 
     if (uniqueDates.length === 0) return { chartData: [], warnings: [] };
 
