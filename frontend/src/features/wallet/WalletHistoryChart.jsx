@@ -27,15 +27,32 @@ const formatPercent = (value) =>
     maximumFractionDigits: 2,
   }).format(value);
 
-// Custom Dot Component to render purchase points
 const PurchaseDot = (props) => {
-  const { cx, cy, payload } = props;
+  const { cx, cy, payload, isDark } = props;
 
-  // Only render if this specific data point has purchase events attached
   if (payload && payload.purchaseEvents && payload.purchaseEvents.length > 0) {
+    const strokeColor = isDark ? '#1f2937' : '#ffffff';
+
+    const size = 18;
+    const radius = 6;
+    const borderSize = 3;
+
     return (
-      <svg x={cx - 6} y={cy - 6} width={12} height={12} fill="white" viewBox="0 0 10 10">
-        <circle cx="5" cy="5" r="5" fill="#2563eb" stroke="white" strokeWidth="2" />
+      <svg
+        x={cx - size / 2}
+        y={cy - size / 2}
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+      >
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="#3b82f6"
+          stroke={strokeColor}
+          strokeWidth={borderSize}
+        />
       </svg>
     );
   }
@@ -55,14 +72,13 @@ const CustomTooltip = ({ active, payload, label, isDark }) => {
     const portfolioVal = portfolioEntry ? portfolioEntry.value : 0;
     const ratio = portfolioVal > 0 ? (portfolioVal - benchmarkVal) / portfolioVal : 0;
 
-    // Extract purchase events from the payload
     const purchaseEvents = payload[0].payload.purchaseEvents || [];
 
     return (
       <div className={`${bgClass} border p-3 rounded-lg shadow-lg text-sm z-50`}>
         <p className="font-bold mb-2 border-b border-gray-500/20 pb-1">{formatChartDate(label)}</p>
 
-        {/* Render Purchase Details if they exist for this date */}
+        {}
         {purchaseEvents.length > 0 && (
           <div className="mb-3 pb-2 border-b border-gray-500/20 bg-blue-50 dark:bg-blue-900/20 -mx-3 px-3 py-2">
             <p className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-1 flex items-center gap-1">
@@ -120,37 +136,31 @@ function WalletHistoryChart({
 
   const hasData = Array.isArray(data) && data.length > 0;
 
-  // Process data to merge purchase events, handling missing dates (weekends/holidays)
   const processedData = useMemo(() => {
     if (!hasData) return [];
 
-    // 1. Create a deep copy of data to avoid mutation and ensure sorting
     const result = [...data]
       .sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date))
       .map((d) => ({ ...d, purchaseEvents: [] }));
 
     if (!purchaseEvents || purchaseEvents.length === 0) return result;
 
-    // 2. Map each event to the exact date OR the next available date
     purchaseEvents.forEach((event) => {
       const pDate = new Date(event.purchaseDate);
 
-      // Try exact match first
       let matchIndex = result.findIndex((d) => d.trade_date === event.purchaseDate);
 
       let isApprox = false;
 
-      // If no exact match (e.g., purchased on Saturday, or data gap), find closest future date
       if (matchIndex === -1) {
         matchIndex = result.findIndex((d) => {
           const dDate = new Date(d.trade_date);
-          // Check if data date is AFTER purchase date
+
           return dDate > pDate;
         });
         if (matchIndex !== -1) isApprox = true;
       }
 
-      // If we found a valid point (exact or next available), attach the event
       if (matchIndex !== -1) {
         result[matchIndex].purchaseEvents.push({ ...event, isApproximate: isApprox });
       }
@@ -238,7 +248,7 @@ function WalletHistoryChart({
             fill="url(#colorInvested)"
             fillOpacity={1}
             connectNulls={false}
-            dot={<PurchaseDot />}
+            dot={<PurchaseDot isDark={isDark} />}
             activeDot={{ r: 6, strokeWidth: 0 }}
           />
 
