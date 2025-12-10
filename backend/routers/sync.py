@@ -4,6 +4,8 @@ import yfinance as yf
 import pandas as pd
 import os
 from supabase import create_client, Client
+
+from ..core.connections import get_supabase
 from ..schemas import TickerSync
 
 router = APIRouter(prefix="/sync", tags=["Market Data"])
@@ -104,6 +106,58 @@ def sync_ticker(payload: TickerSync):
             "success": True,
             "count": len(records),
             "message": f"Successfully synced {len(records)} records for {ticker}"
+        }
+
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/ifix")
+def sync_ifix(payload: TickerSync):
+    ticker = payload.ticker
+    if not ticker:
+        raise HTTPException(status_code=400, detail="Ticker is required")
+
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=60)
+    yf_ticker = f"{ticker.upper()}.SA"
+
+    print(f"📡 Downloading IFIX data from {yf_ticker}...", flush=True)
+
+    try:
+        df_raw = yf.download(
+            yf_ticker,
+            start=start_date.strftime("%Y-%m-%d"),
+            end=end_date.strftime("%Y-%m-%d"),
+            auto_adjust=False,
+            progress=False
+        )
+
+        if df_raw.empty:
+            raise HTTPException(status_code=404, detail="Yahoo returned no data")
+
+        df_norm = normalize_yahoo(df_raw)
+
+        # FIX: Use the shared connection helper
+        # This ensures load_dotenv() is called and credentials are valid
+        supabase = get_supabase()
+
+        records = []
+        for _, row in df_norm.iterrows():
+            records.append({
+                "trade_date": row["date"],
+                "close_value": float(row["close"]),
+            })
+
+        response = supabase.table("ifix_history").upsert(
+            records,
+            on_conflict="trade_date"
+        ).execute()
+
+        return {
+            "success": True,
+            "count": len(records),
+            "message": f"Successfully synced {len(records)} IFIX records using {ticker}"
         }
 
     except Exception as e:
