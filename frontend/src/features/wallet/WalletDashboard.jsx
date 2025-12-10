@@ -4,10 +4,11 @@ import {
   fetchWalletPerformanceHistory,
   fetchSpecificAssetHistory,
 } from '../../services/walletDataService.js';
+import { fetchB3Prices } from '../../services/b3service.js';
 import WalletHistoryChart from './WalletHistoryChart.jsx';
-
 import DataConsistencyAlert from '../../components/DataConsistencyAlert.jsx';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { ArrowUp, ArrowDown, Minus } from 'lucide-react';
 
 import iconStocks from '../../assets/stocks.png';
 import iconEtf from '../../assets/etf.png';
@@ -17,7 +18,6 @@ import iconTotal from '../../assets/all.png';
 const CustomPieTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     const data = payload[0];
-
     return (
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 p-3 rounded-lg shadow-lg text-sm z-50">
         <p className="font-bold text-gray-800 dark:text-gray-100 mb-1 max-w-[200px] leading-tight">
@@ -36,6 +36,13 @@ const CustomPieTooltip = ({ active, payload }) => {
 
 const formatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+
+const formatPercent = (value) =>
+  new Intl.NumberFormat('pt-BR', {
+    style: 'percent',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value / 100);
 
 const CATEGORIES_CONFIG = {
   total: { label: 'Visão Geral', benchmark: 'CDI', icon: iconTotal },
@@ -67,7 +74,6 @@ function WalletDashboard() {
   const [selectedAssetTicker, setSelectedAssetTicker] = useState('');
   const [specificAssetHistory, setSpecificAssetHistory] = useState([]);
   const [loadingSpecific, setLoadingSpecific] = useState(false);
-
   const [dataWarnings, setDataWarnings] = useState([]);
 
   useEffect(() => {
@@ -78,7 +84,40 @@ function WalletDashboard() {
           fetchWalletPositions(),
           fetchWalletPerformanceHistory(),
         ]);
-        setPositions(posData);
+
+        const positionsWithRealPrices = await Promise.all(
+          posData.map(async (p) => {
+            try {
+              const { data } = await fetchB3Prices(p.ticker, 1, 1);
+
+              let currentPrice = p.purchase_price;
+              let priceSource = 'compra';
+
+              if (data && data.length > 0) {
+                currentPrice = parseFloat(data[0].close);
+                priceSource = 'b3_real';
+              }
+
+              return {
+                ...p,
+                current_price: currentPrice,
+                total_value_current: currentPrice * p.qty,
+                price_source: priceSource,
+              };
+            } catch (err) {
+              console.error(`Erro ao buscar preço para ${p.ticker}`, err);
+
+              return {
+                ...p,
+                current_price: p.purchase_price,
+                total_value_current: p.purchase_price * p.qty,
+                price_source: 'erro_fallback',
+              };
+            }
+          })
+        );
+
+        setPositions(positionsWithRealPrices);
         setFullHistoryData(histData);
 
         if (histData.warnings && histData.warnings.length > 0) {
@@ -123,10 +162,11 @@ function WalletDashboard() {
   const categoryTotals = useMemo(() => {
     const totals = { stock: 0, etf: 0, fii: 0, total: 0 };
     positions.forEach((p) => {
+      const value = p.total_value_current || 0;
       if (totals[p.type] !== undefined) {
-        totals[p.type] += p.total_value;
+        totals[p.type] += value;
       }
-      totals.total += p.total_value;
+      totals.total += value;
     });
     return totals;
   }, [positions]);
@@ -184,27 +224,71 @@ function WalletDashboard() {
     earliestPurchaseDate,
   ]);
 
-  const totalValue = filteredPositions.reduce((acc, curr) => acc + curr.total_value, 0);
+  const totalValue = filteredPositions.reduce(
+    (acc, curr) => acc + (curr.total_value_current || 0),
+    0
+  );
   const totalAssets = filteredPositions.length;
 
   const largestPosition = filteredPositions.reduce(
-    (prev, current) => (prev.total_value > current.total_value ? prev : current),
-    { ticker: '-', total_value: 0, name: '' }
+    (prev, current) =>
+      (prev.total_value_current || 0) > (current.total_value_current || 0) ? prev : current,
+    { ticker: '-', total_value_current: 0, name: '' }
   );
 
-  const largestShare = totalValue > 0 ? (largestPosition.total_value / totalValue) * 100 : 0;
+  const largestShare =
+    totalValue > 0 ? ((largestPosition.total_value_current || 0) / totalValue) * 100 : 0;
 
   const COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#6366f1'];
 
+  const renderVariation = (value, isPercent = false) => {
+    const numValue = parseFloat(value);
+
+    if (Math.abs(numValue) < 0.001) {
+      return (
+        <span className="text-gray-500 font-medium">
+          <Minus className="w-3 h-3 inline mr-1" />
+          0,00{isPercent ? '%' : ''}
+        </span>
+      );
+    }
+
+    const isPositive = numValue > 0;
+    const ColorClass = isPositive
+      ? 'text-green-600 dark:text-green-400'
+      : 'text-red-600 dark:text-red-400';
+    const BgClass = isPositive
+      ? 'bg-green-100 dark:bg-green-900/30'
+      : 'bg-red-100 dark:bg-red-900/30';
+    const Icon = isPositive ? ArrowUp : ArrowDown;
+
+    return (
+      <div
+        className={`flex items-center justify-center gap-1 px-2 py-0.5 rounded-md min-w-[80px] ${BgClass} ${ColorClass}`}
+      >
+        <Icon className="w-3 h-3" />
+        <span className="font-bold text-xs">
+          {isPercent ? formatPercent(numValue) : formatCurrency(numValue)}
+        </span>
+      </div>
+    );
+  };
+
   if (loading) {
-    return <div className="p-8 text-gray-500 dark:text-gray-400">Carregando carteira...</div>;
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-100 dark:bg-gray-900">
+        <div className="text-xl text-gray-500 dark:text-gray-400 animate-pulse">
+          Carregando carteira e atualizando preços...
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="p-8 dark:bg-gray-900 min-h-screen font-sans animate-fade-in">
-      {}
       <DataConsistencyAlert warnings={dataWarnings} className="mb-6" />
 
+      {}
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">Meu Portfólio</h2>
 
@@ -216,19 +300,19 @@ function WalletDashboard() {
                 key={key}
                 onClick={() => setActiveTab(key)}
                 className={`
-          relative flex items-center p-5 rounded-2xl border transition-all duration-300 group text-left
-          ${
-            isActive
-              ? 'bg-blue-600 border-blue-600 shadow-lg shadow-blue-500/30 transform scale-[1.02]'
-              : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md'
-          }
-        `}
+                  relative flex items-center p-5 rounded-2xl border transition-all duration-300 group text-left
+                  ${
+                    isActive
+                      ? 'bg-blue-600 border-blue-600 shadow-lg shadow-blue-500/30 transform scale-[1.02]'
+                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md'
+                  }
+                `}
               >
                 <div
                   className={`
-    flex-shrink-0 w-16 h-16 rounded-xl mr-4 transition-colors duration-300 overflow-hidden flex items-center justify-center
-    ${isActive ? 'bg-white/20' : 'bg-gray-100 dark:bg-gray-700 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30'}
-  `}
+                  flex-shrink-0 w-16 h-16 rounded-xl mr-4 transition-colors duration-300 overflow-hidden flex items-center justify-center
+                  ${isActive ? 'bg-white/20' : 'bg-gray-100 dark:bg-gray-700 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30'}
+                `}
                 >
                   <img
                     src={config.icon}
@@ -242,17 +326,13 @@ function WalletDashboard() {
 
                 <div className="flex flex-col">
                   <span
-                    className={`text-sm font-medium mb-1 ${
-                      isActive ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'
-                    }`}
+                    className={`text-sm font-medium mb-1 ${isActive ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'}`}
                   >
                     {config.label}
                   </span>
 
                   <span
-                    className={`text-xl font-bold tracking-tight ${
-                      isActive ? 'text-white' : 'text-gray-900 dark:text-white'
-                    }`}
+                    className={`text-xl font-bold tracking-tight ${isActive ? 'text-white' : 'text-gray-900 dark:text-white'}`}
                   >
                     {formatCurrency(categoryTotals[key])}
                   </span>
@@ -268,6 +348,7 @@ function WalletDashboard() {
       </div>
 
       <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+        {}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
             <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -291,6 +372,7 @@ function WalletDashboard() {
           </div>
         </div>
 
+        {}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
             <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
@@ -301,7 +383,6 @@ function WalletDashboard() {
                     : `Performance vs ${CATEGORIES_CONFIG[activeTab].benchmark}`}
                 </h3>
 
-                {}
                 {activeTab !== 'total' && (
                   <select
                     value={selectedAssetTicker}
@@ -371,7 +452,7 @@ function WalletDashboard() {
                         innerRadius={60}
                         outerRadius={80}
                         paddingAngle={5}
-                        dataKey="total_value"
+                        dataKey="total_value_current"
                         nameKey="name"
                       >
                         {filteredPositions.map((entry, index) => (
@@ -418,10 +499,11 @@ function WalletDashboard() {
 
         {}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
               Detalhamento: {CATEGORIES_CONFIG[activeTab].label}
             </h3>
+            <span className="text-xs text-gray-500">*Cotações atualizadas via B3/Supabase</span>
           </div>
           <div className="overflow-x-auto">
             {filteredPositions.length > 0 ? (
@@ -431,8 +513,11 @@ function WalletDashboard() {
                     <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700">
                       Ativo
                     </th>
-                    <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700">
-                      Quantidade
+                    <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
+                      Quant.
+                    </th>
+                    <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-right">
+                      Preço Médio
                     </th>
                     <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-right">
                       Preço Atual
@@ -441,13 +526,28 @@ function WalletDashboard() {
                       Total
                     </th>
                     <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
-                      % Carteira
+                      Variação (R$)
+                    </th>
+                    <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
+                      Rentab. (%)
+                    </th>
+                    <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
+                      % Cart.
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {filteredPositions.map((row) => {
-                    const share = totalValue > 0 ? (row.total_value / totalValue) * 100 : 0;
+                    const currentPrice = row.current_price;
+                    const costBasis = row.purchase_price * row.qty;
+                    const marketValue = currentPrice * row.qty;
+
+                    const variationValue = marketValue - costBasis;
+                    const rentabilityPercent =
+                      costBasis > 0 ? (variationValue / costBasis) * 100 : 0;
+
+                    const share = totalValue > 0 ? (marketValue / totalValue) * 100 : 0;
+
                     return (
                       <tr
                         key={row.ticker}
@@ -459,6 +559,7 @@ function WalletDashboard() {
                         }
                         style={{ cursor: 'pointer' }}
                       >
+                        {}
                         <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">
                           <div className="flex items-center gap-3">
                             <span
@@ -471,18 +572,49 @@ function WalletDashboard() {
                               }`}
                             ></span>
                             <div className="flex flex-col">
-                              <span>{row.ticker}</span>
-                              <span className="text-xs text-gray-500 font-normal">{row.name}</span>
+                              <span className="font-bold">{row.ticker}</span>
+                              <span className="text-xs text-gray-500 font-normal">
+                                {row.name.substring(0, 20)}
+                              </span>
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-gray-700 dark:text-gray-300">{row.qty}</td>
-                        <td className="px-6 py-4 text-right text-gray-700 dark:text-gray-300">
+
+                        {}
+                        <td className="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-mono">
+                          {row.qty}
+                        </td>
+
+                        {}
+                        <td className="px-6 py-4 text-right text-gray-500 dark:text-gray-400 font-mono">
                           {formatCurrency(row.purchase_price)}
                         </td>
-                        <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-gray-100">
-                          {formatCurrency(row.total_value)}
+
+                        {}
+                        <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white font-mono">
+                          {formatCurrency(currentPrice)}
                         </td>
+
+                        {}
+                        <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-gray-100 font-mono">
+                          {formatCurrency(marketValue)}
+                        </td>
+
+                        {}
+                        <td className="px-6 py-4">
+                          <div className="flex justify-center">
+                            {renderVariation(variationValue, false)}
+                          </div>
+                        </td>
+
+                        {}
+                        <td className="px-6 py-4">
+                          <div className="flex justify-center">
+                            {renderVariation(rentabilityPercent, true)}
+                          </div>
+                        </td>
+
+                        {}
                         <td className="px-6 py-4 text-center">
                           <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-semibold px-2.5 py-0.5 rounded">
                             {share.toFixed(1)}%
