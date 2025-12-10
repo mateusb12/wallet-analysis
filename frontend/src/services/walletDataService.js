@@ -181,10 +181,9 @@ const getPriceFromRecord = (record) => {
   return val ? parseFloat(val) : 0;
 };
 
-const fetchRealFiiPerformance = async (months) => {
-  const assetsToCheck = RAW_WALLET_DATA.filter((item) =>
-    ['fii', 'etf', 'stock'].includes(item.type)
-  );
+const fetchRealAssetPerformance = async (months, assetType) => {
+  const assetsToCheck = RAW_WALLET_DATA.filter((item) => item.type === assetType);
+
   if (assetsToCheck.length === 0) return { chartData: [], warnings: [] };
 
   const earliestPurchaseDate = assetsToCheck.reduce(
@@ -194,11 +193,11 @@ const fetchRealFiiPerformance = async (months) => {
 
   try {
     const histories = await Promise.all(
-      assetsToCheck.map(async (fii) => {
-        const data = await fetchFiiChartData(fii.ticker, months);
+      assetsToCheck.map(async (asset) => {
+        const data = await fetchFiiChartData(asset.ticker, months);
         return {
-          ticker: fii.ticker,
-          initialQty: fii.qty,
+          ticker: asset.ticker,
+          initialQty: asset.qty,
           data: data ? data.sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date)) : [],
         };
       })
@@ -225,7 +224,6 @@ const fetchRealFiiPerformance = async (months) => {
       ticker: h.ticker,
       lastDate: h.data[h.data.length - 1].trade_date,
     }));
-
     const ifixLastDate = ifixData.length > 0 ? ifixData[ifixData.length - 1].trade_date : startDate;
     const allLastDates = [...assetLastDates.map((a) => a.lastDate), ifixLastDate];
     const globalMaxDate = allLastDates.reduce(
@@ -245,7 +243,6 @@ const fetchRealFiiPerformance = async (months) => {
 
     const portfolioState = validHistories.map((h) => {
       const startRecord = h.data.find((d) => d.trade_date >= earliestPurchaseDate);
-
       const startPrice = startRecord
         ? getPriceFromRecord(startRecord)
         : getPriceFromRecord(h.data[0]);
@@ -300,12 +297,10 @@ const fetchRealFiiPerformance = async (months) => {
 
     const finalResult = dailyData.map((day) => {
       let currentIfix = ifixMap[day.trade_date];
-
       if (!currentIfix && lastKnownIfix) currentIfix = lastKnownIfix;
       if (currentIfix) lastKnownIfix = currentIfix;
 
       let benchmarkVal = day.invested_amount;
-
       if (anchorIfix && currentIfix) {
         const performanceRatio = currentIfix / anchorIfix;
         benchmarkVal = anchorInvested * performanceRatio;
@@ -319,52 +314,30 @@ const fetchRealFiiPerformance = async (months) => {
 
     return { chartData: finalResult, warnings };
   } catch (err) {
-    console.error('Error calculating real FII performance:', err);
+    console.error(`Error calculating real performance for ${assetType}:`, err);
     return { chartData: [], warnings: [] };
   }
 };
 
+export const fetchRealFiiPerformance = (months) => fetchRealAssetPerformance(months, 'fii');
+export const fetchRealStocksPerformance = (months) => fetchRealAssetPerformance(months, 'stock');
+export const fetchRealETFPerformance = (months) => fetchRealAssetPerformance(months, 'etf');
+
 export const fetchWalletPerformanceHistory = async (overrideMonths = null) => {
   const timeRangeMonths = overrideMonths || getMaxHistoryMonths();
 
-  const stockTotal = RAW_WALLET_DATA.filter((i) => i.type === 'stock').reduce(
-    (acc, item) => acc + item.total_value,
-    0
-  );
-  const etfTotal = RAW_WALLET_DATA.filter((i) => i.type === 'etf').reduce(
-    (acc, item) => acc + item.total_value,
-    0
-  );
-  const fiiTotal = RAW_WALLET_DATA.filter((i) => i.type === 'fii').reduce(
-    (acc, item) => acc + item.total_value,
-    0
-  );
+  const [fiiResult, stockResult, etfResult] = await Promise.all([
+    fetchRealFiiPerformance(timeRangeMonths),
+    fetchRealStocksPerformance(timeRangeMonths),
+    fetchRealETFPerformance(timeRangeMonths),
+  ]);
 
-  const fiiResult = await fetchRealFiiPerformance(timeRangeMonths);
-  let fiiCurve = fiiResult.chartData;
-  const fiiWarnings = fiiResult.warnings || [];
+  const fiiCurve = fiiResult.chartData;
+  const stockCurve = stockResult.chartData;
+  const etfCurve = etfResult.chartData;
 
-  const getFiiStartDate = () => {
-    const fiis = RAW_WALLET_DATA.filter((i) => i.type === 'fii');
-    if (!fiis.length) return null;
-    return fiis.reduce(
-      (min, p) => (p.purchaseDate < min ? p.purchaseDate : min),
-      fiis[0].purchaseDate
-    );
-  };
-  const fiiStartDate = getFiiStartDate();
-
-  if (!fiiCurve || fiiCurve.length === 0) {
-    console.warn('Using simulation for FIIs due to missing historical data.');
-    fiiCurve = generateFakeCurve(fiiTotal, timeRangeMonths, 0.05, 1.08, 0.11);
-
-    if (fiiStartDate) {
-      fiiCurve = fiiCurve.filter((d) => d.trade_date >= fiiStartDate);
-    }
-  }
-
-  const stockCurve = generateFakeCurve(stockTotal, timeRangeMonths, 0.15, 1.2, 0.12);
-  const etfCurve = generateFakeCurve(etfTotal, timeRangeMonths, 0.1, 1.1, 0.1);
+  const allWarnings = [...fiiResult.warnings, ...stockResult.warnings, ...etfResult.warnings];
+  const uniqueWarnings = [...new Set(allWarnings)];
 
   const validCurves = [stockCurve, etfCurve, fiiCurve].filter((c) => c && c.length > 0);
   const totalCurve = combineHistories(validCurves);
@@ -374,7 +347,7 @@ export const fetchWalletPerformanceHistory = async (overrideMonths = null) => {
     etf: etfCurve,
     fii: fiiCurve,
     total: totalCurve,
-    warnings: fiiWarnings,
+    warnings: uniqueWarnings,
   };
 };
 
