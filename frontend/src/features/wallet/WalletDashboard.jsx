@@ -65,7 +65,12 @@ const VariationBadge = ({ value, isPercent = false }) => {
 
   return (
     <div
-      className={`flex items-center justify-center gap-1 px-2 py-0.5 rounded-md min-w-[80px] ${BgClass} ${ColorClass}`}
+      className={`
+      flex items-center justify-center gap-1 px-2 py-0.5 rounded-md min-w-[80px]
+      ${BgClass} ${ColorClass}
+      border border-solid
+      ${isPositive ? 'border-green-500/40' : 'border-red-500/40'}
+    `}
     >
       <Icon className="w-3 h-3" />
       <span className="font-bold text-xs">
@@ -98,7 +103,7 @@ const SummaryCard = ({ title, value, subtext, type = 'neutral', rawValue }) => {
           <p className={`text-2xl font-bold ${colorClass}`}>{value}</p>
           {subtext && <p className="text-xs text-gray-400 mt-1">{subtext}</p>}
         </div>
-        <div className={`p-3 rounded-xl ${bgIcon} ${iconColor}`}>
+        <div className={`p-3 rounded-xl border border-blue-400/30 ${bgIcon} ${iconColor}`}>
           {title.includes('Investido') && <Wallet className="w-6 h-6" />}
           {title.includes('Atual') && <TrendingUp className="w-6 h-6" />}
           {(title.includes('Lucro') || title.includes('Prejuízo')) && (
