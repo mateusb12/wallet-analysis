@@ -17,7 +17,7 @@ export default function ManualPriceSync() {
   };
 
   const handleIfixSync = async () => {
-    const tickerToUse = ticker || 'XFIX11';
+    const tickerToUse = ticker || '^IFIX';
     executeSync(() => syncService.syncIfix(tickerToUse));
   };
 

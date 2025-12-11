@@ -1,3 +1,6 @@
+import base64
+import io
+import json
 import os
 from datetime import datetime, timedelta
 
@@ -114,40 +117,111 @@ def sync_ticker(payload: TickerSync):
         raise HTTPException(status_code=500, detail=str(e))
 
 @market_data_bp.post("/ifix")
-def sync_ifix(payload: TickerSync):
-    ticker = payload.ticker
-    if not ticker:
-        raise HTTPException(status_code=400, detail="Ticker is required")
-
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=60)
-    yf_ticker = f"{ticker.upper()}.SA"
-
-    print(f"📡 Downloading IFIX data from {yf_ticker}...", flush=True)
+def sync_ifix():
+    """
+    Syncs IFIX directly from B3 website (Official Source).
+    Mimics the curl logic: Base64 Decode -> Unpivot Matrix -> Parse Dates.
+    """
+    print("📡 Downloading IFIX data directly from B3 (Official Source)...", flush=True)
 
     try:
-        df_raw = yf.download(
-            yf_ticker,
-            start=start_date.strftime("%Y-%m-%d"),
-            end=end_date.strftime("%Y-%m-%d"),
-            auto_adjust=False,
-            progress=False
-        )
+        # 1. Construct the B3 Dynamic URL (Yearly payload)
+        current_year = str(datetime.now().year)
 
-        if df_raw.empty:
-            raise HTTPException(status_code=404, detail="Yahoo returned no data")
+        # This matches the JSON payload exactly: {"index":"IFIX","language":"pt-br","year":"2025"}
+        payload_data = {
+            "index": "IFIX",
+            "language": "pt-br",
+            "year": current_year
+        }
 
-        df_norm = normalize_yahoo(df_raw)
+        # Create base64 string for the URL
+        json_str = json.dumps(payload_data, separators=(',', ':'))
+        b64_payload = base64.b64encode(json_str.encode()).decode()
 
-        supabase = get_supabase()
+        url = f"https://sistemaswebb3-listados.b3.com.br/indexStatisticsProxy/IndexCall/GetDownloadPortfolioDay/{b64_payload}"
+
+        # --- THE FIX IS HERE ---
+        # B3/Cloudflare blocks "python-requests". We must spoof a browser User-Agent.
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+
+        # 2. Fetch Raw Data with Headers
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+
+        # B3 returns a raw base64 string, we must decode it to get the CSV content
+        csv_content = base64.b64decode(response.content).decode("iso-8859-1")
+
+        # 3. Parse CSV with Pandas
+        df = pd.read_csv(io.StringIO(csv_content), sep=";", skiprows=1)
+
+        # Remove "MÍNIMO" / "MÁXIMO" summary rows
+        df = df[pd.to_numeric(df['Dia'], errors='coerce').notnull()]
+
+        # 4. Unpivot/Melt
+        month_cols = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+        available_months = [m for m in month_cols if m in df.columns]
+
+        df_melted = df.melt(id_vars=["Dia"], value_vars=available_months, var_name="Month", value_name="Value")
+
+        # Filter out empty values
+        df_melted = df_melted.dropna(subset=["Value"])
+        df_melted = df_melted[df_melted["Value"] != ""]
+
+        # 5. Clean Data & Format Dates
+        month_map = {
+            "Jan": "01", "Fev": "02", "Mar": "03", "Abr": "04", "Mai": "05", "Jun": "06",
+            "Jul": "07", "Ago": "08", "Set": "09", "Out": "10", "Nov": "11", "Dez": "12"
+        }
 
         records = []
-        for _, row in df_norm.iterrows():
+        for _, row in df_melted.iterrows():
+            day = str(row["Dia"]).zfill(2)
+            month_num = month_map.get(row["Month"])
+            trade_date = f"{current_year}-{month_num}-{day}"
+
+            # Clean Number: "3.311,48" -> 3311.48
+            raw_val = str(row["Value"])
+            clean_val = raw_val.replace(".", "").replace(",", ".")
+            final_val = float(clean_val)
+
             records.append({
-                "trade_date": row["date"],
-                "close_value": float(row["close"]),
+                "trade_date": trade_date,
+                "close_value": final_val
             })
 
+        records.sort(key=lambda x: x['trade_date'])
+
+        if not records:
+            raise HTTPException(status_code=404, detail="B3 returned data, but no valid records were parsed.")
+
+        # 6. SAFETY BLOCK
+        supabase = get_supabase()
+
+        last_record_resp = supabase.table("ifix_history") \
+            .select("close_value") \
+            .order("trade_date", desc=True) \
+            .limit(1) \
+            .execute()
+
+        if last_record_resp.data:
+            last_db_value = float(last_record_resp.data[0]['close_value'])
+            new_val_sample = records[-1]['close_value']
+
+            if last_db_value > 0:
+                ratio = new_val_sample / last_db_value
+                if ratio < 0.5 or ratio > 1.5:
+                    msg = (
+                        f"SAFETY BLOCK: Major discrepancy detected! "
+                        f"Existing DB Value: {last_db_value}, New B3 Value: {new_val_sample}. "
+                        "Sync aborted."
+                    )
+                    print(f"❌ {msg}")
+                    raise HTTPException(status_code=422, detail=msg)
+
+        # 7. Insert
         response = supabase.table("ifix_history").upsert(
             records,
             on_conflict="trade_date"
@@ -156,11 +230,13 @@ def sync_ifix(payload: TickerSync):
         return {
             "success": True,
             "count": len(records),
-            "message": f"Successfully synced {len(records)} IFIX records using {ticker}"
+            "message": f"Successfully synced {len(records)} IFIX records directly from B3."
         }
 
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Error syncing IFIX: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
