@@ -3,88 +3,12 @@ import { getIfixRange } from './ifixService.js';
 import { getLastIpcaDate } from './ipcaService.js';
 import { cdiService } from './cdiService.js';
 import { getIbovRange } from './ibovService.js';
+import { supabase } from './supabaseClient.js';
 
 const SIMULATED_TODAY = new Date();
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-const SOURCE_POSITIONS = [
-  {
-    ticker: 'BBAS3',
-    name: 'BANCO DO BRASIL',
-    qty: 5,
-    purchase_price: 21.79,
-    type: 'stock',
-    purchaseDate: '2025-11-24',
-  },
-  {
-    ticker: 'BBSE3',
-    name: 'BB SEGURIDADE',
-    qty: 9,
-    purchase_price: 33.85,
-    type: 'stock',
-    purchaseDate: '2025-11-21',
-  },
-  {
-    ticker: 'WEGE3',
-    name: 'WEG S.A.',
-    qty: 5,
-    purchase_price: 43.85,
-    type: 'stock',
-    purchaseDate: '2025-11-21',
-  },
-  {
-    ticker: 'IVVB11',
-    name: 'ISHARE S&P 500',
-    qty: 1,
-    purchase_price: 398.6,
-    type: 'etf',
-    purchaseDate: '2025-11-21',
-  },
-  {
-    ticker: 'QQQQ11',
-    name: 'NASDAQ-100',
-    qty: 3,
-    purchase_price: 95.9,
-    type: 'etf',
-    purchaseDate: '2025-11-21',
-  },
-  {
-    ticker: 'BTLG11',
-    name: 'BTG PACTUAL LOG',
-    qty: 1,
-    purchase_price: 104.14,
-    type: 'fii',
-    purchaseDate: '2025-11-21',
-  },
-  {
-    ticker: 'KNCR11',
-    name: 'KINEA RENDIM.',
-    qty: 1,
-    purchase_price: 104.99,
-    type: 'fii',
-    purchaseDate: '2025-11-21',
-  },
-  {
-    ticker: 'KNHF11',
-    name: 'KINEA HEDGE',
-    qty: 4,
-    purchase_price: 92.21,
-    type: 'fii',
-    purchaseDate: '2025-11-21',
-  },
-  {
-    ticker: 'XPCM11',
-    name: 'XP MACAÉ',
-    qty: 10,
-    purchase_price: 8.23,
-    type: 'fii',
-    purchaseDate: '2025-11-21',
-  },
-];
-
-const RAW_WALLET_DATA = SOURCE_POSITIONS.map((position) => ({
-  ...position,
-  total_value: parseFloat((position.qty * position.purchase_price).toFixed(2)),
-}));
+let cachedPositions = null;
 
 const normalizeDate = (dateInput) => {
   if (!dateInput) return null;
@@ -93,8 +17,47 @@ const normalizeDate = (dateInput) => {
   return null;
 };
 
-export const fetchWalletPositions = async () => {
-  return new Promise((resolve) => setTimeout(() => resolve(RAW_WALLET_DATA), 500));
+export const fetchWalletPositions = async (forceRefresh = false) => {
+  if (cachedPositions && !forceRefresh) {
+    return cachedPositions;
+  }
+
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user || !user.id) {
+      console.warn('User not authenticated, returning empty wallet.');
+      return [];
+    }
+
+    const response = await fetch(`${API_BASE}/wallet/purchases?user_id=${user.id}`);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch wallet purchases');
+    }
+
+    const data = await response.json();
+
+    cachedPositions = data.map((item) => ({
+      ticker: item.ticker,
+      name: item.name || item.ticker,
+      qty: item.qty,
+      purchase_price: item.price,
+      type: item.type,
+      purchaseDate: item.trade_date,
+      total_value: parseFloat((item.qty * item.price).toFixed(2)),
+
+      current_price: item.price,
+      total_value_current: parseFloat((item.qty * item.price).toFixed(2)),
+    }));
+
+    return cachedPositions;
+  } catch (error) {
+    console.error('Error fetching wallet positions:', error);
+    return [];
+  }
 };
 
 const getPriceFromRecord = (record) => {
@@ -189,8 +152,9 @@ const fetchBenchmarkData = async (type, startDate, endDate) => {
   }
 };
 
-const getMaxHistoryMonths = () => {
-  const dates = RAW_WALLET_DATA.map((d) => new Date(d.purchaseDate).getTime());
+const getMaxHistoryMonths = async () => {
+  const positions = await fetchWalletPositions();
+  const dates = positions.map((d) => new Date(d.purchaseDate).getTime());
   if (dates.length === 0) return 6;
   const minDate = new Date(Math.min(...dates));
   const today = new Date(SIMULATED_TODAY);
@@ -281,7 +245,8 @@ const calculateBenchmarkCurve = (portfolioCurve, benchmarkHistory, isRate = fals
 };
 
 const fetchRealAssetPerformance = async (months, assetType) => {
-  const assetsToCheck = RAW_WALLET_DATA.filter((item) => item.type === assetType);
+  const positions = await fetchWalletPositions();
+  const assetsToCheck = positions.filter((item) => item.type === assetType);
   if (assetsToCheck.length === 0) return { chartData: [], warnings: [] };
 
   const earliestPurchaseDate = assetsToCheck.reduce(
@@ -413,7 +378,7 @@ const combineHistories = (curves) => {
 };
 
 export const fetchWalletPerformanceHistory = async (overrideMonths = null) => {
-  const timeRangeMonths = overrideMonths || getMaxHistoryMonths();
+  const timeRangeMonths = overrideMonths || (await getMaxHistoryMonths());
   const [fiiResult, stockResult, etfResult, lastIpcaDate] = await Promise.all([
     fetchRealFiiPerformance(timeRangeMonths),
     fetchRealStocksPerformance(timeRangeMonths),
@@ -454,7 +419,8 @@ export const fetchWalletPerformanceHistory = async (overrideMonths = null) => {
 };
 
 export const fetchSpecificAssetHistory = async (ticker, months = 60) => {
-  const asset = RAW_WALLET_DATA.find((a) => a.ticker === ticker);
+  const positions = await fetchWalletPositions();
+  const asset = positions.find((a) => a.ticker === ticker);
   if (!asset) return [];
 
   const todayStr = SIMULATED_TODAY.toISOString().split('T')[0];
