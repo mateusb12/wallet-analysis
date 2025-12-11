@@ -1,7 +1,47 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../features/auth/AuthContext';
-import { TrendingUp, Calendar, DollarSign, Tag, Search, Filter } from 'lucide-react';
+import { TrendingUp, Search, ArrowUp, ArrowDown, Clock } from 'lucide-react';
 import { formatChartDate } from '../utils/dateUtils.js';
+import { fetchB3Prices } from '../services/b3service.js';
+
+// Função auxiliar para calcular o tempo decorrido
+const getTimeElapsed = (dateString) => {
+  if (!dateString) return '-';
+  const start = new Date(dateString);
+  const end = new Date();
+
+  // Diferença em milissegundos
+  const diffTime = Math.abs(end - start);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 30) return `${diffDays} dias`;
+
+  const years = end.getFullYear() - start.getFullYear();
+  let months = end.getMonth() - start.getMonth();
+
+  // Ajuste se o mês atual for anterior ao mês de compra
+  if (months < 0 || (months === 0 && end.getDate() < start.getDate())) {
+    months += 12;
+    // Se passou de ano mas não completou o mês, remove 1 ano do cálculo de anos
+    if (end.getMonth() < start.getMonth()) {
+      // Já tratado pelo months += 12, mas anos precisa diminuir 1 se a lógica base foi diff simples
+    }
+  }
+
+  // Recalculo simples aproximado para exibição amigável
+  const totalMonths =
+    (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+
+  if (totalMonths < 12) {
+    return `${totalMonths} meses`;
+  }
+
+  const displayYears = Math.floor(totalMonths / 12);
+  const displayMonths = totalMonths % 12;
+
+  if (displayMonths === 0) return `${displayYears} anos`;
+  return `${displayYears} a, ${displayMonths} m`;
+};
 
 export default function Contributions() {
   const { user } = useAuth();
@@ -18,13 +58,57 @@ export default function Contributions() {
 
   const fetchPurchases = async () => {
     try {
+      // 1. Buscar histórico de compras
       const response = await fetch(`${API_URL}/wallet/purchases?user_id=${user.id}`);
-      if (response.ok) {
-        const data = await response.json();
+      if (!response.ok) throw new Error('Falha ao buscar aportes');
 
-        const sorted = data.sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
-        setPurchases(sorted);
-      }
+      const data = await response.json();
+
+      // 2. Identificar Tickers Únicos para buscar cotação atual (evita chamadas repetidas)
+      const uniqueTickers = [...new Set(data.map((item) => item.ticker))];
+      const currentPricesMap = {};
+
+      // 3. Buscar preço atual para cada ticker único
+      await Promise.all(
+        uniqueTickers.map(async (ticker) => {
+          try {
+            // Pega o registro mais recente (page 1, size 1)
+            const { data: priceData } = await fetchB3Prices(ticker, 1, 1);
+            if (priceData && priceData.length > 0) {
+              currentPricesMap[ticker] = parseFloat(priceData[0].close);
+            }
+          } catch (err) {
+            console.error(`Erro ao buscar preço para ${ticker}`, err);
+          }
+        })
+      );
+
+      // 4. Combinar dados
+      const enrichedData = data.map((item) => {
+        const currentPrice = currentPricesMap[item.ticker] || null; // Null se não achar cotação
+
+        // Cálculos
+        let profitValue = 0;
+        let profitPercent = 0;
+
+        if (currentPrice) {
+          const totalPaid = Number(item.price) * Number(item.qty);
+          const totalCurrent = currentPrice * Number(item.qty);
+          profitValue = totalCurrent - totalPaid;
+          profitPercent = ((currentPrice - Number(item.price)) / Number(item.price)) * 100;
+        }
+
+        return {
+          ...item,
+          currentPrice,
+          profitValue,
+          profitPercent,
+          hasPriceData: !!currentPrice,
+        };
+      });
+
+      const sorted = enrichedData.sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
+      setPurchases(sorted);
     } catch (error) {
       console.error('Erro ao buscar aportes:', error);
     } finally {
@@ -35,7 +119,7 @@ export default function Contributions() {
   const filteredPurchases = purchases.filter((item) => {
     const matchesSearch =
       item.ticker.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.name.toLowerCase().includes(searchTerm.toLowerCase());
+      (item.name && item.name.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesType = typeFilter === 'all' || item.type === typeFilter;
     return matchesSearch && matchesType;
   });
@@ -54,8 +138,8 @@ export default function Contributions() {
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-20">
-      {}
+    <div className="p-4 md:p-8 max-w-[90rem] mx-auto pb-20">
+      {/* Header */}
       <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
@@ -63,7 +147,7 @@ export default function Contributions() {
             Meus Aportes
           </h2>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Histórico completo de negociações e movimentações
+            Histórico completo de negociações e rentabilidade por aporte
           </p>
         </div>
 
@@ -91,10 +175,10 @@ export default function Contributions() {
         </div>
       </div>
 
-      {}
+      {/* Table */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-gray-500">Carregando histórico...</div>
+          <div className="p-8 text-center text-gray-500">Calculando rentabilidade histórica...</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -103,52 +187,106 @@ export default function Contributions() {
                   <th className="px-6 py-3 font-medium text-center">Data</th>
                   <th className="px-6 py-3 font-medium text-center">Ativo</th>
                   <th className="px-6 py-3 font-medium text-center">Tipo</th>
-                  <th className="px-6 py-3 font-medium text-center">Quantidade</th>
-                  <th className="px-6 py-3 font-medium text-center">Preço Unitário</th>
-                  <th className="px-6 py-3 font-medium text-center">Total</th>
+                  <th className="px-6 py-3 font-medium text-center">Qtd</th>
+                  <th className="px-6 py-3 font-medium text-right">Preço Pago</th>
+                  <th className="px-6 py-3 font-medium text-right">Total Pago</th>
+
+                  {/* Novas Colunas */}
+                  <th className="px-6 py-3 font-medium text-center border-l border-gray-100 dark:border-gray-700">
+                    <div className="flex items-center justify-center gap-1">
+                      <Clock className="w-3 h-3" /> Tempo
+                    </div>
+                  </th>
+                  <th className="px-6 py-3 font-medium text-right">Rentab. (R$)</th>
+                  <th className="px-6 py-3 font-medium text-center">Rentab. (%)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {filteredPurchases.length > 0 ? (
-                  filteredPurchases.map((item) => (
-                    <tr
-                      key={item.id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
-                    >
-                      <td className="px-6 py-4 text-center whitespace-nowrap text-gray-600 dark:text-gray-300">
-                        {formatChartDate(item.trade_date)}
-                      </td>
-                      <td className="px-6 py-4 text-center font-bold text-gray-900 dark:text-white">
-                        {item.ticker}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span
-                          className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${getTypeColor(item.type)}`}
-                        >
-                          {item.type}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center text-gray-900 dark:text-white">
-                        {item.qty}
-                      </td>
-                      <td className="px-6 py-4 text-center text-gray-600 dark:text-gray-300">
-                        {Number(item.price).toLocaleString('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        })}
-                      </td>
-                      <td className="px-6 py-4 text-center font-medium text-gray-900 dark:text-white">
-                        {(Number(item.price) * Number(item.qty)).toLocaleString('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        })}
-                      </td>
-                    </tr>
-                  ))
+                  filteredPurchases.map((item) => {
+                    const isProfit = item.profitValue >= 0;
+                    const colorClass = isProfit
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-red-600 dark:text-red-400';
+                    const bgClass = isProfit
+                      ? 'bg-green-50 dark:bg-green-900/20'
+                      : 'bg-red-50 dark:bg-red-900/20';
+
+                    return (
+                      <tr
+                        key={item.id}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
+                      >
+                        <td className="px-6 py-4 text-center whitespace-nowrap text-gray-600 dark:text-gray-300">
+                          {formatChartDate(item.trade_date)}
+                        </td>
+                        <td className="px-6 py-4 text-center font-bold text-gray-900 dark:text-white">
+                          {item.ticker}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span
+                            className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${getTypeColor(item.type)}`}
+                          >
+                            {item.type}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center text-gray-900 dark:text-white">
+                          {item.qty}
+                        </td>
+                        <td className="px-6 py-4 text-right text-gray-600 dark:text-gray-300">
+                          {Number(item.price).toLocaleString('pt-BR', {
+                            style: 'currency',
+                            currency: 'BRL',
+                          })}
+                        </td>
+                        <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white">
+                          {(Number(item.price) * Number(item.qty)).toLocaleString('pt-BR', {
+                            style: 'currency',
+                            currency: 'BRL',
+                          })}
+                        </td>
+
+                        {/* Coluna Rendendo Por */}
+                        <td className="px-6 py-4 text-center text-gray-500 dark:text-gray-400 border-l border-gray-100 dark:border-gray-700 font-medium text-xs">
+                          {getTimeElapsed(item.trade_date)}
+                        </td>
+
+                        {/* Coluna Diferença R$ */}
+                        <td className={`px-6 py-4 text-right font-bold ${colorClass}`}>
+                          {item.hasPriceData ? (
+                            item.profitValue.toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )}
+                        </td>
+
+                        {/* Coluna Diferença % */}
+                        <td className="px-6 py-4 text-center">
+                          {item.hasPriceData ? (
+                            <div
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${bgClass} ${colorClass}`}
+                            >
+                              {isProfit ? (
+                                <ArrowUp className="w-3 h-3 mr-1" />
+                              ) : (
+                                <ArrowDown className="w-3 h-3 mr-1" />
+                              )}
+                              {item.profitPercent.toFixed(2)}%
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-xs">S/ Dados</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
                     <td
-                      colSpan="7"
+                      colSpan="9"
                       className="px-6 py-8 text-center text-gray-500 dark:text-gray-400"
                     >
                       Nenhum aporte encontrado.
