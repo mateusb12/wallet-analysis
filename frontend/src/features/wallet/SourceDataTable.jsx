@@ -22,9 +22,10 @@ export default function SourceDataTable({
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
 
-  if (!data || data.length === 0) return null;
-
-  const sortedData = [...data].sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
+  const sortedData =
+    data && data.length > 0
+      ? [...data].sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date))
+      : [];
 
   useEffect(() => {
     if (highlightDate && sortedData.length > 0) {
@@ -45,6 +46,8 @@ export default function SourceDataTable({
       }
     }
   }, [highlightDate, sortedData]);
+
+  if (!data || data.length === 0) return null;
 
   const totalPages = Math.ceil(sortedData.length / rowsPerPage);
   const currentRows = sortedData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
