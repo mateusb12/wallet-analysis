@@ -2,6 +2,7 @@ import { fetchFiiChartData, fetchB3Prices } from './b3service.js';
 import { getIfixRange } from './ifixService.js';
 import { getLastIpcaDate } from './ipcaService.js';
 import { cdiService } from './cdiService.js';
+import { getIbovRange } from './ibovService.js';
 
 const SIMULATED_TODAY = new Date();
 
@@ -136,11 +137,15 @@ const detectAnomalies = (data, assetName) => {
 const fetchBenchmarkData = async (type, startDate, endDate) => {
   try {
     let result = [];
+
     if (type === 'fii') {
       result = await getIfixRange(startDate, endDate);
+    } else if (type === 'stock') {
+      result = await getIbovRange(startDate, endDate);
     } else {
       let tickerIndex = '^BVSP';
       if (type === 'etf') tickerIndex = 'IVVB11';
+
       const { data } = await fetchB3Prices(tickerIndex, 1, 365 * 5);
       if (data) {
         result = data
@@ -282,29 +287,25 @@ const fetchRealAssetPerformance = async (months, assetType) => {
     const uniqueDates = [...new Set(allDates)].sort();
     if (uniqueDates.length === 0) return { chartData: [], warnings: assetWarnings };
 
-    // --- NEW LOGIC: Initialize state with cost basis info ---
     const portfolioState = validHistories.map((h) => {
       const purchaseRecord = h.data.find((d) => d.trade_date >= h.purchaseDate);
       const referencePrice = purchaseRecord
         ? getPriceFromRecord(purchaseRecord)
         : getPriceFromRecord(h.data[0]);
 
-      // Note: We do NOT sum initialInvestedTotal here anymore.
-      // It is calculated dynamically inside the daily loop below.
-
       return {
         ticker: h.ticker,
         qty: h.initialQty,
         lastPrice: referencePrice,
         purchaseDate: h.purchaseDate,
-        initialCost: referencePrice * h.initialQty, // Store cost for this specific asset
+        initialCost: referencePrice * h.initialQty,
       };
     });
 
     const dailyData = uniqueDates
       .map((date) => {
         let dailyTotalValue = 0;
-        let dailyInvestedAmount = 0; // Dynamic invested amount for this specific day
+        let dailyInvestedAmount = 0;
 
         portfolioState.forEach((asset, idx) => {
           const historyData = validHistories[idx].data;
@@ -322,9 +323,6 @@ const fetchRealAssetPerformance = async (months, assetType) => {
             }
           }
 
-          // --- CRITICAL FIX ---
-          // Only add value AND invested amount if date >= purchaseDate
-          // This creates the "spike" on the chart when money is deposited
           if (date >= asset.purchaseDate) {
             dailyTotalValue += asset.qty * asset.lastPrice;
             dailyInvestedAmount += asset.initialCost;
