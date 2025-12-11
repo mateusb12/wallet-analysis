@@ -345,3 +345,127 @@ def sync_cdi():
         print(f"❌ Error syncing CDI: {e}")
         # import traceback; traceback.print_exc() # Uncomment for deep debugging
         raise HTTPException(status_code=500, detail=str(e))
+
+@market_data_bp.post("/ibov")
+def sync_ibov():
+    """
+    Syncs IBOVESPA directly from B3 website (Official Source).
+    Mimics the curl logic: Base64 Decode -> Unpivot Matrix -> Parse Dates.
+    """
+    print("📡 Downloading IBOVESPA data directly from B3 (Official Source)...", flush=True)
+
+    try:
+        # 1. Construct the B3 Dynamic URL (Yearly payload)
+        current_year = str(datetime.now().year)
+
+        # Payload specific for IBOV
+        payload_data = {
+            "index": "IBOVESPA",
+            "language": "pt-br",
+            "year": current_year
+        }
+
+        # Create base64 string for the URL
+        json_str = json.dumps(payload_data, separators=(',', ':'))
+        b64_payload = base64.b64encode(json_str.encode()).decode()
+
+        url = f"https://sistemaswebb3-listados.b3.com.br/indexStatisticsProxy/IndexCall/GetDownloadPortfolioDay/{b64_payload}"
+
+        # Browser spoofing headers
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+
+        # 2. Fetch Raw Data
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+
+        # Decode Base64 response to get CSV content
+        csv_content = base64.b64decode(response.content).decode("iso-8859-1")
+
+        # 3. Parse CSV
+        df = pd.read_csv(io.StringIO(csv_content), sep=";", skiprows=1)
+
+        # Remove "MÍNIMO" / "MÁXIMO" summary rows
+        df = df[pd.to_numeric(df['Dia'], errors='coerce').notnull()]
+
+        # 4. Unpivot/Melt
+        month_cols = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+        available_months = [m for m in month_cols if m in df.columns]
+
+        df_melted = df.melt(id_vars=["Dia"], value_vars=available_months, var_name="Month", value_name="Value")
+
+        # Filter out empty values
+        df_melted = df_melted.dropna(subset=["Value"])
+        df_melted = df_melted[df_melted["Value"] != ""]
+
+        # 5. Clean Data & Format Dates
+        month_map = {
+            "Jan": "01", "Fev": "02", "Mar": "03", "Abr": "04", "Mai": "05", "Jun": "06",
+            "Jul": "07", "Ago": "08", "Set": "09", "Out": "10", "Nov": "11", "Dez": "12"
+        }
+
+        records = []
+        for _, row in df_melted.iterrows():
+            day = str(row["Dia"]).zfill(2)
+            month_num = month_map.get(row["Month"])
+            trade_date = f"{current_year}-{month_num}-{day}"
+
+            # Clean Number: "125.311,48" -> 125311.48
+            raw_val = str(row["Value"])
+            clean_val = raw_val.replace(".", "").replace(",", ".")
+            final_val = float(clean_val)
+
+            records.append({
+                "trade_date": trade_date,
+                "close_value": final_val
+            })
+
+        records.sort(key=lambda x: x['trade_date'])
+
+        if not records:
+            raise HTTPException(status_code=404, detail="B3 returned data, but no valid records were parsed.")
+
+        # 6. SAFETY BLOCK
+        supabase = get_supabase()
+
+        # Check against 'ibov_history' table
+        last_record_resp = supabase.table("ibov_history") \
+            .select("close_value") \
+            .order("trade_date", desc=True) \
+            .limit(1) \
+            .execute()
+
+        if last_record_resp.data:
+            last_db_value = float(last_record_resp.data[0]['close_value'])
+            new_val_sample = records[-1]['close_value']
+
+            if last_db_value > 0:
+                ratio = new_val_sample / last_db_value
+                # 50% drop or 50% gain is highly unlikely for IBOV in one day; prevents bad parsing
+                if ratio < 0.5 or ratio > 1.5:
+                    msg = (
+                        f"SAFETY BLOCK: Major discrepancy detected! "
+                        f"Existing DB Value: {last_db_value}, New B3 Value: {new_val_sample}. "
+                        "Sync aborted."
+                    )
+                    print(f"❌ {msg}")
+                    raise HTTPException(status_code=422, detail=msg)
+
+        # 7. Insert into ibov_history
+        response = supabase.table("ibov_history").upsert(
+            records,
+            on_conflict="trade_date"
+        ).execute()
+
+        return {
+            "success": True,
+            "count": len(records),
+            "message": f"Successfully synced {len(records)} IBOV records directly from B3."
+        }
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"❌ Error syncing IBOV: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

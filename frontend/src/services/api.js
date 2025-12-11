@@ -66,6 +66,17 @@ export const syncService = {
     if (!response.ok) throw new Error(data.detail || 'IFIX Sync failed');
     return data;
   },
+
+  async syncIbov() {
+    const response = await fetch(`${API_URL}/sync/ibov`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'IBOV Sync failed');
+    return data;
+  },
 };
 
 export const analysisService = {

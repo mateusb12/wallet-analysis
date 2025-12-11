@@ -68,3 +68,10 @@ class CdiHistory(Base):
     id = Column(Integer, primary_key=True, index=True)
     trade_date = Column(Date, unique=True, nullable=False)
     value = Column(Float, nullable=False)
+
+class IbovHistory(Base):
+    __tablename__ = "ibov_history"
+
+    trade_date = Column(Date, primary_key=True, nullable=False)
+    close_value = Column(Numeric(10, 2), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
