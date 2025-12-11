@@ -282,27 +282,30 @@ const fetchRealAssetPerformance = async (months, assetType) => {
     const uniqueDates = [...new Set(allDates)].sort();
     if (uniqueDates.length === 0) return { chartData: [], warnings: assetWarnings };
 
-    let initialInvestedTotal = 0;
-
+    // --- NEW LOGIC: Initialize state with cost basis info ---
     const portfolioState = validHistories.map((h) => {
       const purchaseRecord = h.data.find((d) => d.trade_date >= h.purchaseDate);
       const referencePrice = purchaseRecord
         ? getPriceFromRecord(purchaseRecord)
         : getPriceFromRecord(h.data[0]);
 
-      initialInvestedTotal += referencePrice * h.initialQty;
+      // Note: We do NOT sum initialInvestedTotal here anymore.
+      // It is calculated dynamically inside the daily loop below.
 
       return {
         ticker: h.ticker,
         qty: h.initialQty,
         lastPrice: referencePrice,
         purchaseDate: h.purchaseDate,
+        initialCost: referencePrice * h.initialQty, // Store cost for this specific asset
       };
     });
 
     const dailyData = uniqueDates
       .map((date) => {
         let dailyTotalValue = 0;
+        let dailyInvestedAmount = 0; // Dynamic invested amount for this specific day
+
         portfolioState.forEach((asset, idx) => {
           const historyData = validHistories[idx].data;
           const dayRecord = historyData.find((d) => d.trade_date === date);
@@ -318,13 +321,20 @@ const fetchRealAssetPerformance = async (months, assetType) => {
               }
             }
           }
-          dailyTotalValue += asset.qty * asset.lastPrice;
+
+          // --- CRITICAL FIX ---
+          // Only add value AND invested amount if date >= purchaseDate
+          // This creates the "spike" on the chart when money is deposited
+          if (date >= asset.purchaseDate) {
+            dailyTotalValue += asset.qty * asset.lastPrice;
+            dailyInvestedAmount += asset.initialCost;
+          }
         });
 
         return {
           trade_date: date,
           portfolio_value: parseFloat(dailyTotalValue.toFixed(2)),
-          invested_amount: parseFloat(initialInvestedTotal.toFixed(2)),
+          invested_amount: parseFloat(dailyInvestedAmount.toFixed(2)),
         };
       })
       .filter((d) => d.portfolio_value > 0);

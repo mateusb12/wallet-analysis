@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -59,7 +59,7 @@ const PurchaseDot = (props) => {
   return null;
 };
 
-const CustomTooltip = ({ active, payload, label, isDark }) => {
+const CustomTooltip = ({ active, payload, label, isDark, selectedDate }) => {
   if (active && payload && payload.length) {
     const bgClass = isDark
       ? 'bg-gray-800 border-gray-600 text-gray-200'
@@ -73,12 +73,12 @@ const CustomTooltip = ({ active, payload, label, isDark }) => {
     const ratio = portfolioVal > 0 ? (portfolioVal - benchmarkVal) / portfolioVal : 0;
 
     const purchaseEvents = payload[0].payload.purchaseEvents || [];
+    const isSelected = label === selectedDate;
 
     return (
       <div className={`${bgClass} border p-3 rounded-lg shadow-lg text-sm z-50`}>
         <p className="font-bold mb-2 border-b border-gray-500/20 pb-1">{formatChartDate(label)}</p>
 
-        {}
         {purchaseEvents.length > 0 && (
           <div className="mb-3 pb-2 border-b border-gray-500/20 bg-blue-50 dark:bg-blue-900/20 -mx-3 px-3 py-2">
             <p className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-1 flex items-center gap-1">
@@ -118,6 +118,17 @@ const CustomTooltip = ({ active, payload, label, isDark }) => {
               {formatPercent(ratio)}
             </span>
           </div>
+
+          {/* New Instruction Section */}
+          <div className="mt-2 pt-2 border-t border-gray-500/20 text-center animate-pulse">
+            {isSelected ? (
+              <p className="text-[10px] font-bold text-pink-600 dark:text-pink-400 uppercase tracking-wide">
+                Clique novamente para ver tabela
+              </p>
+            ) : (
+              <p className="text-[10px] text-gray-400">Clique para selecionar</p>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -134,6 +145,7 @@ function WalletHistoryChart({
 }) {
   const themeContext = tryUseTheme();
   const isDark = themeContext === 'dark';
+  const [selectedDate, setSelectedDate] = useState(null);
 
   const hasData = Array.isArray(data) && data.length > 0;
 
@@ -197,8 +209,17 @@ function WalletHistoryChart({
           onClick={(state) => {
             if (state && state.activePayload && state.activePayload.length > 0) {
               const payload = state.activePayload[0].payload;
-              if (onPointClick && payload.trade_date) {
-                onPointClick(payload.trade_date);
+              const clickedDate = payload.trade_date;
+
+              if (selectedDate === clickedDate) {
+                // Second click on same point: Execute Action
+                if (onPointClick && clickedDate) {
+                  onPointClick(clickedDate);
+                  setSelectedDate(null); // Optional: reset selection after action
+                }
+              } else {
+                // First click: Select
+                setSelectedDate(clickedDate);
               }
             }
           }}
@@ -231,7 +252,7 @@ function WalletHistoryChart({
             domain={['auto', 'auto']}
           />
 
-          <Tooltip content={<CustomTooltip isDark={isDark} />} />
+          <Tooltip content={<CustomTooltip isDark={isDark} selectedDate={selectedDate} />} />
 
           <Legend
             payload={[
@@ -240,6 +261,19 @@ function WalletHistoryChart({
               { value: 'Compras', type: 'circle', color: '#2563eb' },
             ]}
           />
+
+          {/* Visual Indicator for Selected Point */}
+          {selectedDate && (
+            <ReferenceLine x={selectedDate} stroke="#ec4899" strokeDasharray="3 3">
+              <Label
+                value="Selecionado"
+                position="insideTop"
+                fill={isDark ? '#fbcfe8' : '#be185d'}
+                fontSize={10}
+                offset={10}
+              />
+            </ReferenceLine>
+          )}
 
           <Area
             type="monotone"
