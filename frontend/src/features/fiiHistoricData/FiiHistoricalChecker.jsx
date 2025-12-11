@@ -63,9 +63,12 @@ function FiiHistoricalChecker() {
     if (!tickerToFetch) return;
 
     try {
+      console.log(`🔍 Iniciando carga do gráfico para: ${tickerToFetch}`);
+
       const fiiData = await fetchFiiChartData(tickerToFetch, timeRange);
 
       if (!fiiData || fiiData.length === 0) {
+        console.warn('🔍 Sem dados de FII encontrados.');
         setChartData([]);
         return;
       }
@@ -76,6 +79,8 @@ function FiiHistoricalChecker() {
 
       const startDate = sortedData[0].trade_date;
       const endDate = sortedData[sortedData.length - 1].trade_date;
+
+      console.log('🔍 Range de Datas:', { startDate, endDate, totalRecords: sortedData.length });
 
       const [startYear, startMonth] = startDate.split('-').map(Number);
       const [endYear, endMonth] = endDate.split('-').map(Number);
@@ -98,18 +103,23 @@ function FiiHistoricalChecker() {
 
       const basePrice = parseFloat(sortedData[0].purchase_price);
 
-      const baseIfix =
-        ifixMap[startDate] || (ifixData.length > 0 ? parseFloat(ifixData[0].close_value) : null);
+      const baseIfix = ifixData.length > 0 ? parseFloat(ifixData[0].close_value) : null;
+
+      console.log('🔍 Âncoras (t=0):', {
+        basePrice,
+        baseIfix,
+        startDateOfAsset: startDate,
+        firstDateOfIfix: ifixData.length > 0 ? ifixData[0].trade_date : 'N/A',
+      });
 
       let ipcaAccumulatedFactor = 1.0;
       let ipcaProcessedMonth = '';
-
       let accumulatedShares = 1.0;
       let dividendProcessedMonth = '';
 
       const mergedData = sortedData.map((dayData, index) => {
-        const dateKey = dayData.trade_date.substring(0, 7);
         const fullDateKey = dayData.trade_date;
+        const dateKey = fullDateKey.substring(0, 7);
 
         const currentPrice = parseFloat(dayData.purchase_price);
         const currentDividend = parseFloat(dayData.dividend_value || 0);
@@ -122,34 +132,47 @@ function FiiHistoricalChecker() {
 
         if (currentDividend > 0 && dateKey !== dividendProcessedMonth) {
           const totalCashReceived = currentDividend * accumulatedShares;
-
           if (currentPrice > 0) {
             const newSharesPurchased = totalCashReceived / currentPrice;
             accumulatedShares += newSharesPurchased;
           }
-
           dividendProcessedMonth = dateKey;
         }
 
         let ifixProjection = null;
-        if (baseIfix && ifixMap[fullDateKey]) {
-          const currentIfix = ifixMap[fullDateKey];
+
+        const currentIfix = ifixMap[fullDateKey];
+
+        if (baseIfix && currentIfix) {
           const ifixFactor = currentIfix / baseIfix;
           ifixProjection = basePrice * ifixFactor;
+
+          if (index < 3) {
+            console.log(`🔍 Row ${index} [${fullDateKey}]:`, {
+              basePrice,
+              baseIfix,
+              currentIfix,
+              factor: ifixFactor.toFixed(4),
+              result: ifixProjection.toFixed(2),
+            });
+          }
+        } else if (index < 3) {
+          console.warn(
+            `⚠️ Row ${index} [${fullDateKey}]: IFIX missing for this date. Map has it? ${!!currentIfix}`
+          );
         }
 
         return {
           ...dayData,
           ipca_projection: basePrice * ipcaAccumulatedFactor,
           ifix_projection: ifixProjection,
-
           total_return: currentPrice * accumulatedShares,
         };
       });
 
       setChartData([...mergedData].reverse());
     } catch (err) {
-      console.error('Erro ao carregar gráfico', err);
+      console.error('❌ Erro ao carregar gráfico', err);
     }
   };
 

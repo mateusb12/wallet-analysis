@@ -170,6 +170,11 @@ const getMaxHistoryMonths = () => {
 const calculateBenchmarkCurve = (portfolioCurve, benchmarkHistory, isRate = false) => {
   if (!portfolioCurve || portfolioCurve.length === 0) return [];
 
+  console.group('🔍 calculateBenchmarkCurve Debug');
+  console.log(
+    `Input: Portfolio Points: ${portfolioCurve.length}, Benchmark Points: ${benchmarkHistory?.length}`
+  );
+
   const indexMap = {};
   if (benchmarkHistory && Array.isArray(benchmarkHistory)) {
     benchmarkHistory.forEach((item) => {
@@ -182,6 +187,14 @@ const calculateBenchmarkCurve = (portfolioCurve, benchmarkHistory, isRate = fals
 
   const availableDates = Object.keys(indexMap).sort();
 
+  if (availableDates.length > 0) {
+    console.log(
+      `Benchmark Date Range: ${availableDates[0]} to ${availableDates[availableDates.length - 1]}`
+    );
+  } else {
+    console.warn('⚠️ Benchmark History is empty or could not be mapped!');
+  }
+
   const getClosestIndexValue = (targetDate) => {
     if (indexMap[targetDate] !== undefined) return indexMap[targetDate];
     let closestDate = null;
@@ -190,13 +203,14 @@ const calculateBenchmarkCurve = (portfolioCurve, benchmarkHistory, isRate = fals
       closestDate = availableDates[i];
     }
     if (!closestDate && availableDates.length > 0) closestDate = availableDates[0];
+
     return closestDate ? indexMap[closestDate] : null;
   };
 
   let accumulatedBenchmarkCapital = 0;
   let lastKnownIndexValue = null;
 
-  return portfolioCurve.map((day, index) => {
+  const resultCurve = portfolioCurve.map((day, index) => {
     const dateKey = normalizeDate(day.trade_date);
     const currentIndexValue = getClosestIndexValue(dateKey);
     const currentInvested = day.invested_amount;
@@ -206,6 +220,12 @@ const calculateBenchmarkCurve = (portfolioCurve, benchmarkHistory, isRate = fals
       if (currentIndexValue !== null && currentIndexValue > 0) {
         lastKnownIndexValue = currentIndexValue;
       }
+
+      console.log(`📍 T=0 [${dateKey}]:`);
+      console.log(`   - Portfolio Value (Start): ${day.portfolio_value}`);
+      console.log(`   - Set Benchmark Capital to: ${accumulatedBenchmarkCapital}`);
+      console.log(`   - Raw Index Value (IFIX/CDI): ${currentIndexValue}`);
+
       return {
         ...day,
         benchmark_value: parseFloat(accumulatedBenchmarkCapital.toFixed(2)),
@@ -224,11 +244,22 @@ const calculateBenchmarkCurve = (portfolioCurve, benchmarkHistory, isRate = fals
         dailyFactor = currentIndexValue / lastKnownIndexValue;
       }
 
+      const prevCap = accumulatedBenchmarkCapital;
       accumulatedBenchmarkCapital = accumulatedBenchmarkCapital * dailyFactor;
+
+      if (index < 3) {
+        console.log(
+          `👉 T=${index} [${dateKey}]: Factor: ${dailyFactor.toFixed(6)} | OldCap: ${prevCap.toFixed(2)} -> NewCap: ${accumulatedBenchmarkCapital.toFixed(2)}`
+        );
+      }
     }
 
     if (netDeposit !== 0) {
       accumulatedBenchmarkCapital += netDeposit;
+
+      console.log(
+        `💰 Deposit at [${dateKey}]: +${netDeposit}. New Capital: ${accumulatedBenchmarkCapital}`
+      );
     }
 
     if (currentIndexValue !== null && currentIndexValue > 0) {
@@ -240,6 +271,9 @@ const calculateBenchmarkCurve = (portfolioCurve, benchmarkHistory, isRate = fals
       benchmark_value: parseFloat(accumulatedBenchmarkCapital.toFixed(2)),
     };
   });
+
+  console.groupEnd();
+  return resultCurve;
 };
 
 const fetchRealAssetPerformance = async (months, assetType) => {
@@ -276,13 +310,6 @@ const fetchRealAssetPerformance = async (months, assetType) => {
     const allDates = validHistories.flatMap((h) => h.data.map((d) => d.trade_date));
     const uniqueDates = [...new Set(allDates)].sort();
     if (uniqueDates.length === 0) return { chartData: [], warnings: assetWarnings };
-
-    const startDateChart = uniqueDates[0];
-    const endDate = uniqueDates[uniqueDates.length - 1];
-
-    const bufferDate = new Date(startDateChart);
-    bufferDate.setDate(bufferDate.getDate() - 20);
-    const startDateBenchmark = normalizeDate(bufferDate);
 
     let initialInvestedTotal = 0;
 
@@ -331,13 +358,20 @@ const fetchRealAssetPerformance = async (months, assetType) => {
       })
       .filter((d) => d.portfolio_value > 0);
 
-    const benchmarkData = await fetchBenchmarkData(assetType, startDateBenchmark, endDate);
+    const filteredDailyData = dailyData.filter((d) => d.trade_date >= earliestPurchaseDate);
+
+    if (filteredDailyData.length === 0) return { chartData: [], warnings: assetWarnings };
+
+    const effectiveStartDate = filteredDailyData[0].trade_date;
+    const endDate = filteredDailyData[filteredDailyData.length - 1].trade_date;
+
+    const benchmarkData = await fetchBenchmarkData(assetType, effectiveStartDate, endDate);
 
     const benchName =
       assetType === 'fii' ? 'IFIX' : assetType === 'etf' ? 'S&P 500 (IVVB11)' : 'IBOV';
     const benchWarnings = detectAnomalies(benchmarkData, benchName);
 
-    const finalResult = calculateBenchmarkCurve(dailyData, benchmarkData, false);
+    const finalResult = calculateBenchmarkCurve(filteredDailyData, benchmarkData, false);
 
     return { chartData: finalResult, warnings: [...assetWarnings, ...benchWarnings] };
   } catch (err) {
@@ -424,20 +458,30 @@ export const fetchSpecificAssetHistory = async (ticker, months = 60) => {
     const sortedData = data
       .filter((d) => d.trade_date <= todayStr)
       .sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date));
+
     if (sortedData.length === 0) return [];
 
-    const bufferDate = new Date(sortedData[0].trade_date);
-    bufferDate.setDate(bufferDate.getDate() - 15);
-    const startDate = normalizeDate(bufferDate);
-    const endDate = sortedData[sortedData.length - 1].trade_date;
+    const purchaseDate = asset.purchaseDate;
+
+    const filteredData = sortedData.filter((d) => d.trade_date >= purchaseDate);
+
+    if (filteredData.length === 0) {
+      console.warn(`No market data found for ${ticker} after purchase date ${purchaseDate}`);
+      return [];
+    }
+
+    const startDate = filteredData[0].trade_date;
+    const endDate = filteredData[filteredData.length - 1].trade_date;
 
     const benchmarkData = await fetchBenchmarkData(asset.type, startDate, endDate);
 
-    const assetCurve = sortedData.map((day) => {
+    const assetCurve = filteredData.map((day) => {
       const price = getPriceFromRecord(day);
       return {
         trade_date: day.trade_date,
+
         portfolio_value: parseFloat((asset.qty * price).toFixed(2)),
+
         invested_amount: parseFloat(asset.total_value.toFixed(2)),
       };
     });
