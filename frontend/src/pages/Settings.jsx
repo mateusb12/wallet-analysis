@@ -13,6 +13,7 @@ import {
   X,
   RefreshCw,
   AlertCircle,
+  FileText,
 } from 'lucide-react';
 
 export default function Settings() {
@@ -56,32 +57,70 @@ export default function Settings() {
     }
   };
 
-  const normalizeDateISO = (dateInput) => {
+  const toStandardDate = (dateInput) => {
     if (!dateInput) return '';
 
-    if (dateInput.match(/^\d{4}-\d{2}-\d{2}$/)) return dateInput;
-
-    if (dateInput.includes('/')) {
-      const [day, month, year] = dateInput.split('/');
-      return `${year}-${month}-${day}`;
+    if (
+      typeof dateInput === 'object' ||
+      (typeof dateInput === 'string' && dateInput.includes('T'))
+    ) {
+      const d = new Date(dateInput);
+      if (isNaN(d.getTime())) return '';
+      return d.toISOString().split('T')[0];
     }
+
+    if (typeof dateInput === 'string' && dateInput.includes('/')) {
+      const parts = dateInput.split('/');
+      if (parts.length === 3) {
+        return `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+    }
+
+    if (typeof dateInput === 'string' && dateInput.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return dateInput;
+    }
+
     return dateInput;
   };
 
-  const isDuplicate = (row) => {
-    if (!existingPurchases.length) return false;
+  const getDuplicateStatus = (row) => {
+    if (!existingPurchases.length) return 'new';
 
-    const rowDateISO = normalizeDateISO(row.date);
+    const rowDateString = toStandardDate(row.date);
+    const rowTicker = row.ticker.trim().toUpperCase();
 
-    return existingPurchases.some((dbItem) => {
-      const sameTicker = dbItem.ticker === row.ticker;
-      const sameDate = dbItem.trade_date === rowDateISO;
+    const match = existingPurchases.find((dbItem) => {
+      const dbTicker = dbItem.ticker.trim().toUpperCase();
+      if (dbTicker !== rowTicker) return false;
 
       const sameQty = Number(dbItem.qty) === Number(row.qty);
-      const samePrice = Math.abs(Number(dbItem.price) - Number(row.price)) < 0.01;
+      if (!sameQty) return false;
 
-      return sameTicker && sameDate && sameQty && samePrice;
+      const samePrice = Math.abs(Number(dbItem.price) - Number(row.price)) < 0.05;
+      if (!samePrice) return false;
+
+      const dbDateString = toStandardDate(dbItem.trade_date);
+
+      if (dbDateString === rowDateString) return true;
+
+      const d1 = new Date(dbDateString);
+      const d2 = new Date(rowDateString);
+
+      const diffTime = Math.abs(d2 - d1);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      return diffDays <= 6;
     });
+
+    if (match) return 'duplicate';
+
+    const tickerExists = existingPurchases.some(
+      (dbItem) => dbItem.ticker.trim().toUpperCase() === rowTicker
+    );
+
+    if (tickerExists) return 'exists';
+
+    return 'new';
   };
 
   const handleFileUpload = (e) => {
@@ -90,59 +129,123 @@ export default function Settings() {
 
     setFileName(file.name);
 
+    let fileDate = new Date().toLocaleDateString('pt-BR');
+    const dateMatch = file.name.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (dateMatch) {
+      fileDate = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
+    }
+
     const reader = new FileReader();
     reader.onload = (evt) => {
       const bstr = evt.target.result;
       const workbook = XLSX.read(bstr, { type: 'binary' });
-      const wsname = workbook.SheetNames[0];
-      const ws = workbook.Sheets[wsname];
 
-      const data = XLSX.utils.sheet_to_json(ws, { defval: '', cellDates: true });
+      let allData = [];
 
-      const formattedData = data
+      workbook.SheetNames.forEach((sheetName) => {
+        const ws = workbook.Sheets[sheetName];
+        const sheetData = XLSX.utils.sheet_to_json(ws, { defval: '', cellDates: true });
+
+        const taggedData = sheetData.map((row) => {
+          if (row['Data do Negócio'] !== undefined) return { ...row, _source: 'NEGOCIACAO' };
+          if (row['Movimentação'] !== undefined) return { ...row, _source: 'MOVIMENTACAO' };
+          return { ...row, _source: 'POSICAO' };
+        });
+
+        allData = [...allData, ...taggedData];
+      });
+
+      const formattedData = allData
         .map((row) => {
-          let rawProduct = row['Produto'] || row['produto'] || '';
           let ticker = 'UNKNOWN';
           let name = 'N/A';
-
-          if (rawProduct) {
-            const parts = rawProduct.split(' - ');
-            ticker = parts[0].trim();
-            name = parts.length > 1 ? parts.slice(1).join(' - ').trim() : ticker;
-          }
-
-          let rawPrice = row['Preço unitário'] || row['Preço Médio'] || row['Valor'] || 0;
-          let price = rawPrice;
-          if (typeof rawPrice === 'string') {
-            price =
-              parseFloat(rawPrice.replace('R$', '').replace(/\./g, '').replace(',', '.').trim()) ||
-              0;
-          }
-
-          let rawDate = row['Data'] || row['data'];
-          let purchaseDate = '';
-
-          if (rawDate instanceof Date) {
-            purchaseDate = rawDate.toLocaleDateString('pt-BR');
-          } else if (rawDate) {
-            purchaseDate = String(rawDate).trim();
-          }
-
+          let price = 0;
+          let qty = 0;
+          let purchaseDate = fileDate;
           let type = 'stock';
+
+          if (row._source === 'NEGOCIACAO') {
+            let rawTicker = row['Código de Negociação'] || '';
+            if (rawTicker.endsWith('F')) rawTicker = rawTicker.slice(0, -1);
+            ticker = rawTicker.trim();
+
+            name = row['Instituição'] || ticker;
+            qty = Number(row['Quantidade'] || 0);
+            price = Number(row['Preço'] || 0);
+
+            let rawDate = row['Data do Negócio'];
+            if (rawDate instanceof Date) purchaseDate = rawDate.toLocaleDateString('pt-BR');
+            else if (rawDate) purchaseDate = String(rawDate).trim();
+          } else if (row._source === 'MOVIMENTACAO') {
+            const movType = row['Movimentação'] || '';
+            if (!movType.includes('Liquidação') && !movType.includes('Compra')) {
+              return null;
+            }
+
+            let rawProduct = row['Produto'] || '';
+            if (rawProduct) {
+              const parts = rawProduct.split(' - ');
+              ticker = parts[0].trim();
+              name = parts.length > 1 ? parts.slice(1).join(' - ').trim() : ticker;
+            }
+
+            qty = Number(row['Quantidade'] || 0);
+            price = Number(row['Preço unitário'] || 0);
+
+            let rawDate = row['Data'];
+            if (rawDate instanceof Date) purchaseDate = rawDate.toLocaleDateString('pt-BR');
+            else if (rawDate) purchaseDate = String(rawDate).trim();
+          } else {
+            let rawProduct = row['Produto'] || row['produto'] || '';
+            if (rawProduct) {
+              const parts = rawProduct.split(' - ');
+              ticker = parts[0].trim();
+              name = parts.length > 1 ? parts.slice(1).join(' - ').trim() : ticker;
+            }
+
+            qty = Number(row['Quantidade'] || row['quantidade'] || 0);
+
+            let rawPrice = row['Preço de Fechamento'] || row['Preço unitário'] || row['Valor'] || 0;
+
+            if (typeof rawPrice === 'string') {
+              price =
+                parseFloat(
+                  rawPrice.replace('R$', '').replace(/\./g, '').replace(',', '.').trim()
+                ) || 0;
+            } else {
+              price = rawPrice;
+            }
+
+            if (price === 0 && qty > 0) {
+              const totalValRaw = row['Valor Atualizado'] || 0;
+              let totalVal =
+                typeof totalValRaw === 'string'
+                  ? parseFloat(
+                      totalValRaw.replace('R$', '').replace(/\./g, '').replace(',', '.').trim()
+                    )
+                  : totalValRaw;
+              if (totalVal > 0) price = totalVal / qty;
+            }
+          }
+
           if (ticker.endsWith('11')) type = 'fii';
-          if (ticker.endsWith('34')) type = 'bdr';
-          if (ticker === 'IVVB11' || ticker === 'BOVA11') type = 'etf';
+          if (ticker.endsWith('33') || ticker.endsWith('34')) type = 'bdr';
+          if (['IVVB11', 'BOVA11', 'SMAL11', 'QQQQ11', 'XINA11', 'HASH11'].includes(ticker)) {
+            type = 'etf';
+          }
+
+          if (ticker === 'UNKNOWN' || ticker === '' || qty === 0) return null;
 
           return {
             ticker,
             name,
-            qty: Number(row['Quantidade'] || row['quantidade'] || 0),
+            qty,
             type,
             price,
             date: purchaseDate,
           };
         })
-        .filter((item) => item.ticker !== 'UNKNOWN' && item.ticker !== '');
+        .filter((item) => item !== null);
 
       setImportPreview(formattedData);
       setIsPreviewOpen(true);
@@ -162,10 +265,13 @@ export default function Settings() {
       return;
     }
 
-    const newItems = importPreview.filter((row) => !isDuplicate(row));
+    const newItems = importPreview.filter((row) => {
+      const status = getDuplicateStatus(row);
+      return status !== 'duplicate' && status !== 'potential';
+    });
 
     if (newItems.length === 0) {
-      alert('Todos os itens já foram importados anteriormente.');
+      alert('Todos os itens já foram importados ou são duplicatas.');
       return;
     }
 
@@ -180,7 +286,7 @@ export default function Settings() {
           type: item.type,
           qty: item.qty,
           price: item.price,
-          trade_date: normalizeDateISO(item.date),
+          trade_date: toStandardDate(item.date),
         })),
       };
 
@@ -209,7 +315,11 @@ export default function Settings() {
     }
   };
 
-  const newItemsCount = importPreview.filter((r) => !isDuplicate(r)).length;
+  const newItemsCount = importPreview.filter((r) => {
+    const s = getDuplicateStatus(r);
+    return s !== 'duplicate' && s !== 'potential';
+  }).length;
+
   const duplicateCount = importPreview.length - newItemsCount;
 
   return (
@@ -301,8 +411,8 @@ export default function Settings() {
 
           <div className="p-6">
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Selecione um arquivo Excel (.xlsx) para carregar sua carteira. O sistema verificará
-              duplicatas automaticamente.
+              Suporta arquivos B3: <strong>Posição (Custódia)</strong>,{' '}
+              <strong>Negociação (Histórico)</strong> e <strong>Movimentação</strong>.
             </p>
 
             <div className="mb-6">
@@ -333,7 +443,7 @@ export default function Settings() {
                         <span className="font-semibold">Clique para enviar</span> ou arraste
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        XLSX ou XLS (MAX. 5MB)
+                        XLSX, XLS ou CSV (MAX. 5MB)
                       </p>
                     </>
                   )}
@@ -342,7 +452,7 @@ export default function Settings() {
                   id="file-upload"
                   type="file"
                   className="hidden"
-                  accept=".xlsx, .xls"
+                  accept=".xlsx, .xls, .csv"
                   onChange={handleFileUpload}
                   ref={fileInputRef}
                 />
@@ -358,7 +468,7 @@ export default function Settings() {
                 >
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-indigo-700 dark:text-indigo-300">
-                      Pré-visualização da Importação
+                      Pré-visualização
                     </span>
                     <span className="px-2 py-0.5 text-xs rounded-full bg-indigo-200 dark:bg-indigo-800 text-indigo-800 dark:text-indigo-200">
                       {importPreview.length} itens encontrados
@@ -375,7 +485,9 @@ export default function Settings() {
                     viewBox="0 0 24 24"
                     strokeWidth={2}
                     stroke="currentColor"
-                    className={`w-4 h-4 text-indigo-500 transition-transform duration-200 ${isPreviewOpen ? 'rotate-180' : ''}`}
+                    className={`w-4 h-4 text-indigo-500 transition-transform duration-200 ${
+                      isPreviewOpen ? 'rotate-180' : ''
+                    }`}
                   >
                     <path
                       strokeLinecap="round"
@@ -401,28 +513,38 @@ export default function Settings() {
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                           {importPreview.map((row, index) => {
-                            const duplicate = isDuplicate(row);
+                            const status = getDuplicateStatus(row);
+                            let rowClass = 'hover:bg-gray-50 dark:hover:bg-gray-700/50';
+                            let badge = null;
+
+                            if (status === 'duplicate') {
+                              rowClass = 'bg-red-50 dark:bg-red-900/20';
+                              badge = (
+                                <span className="text-[10px] font-bold text-red-600 bg-red-100 dark:bg-red-900/40 px-1 rounded mt-0.5 w-max">
+                                  DUPLICADO
+                                </span>
+                              );
+                            } else if (status === 'potential') {
+                              rowClass = 'bg-yellow-50 dark:bg-yellow-900/20';
+                              badge = (
+                                <span className="text-[10px] font-bold text-yellow-600 bg-yellow-100 dark:bg-yellow-900/40 px-1 rounded mt-0.5 w-max">
+                                  VERIFICAR
+                                </span>
+                              );
+                            } else if (status === 'exists') {
+                              rowClass = 'bg-blue-50 dark:bg-blue-900/10';
+                              badge = (
+                                <span className="text-[10px] font-bold text-blue-500 bg-blue-100 dark:bg-blue-900/40 px-1 rounded mt-0.5 w-max">
+                                  NOVO APORTE
+                                </span>
+                              );
+                            }
+
                             return (
-                              <tr
-                                key={index}
-                                className={`
-                                  ${
-                                    duplicate
-                                      ? 'bg-yellow-50 dark:bg-yellow-900/20 hover:bg-yellow-100 dark:hover:bg-yellow-900/30'
-                                      : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                                  } transition-colors
-                                `}
-                              >
-                                <td className="px-4 py-2 text-gray-900 dark:text-white flex items-center gap-2">
-                                  {duplicate && (
-                                    <div className="group relative">
-                                      <AlertTriangle className="w-4 h-4 text-yellow-500 cursor-help" />
-                                      <span className="absolute left-6 top-0 w-max bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none">
-                                        Já cadastrado no banco
-                                      </span>
-                                    </div>
-                                  )}
-                                  {row.date}
+                              <tr key={index} className={`transition-colors ${rowClass}`}>
+                                <td className="px-4 py-2 text-gray-900 dark:text-white flex flex-col justify-center">
+                                  <span>{row.date}</span>
+                                  {badge}
                                 </td>
                                 <td className="px-4 py-2 font-medium text-gray-900 dark:text-white">
                                   {row.ticker}
@@ -476,7 +598,7 @@ export default function Settings() {
                             <RefreshCw className="w-4 h-4 animate-spin" /> Salvando...
                           </>
                         ) : newItemsCount === 0 ? (
-                          'Todos duplicados'
+                          'Nada para importar'
                         ) : duplicateCount > 0 ? (
                           `Importar ${newItemsCount} Novos (Ignorar ${duplicateCount})`
                         ) : (
@@ -521,10 +643,14 @@ export default function Settings() {
             </div>
             <button
               onClick={toggleTheme}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${theme === 'dark' ? 'bg-blue-600' : 'bg-gray-200'}`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                theme === 'dark' ? 'bg-blue-600' : 'bg-gray-200'
+              }`}
             >
               <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${theme === 'dark' ? 'translate-x-6' : 'translate-x-1'}`}
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  theme === 'dark' ? 'translate-x-6' : 'translate-x-1'
+                }`}
               />
             </button>
           </div>
@@ -561,10 +687,16 @@ export default function Settings() {
               </div>
               <div className="flex items-center gap-2">
                 <span
-                  className={`w-2.5 h-2.5 rounded-full ${warnings.length > 0 ? 'bg-red-500' : 'bg-green-500'}`}
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    warnings.length > 0 ? 'bg-red-500' : 'bg-green-500'
+                  }`}
                 ></span>
                 <span
-                  className={`text-sm font-medium ${warnings.length > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}
+                  className={`text-sm font-medium ${
+                    warnings.length > 0
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-green-600 dark:text-green-400'
+                  }`}
                 >
                   {warnings.length > 0 ? 'Atenção Requerida' : 'Sistemas Operacionais'}
                 </span>
