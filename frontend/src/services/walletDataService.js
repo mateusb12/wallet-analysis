@@ -111,26 +111,54 @@ const getPriceFromRecord = (record) => {
 
 const detectAnomalies = (data, assetName) => {
   const warnings = [];
-  if (!data || data.length < 2) return warnings;
+  if (!data || data.length === 0) return [`${assetName}: Sem histórico de dados`];
 
-  const THRESHOLD = 0.3;
+  const FRESHNESS_THRESHOLD_DAYS = 2;
 
-  for (let i = 1; i < data.length; i++) {
-    const curr = getPriceFromRecord(data[i]);
-    const prev = getPriceFromRecord(data[i - 1]);
-    const date = data[i].trade_date || data[i].ref_date;
+  const lastRecord = data[data.length - 1];
+  const lastDateStr = lastRecord.trade_date || lastRecord.ref_date;
 
-    if (isNaN(curr) || isNaN(prev) || prev === 0 || curr === 0) continue;
+  if (lastDateStr) {
+    const lastDate = new Date(lastDateStr);
+    const today = new Date();
 
-    const variation = Math.abs((curr - prev) / prev);
+    const lastDateMidnight = new Date(lastDate);
+    lastDateMidnight.setHours(0, 0, 0, 0);
 
-    if (variation > THRESHOLD) {
-      const type = curr < prev ? 'QUEDA' : 'ALTA';
-      const msg = `[ALERTA DADOS] ${assetName}: ${type} de ${(variation * 100).toFixed(0)}% em ${date} (${prev.toFixed(2)} -> ${curr.toFixed(2)}).`;
-      console.warn(msg);
-      warnings.push(msg);
+    const todayMidnight = new Date(today);
+    todayMidnight.setHours(0, 0, 0, 0);
+
+    const diffTime = Math.abs(todayMidnight - lastDateMidnight);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays > FRESHNESS_THRESHOLD_DAYS) {
+      warnings.push(
+        `${assetName}: Desatualizado (${diffDays} dias de atraso - Último: ${lastDateStr})`
+      );
     }
   }
+
+  if (data.length >= 2) {
+    const THRESHOLD = 0.3;
+
+    for (let i = 1; i < data.length; i++) {
+      const curr = getPriceFromRecord(data[i]);
+      const prev = getPriceFromRecord(data[i - 1]);
+      const date = data[i].trade_date || data[i].ref_date;
+
+      if (isNaN(curr) || isNaN(prev) || prev === 0 || curr === 0) continue;
+
+      const variation = Math.abs((curr - prev) / prev);
+
+      if (variation > THRESHOLD) {
+        const type = curr < prev ? 'QUEDA' : 'ALTA';
+        const msg = `[ALERTA DADOS] ${assetName}: ${type} de ${(variation * 100).toFixed(0)}% em ${date} (${prev.toFixed(2)} -> ${curr.toFixed(2)}).`;
+        console.warn(msg);
+        warnings.push(msg);
+      }
+    }
+  }
+
   return warnings;
 };
 

@@ -63,7 +63,7 @@ def sync_ticker(payload: TickerSync):
     if not ticker:
         raise HTTPException(status_code=400, detail="Ticker is required")
 
-    end_date = datetime.now()
+    end_date = datetime.now() + timedelta(days=1)
     start_date = end_date - timedelta(days=60)
     yf_ticker = f"{ticker.upper()}.SA"
 
