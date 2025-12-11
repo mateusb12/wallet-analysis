@@ -8,6 +8,7 @@ from backend.source.features.analysis.analysis_router import analysis_bp
 from backend.source.features.auth import auth_router
 from backend.source.features.auth.auth_router import auth_bp
 from backend.source.features.market_data.market_data_router import market_data_bp
+from backend.source.features.wallet.wallet_router import wallet_bp
 
 # Updated imports pointing to the features folder
 
@@ -29,6 +30,7 @@ app.add_middleware(
 app.include_router(auth_bp)
 app.include_router(market_data_bp)
 app.include_router(analysis_bp)
+app.include_router(wallet_bp)
 
 @app.get("/")
 def health_check():

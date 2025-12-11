@@ -75,3 +75,20 @@ class IbovHistory(Base):
     trade_date = Column(Date, primary_key=True, nullable=False)
     close_value = Column(Numeric(10, 2), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class AssetPurchase(Base):
+    __tablename__ = "asset_purchases"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, index=True, nullable=False)  # Supabase User UUID
+
+    ticker = Column(String, index=True, nullable=False)
+    name = Column(String, nullable=True)
+    type = Column(String, nullable=False) # 'stock', 'fii', 'etf'
+
+    qty = Column(Float, nullable=False)
+    price = Column(Numeric(10, 2), nullable=False)
+    trade_date = Column(Date, nullable=False)
+
+    # Audit fields
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
