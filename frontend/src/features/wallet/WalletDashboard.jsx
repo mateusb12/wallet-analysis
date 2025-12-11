@@ -26,6 +26,7 @@ import iconStocks from '../../assets/stocks.png';
 import iconEtf from '../../assets/etf.png';
 import iconFiis from '../../assets/fiis.png';
 import iconTotal from '../../assets/all.png';
+import SourceDataTable from './SourceDataTable.jsx';
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#6366f1'];
 
@@ -192,6 +193,7 @@ const PerformanceSection = ({
   benchmarkName,
   earliestPurchaseDate,
   chartEvents,
+  onChartClick,
 }) => {
   return (
     <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
@@ -247,6 +249,7 @@ const PerformanceSection = ({
           benchmarkName={benchmarkName}
           purchaseDate={earliestPurchaseDate}
           purchaseEvents={chartEvents}
+          onPointClick={onChartClick}
         />
       ) : (
         <div className="h-64 flex items-center justify-center text-gray-500 bg-gray-50 dark:bg-gray-900/50 rounded">
@@ -477,127 +480,6 @@ const PositionsTable = ({
   );
 };
 
-const SourceDataTable = ({ data, benchmarkName, isSpecificAsset, assetTicker }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 10;
-
-  if (!data || data.length === 0) return null;
-
-  const sortedData = [...data].sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
-  const totalPages = Math.ceil(sortedData.length / rowsPerPage);
-  const currentRows = sortedData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
-  const isRateBenchmark = benchmarkName === 'CDI';
-
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden mt-8 transition-colors">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <Database className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-          <div className="text-left">
-            <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">
-              Auditoria de Dados Históricos
-            </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Visualize os dados brutos (Cotação Original vs Índice Oficial)
-            </p>
-          </div>
-        </div>
-        {isOpen ? (
-          <ChevronUp className="w-5 h-5 text-gray-500" />
-        ) : (
-          <ChevronDown className="w-5 h-5 text-gray-500" />
-        )}
-      </button>
-
-      {isOpen && (
-        <div className="p-0 border-t border-gray-200 dark:border-gray-700 animate-in slide-in-from-top-2">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 font-medium border-b border-gray-200 dark:border-gray-700">
-                <tr>
-                  <th className="px-6 py-3">Data</th>
-                  <th className="px-6 py-3 text-right">
-                    {isSpecificAsset ? `Preço ${assetTicker}` : 'Patrimônio Total'} <br />
-                    <span className="text-[10px] font-normal opacity-70">
-                      {isSpecificAsset ? '(Cotação Real)' : '(Soma Carteira)'}
-                    </span>
-                  </th>
-                  <th className="px-6 py-3 text-right bg-yellow-50/50 dark:bg-yellow-900/10">
-                    {benchmarkName} <br />
-                    <span className="text-[10px] font-normal opacity-70">
-                      {isRateBenchmark ? '(Taxa Diária %)' : '(Pontos Oficiais)'}
-                    </span>
-                  </th>
-                  <th className="px-6 py-3 text-right">
-                    Capital Benchmark <br />
-                    <span className="text-[10px] font-normal opacity-70">(Normalizado)</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {currentRows.map((row, idx) => (
-                  <tr
-                    key={idx}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                  >
-                    <td className="px-6 py-3 font-mono text-gray-700 dark:text-gray-300">
-                      {formatChartDate(row.trade_date)}
-                    </td>
-                    <td className="px-6 py-3 text-right font-medium text-gray-900 dark:text-gray-100">
-                      {isSpecificAsset && row.asset_price_raw
-                        ? formatCurrency(row.asset_price_raw)
-                        : formatCurrency(row.portfolio_value)}
-                    </td>
-                    <td className="px-6 py-3 text-right font-mono text-yellow-700 dark:text-yellow-500 bg-yellow-50/30 dark:bg-yellow-900/5">
-                      {row.benchmark_raw !== undefined ? (
-                        isRateBenchmark ? (
-                          `${formatDecimal(row.benchmark_raw, 6)}%`
-                        ) : (
-                          formatDecimal(row.benchmark_raw, 0)
-                        )
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-3 text-right text-gray-500 dark:text-gray-400">
-                      {formatCurrency(row.benchmark_value)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              Página {currentPage} de {totalPages}
-            </span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="px-3 py-1 text-xs font-medium rounded bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 disabled:opacity-50 text-gray-700 dark:text-gray-200"
-              >
-                Anterior
-              </button>
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="px-3 py-1 text-xs font-medium rounded bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 disabled:opacity-50 text-gray-700 dark:text-gray-200"
-              >
-                Próximo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 const CustomPieTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     const data = payload[0];
@@ -631,6 +513,8 @@ function WalletDashboard() {
   const [specificAssetHistory, setSpecificAssetHistory] = useState([]);
   const [loadingSpecific, setLoadingSpecific] = useState(false);
   const [dataWarnings, setDataWarnings] = useState([]);
+
+  const [highlightedDate, setHighlightedDate] = useState(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -704,6 +588,7 @@ function WalletDashboard() {
   useEffect(() => {
     setSelectedAssetTicker('');
     setTimeRange('DEFAULT');
+    setHighlightedDate(null);
     if (activeTab !== 'total') setAllocationView('specific');
   }, [activeTab]);
 
@@ -860,6 +745,7 @@ function WalletDashboard() {
             benchmarkName={CATEGORIES_CONFIG[activeTab].benchmark}
             earliestPurchaseDate={earliestPurchaseDate}
             chartEvents={chartEvents}
+            onChartClick={setHighlightedDate}
           />
           <AllocationSection
             currentPieData={currentPieData}
@@ -886,6 +772,7 @@ function WalletDashboard() {
           benchmarkName={CATEGORIES_CONFIG[activeTab].benchmark}
           isSpecificAsset={!!selectedAssetTicker}
           assetTicker={selectedAssetTicker}
+          highlightDate={highlightedDate}
         />
       </div>
     </div>

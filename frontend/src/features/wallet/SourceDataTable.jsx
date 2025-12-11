@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Database, FileSpreadsheet } from 'lucide-react';
 import { formatChartDate } from '../../utils/dateUtils';
 
@@ -11,7 +11,13 @@ const formatDecimal = (val, digits = 2) =>
     maximumFractionDigits: digits,
   }).format(val);
 
-export default function SourceDataTable({ data, benchmarkName, isSpecificAsset, assetTicker }) {
+export default function SourceDataTable({
+  data,
+  benchmarkName,
+  isSpecificAsset,
+  assetTicker,
+  highlightDate,
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
@@ -19,6 +25,26 @@ export default function SourceDataTable({ data, benchmarkName, isSpecificAsset, 
   if (!data || data.length === 0) return null;
 
   const sortedData = [...data].sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
+
+  useEffect(() => {
+    if (highlightDate && sortedData.length > 0) {
+      const index = sortedData.findIndex((row) => row.trade_date === highlightDate);
+
+      if (index !== -1) {
+        setIsOpen(true);
+
+        const targetPage = Math.floor(index / rowsPerPage) + 1;
+        setCurrentPage(targetPage);
+
+        setTimeout(() => {
+          const element = document.getElementById(`row-${highlightDate}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
+      }
+    }
+  }, [highlightDate, sortedData]);
 
   const totalPages = Math.ceil(sortedData.length / rowsPerPage);
   const currentRows = sortedData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
@@ -75,46 +101,53 @@ export default function SourceDataTable({ data, benchmarkName, isSpecificAsset, 
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {currentRows.map((row, idx) => (
-                  <tr
-                    key={idx}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                  >
-                    <td className="px-6 py-3 font-mono text-gray-700 dark:text-gray-300">
-                      {formatChartDate(row.trade_date)}
-                    </td>
+                {currentRows.map((row, idx) => {
+                  const isHighlighted = row.trade_date === highlightDate;
+                  return (
+                    <tr
+                      key={idx}
+                      id={`row-${row.trade_date}`}
+                      className={`
+                        transition-colors duration-500 
+                        ${
+                          isHighlighted
+                            ? 'bg-blue-100 dark:bg-blue-900/40 ring-2 ring-inset ring-blue-500 z-10'
+                            : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                        }
+                      `}
+                    >
+                      <td className="px-6 py-3 font-mono text-gray-700 dark:text-gray-300">
+                        {formatChartDate(row.trade_date)}
+                      </td>
 
-                    {}
-                    <td className="px-6 py-3 text-right font-medium text-gray-900 dark:text-gray-100">
-                      {isSpecificAsset && row.asset_price_raw
-                        ? formatCurrency(row.asset_price_raw)
-                        : formatCurrency(row.portfolio_value)}
-                    </td>
+                      <td className="px-6 py-3 text-right font-medium text-gray-900 dark:text-gray-100">
+                        {isSpecificAsset && row.asset_price_raw
+                          ? formatCurrency(row.asset_price_raw)
+                          : formatCurrency(row.portfolio_value)}
+                      </td>
 
-                    {}
-                    <td className="px-6 py-3 text-right font-mono text-yellow-700 dark:text-yellow-500 bg-yellow-50/30 dark:bg-yellow-900/5">
-                      {row.benchmark_raw !== undefined ? (
-                        isRateBenchmark ? (
-                          `${formatDecimal(row.benchmark_raw, 6)}%`
+                      <td className="px-6 py-3 text-right font-mono text-yellow-700 dark:text-yellow-500 bg-yellow-50/30 dark:bg-yellow-900/5">
+                        {row.benchmark_raw !== undefined ? (
+                          isRateBenchmark ? (
+                            `${formatDecimal(row.benchmark_raw, 6)}%`
+                          ) : (
+                            formatDecimal(row.benchmark_raw, 0)
+                          )
                         ) : (
-                          formatDecimal(row.benchmark_raw, 0)
-                        )
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
 
-                    {}
-                    <td className="px-6 py-3 text-right text-gray-500 dark:text-gray-400">
-                      {formatCurrency(row.benchmark_value)}
-                    </td>
-                  </tr>
-                ))}
+                      <td className="px-6 py-3 text-right text-gray-500 dark:text-gray-400">
+                        {formatCurrency(row.benchmark_value)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
-          {}
           <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
             <span className="text-xs text-gray-500 dark:text-gray-400">
               Página {currentPage} de {totalPages}

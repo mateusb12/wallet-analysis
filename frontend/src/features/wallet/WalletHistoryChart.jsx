@@ -130,6 +130,7 @@ function WalletHistoryChart({
   benchmarkName = 'Benchmark',
   purchaseDate = null,
   purchaseEvents = [],
+  onPointClick,
 }) {
   const themeContext = tryUseTheme();
   const isDark = themeContext === 'dark';
@@ -190,7 +191,19 @@ function WalletHistoryChart({
   return (
     <div style={{ width: '100%', height: 350 }}>
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={processedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+        <ComposedChart
+          data={processedData}
+          margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+          onClick={(state) => {
+            if (state && state.activePayload && state.activePayload.length > 0) {
+              const payload = state.activePayload[0].payload;
+              if (onPointClick && payload.trade_date) {
+                onPointClick(payload.trade_date);
+              }
+            }
+          }}
+          style={{ cursor: 'pointer' }}
+        >
           <defs>
             <linearGradient id="colorBenchmark" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#eab308" stopOpacity={0.4} />
