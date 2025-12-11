@@ -7,6 +7,7 @@ import IpcaCalculator from '../../pages/IpcaCalculator.jsx';
 import PricePositionCalculator from '../stockHistoricData/PricePositionCalculator.jsx';
 import WalletDashboard from '../wallet/WalletDashboard.jsx';
 import Settings from '../../pages/Settings.jsx';
+import Contributions from '../../pages/Contributions.jsx';
 
 import { Settings as SettingsIcon, LogOut } from 'lucide-react';
 
@@ -16,6 +17,12 @@ const menuItems = [
     label: 'Minha Carteira',
     icon: '💼',
     component: WalletDashboard,
+  },
+  {
+    id: 'contributions',
+    label: 'Meus Aportes',
+    icon: '📝',
+    component: Contributions,
   },
   {
     id: 'fii-historical-checker',
