@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../features/auth/AuthContext';
 import { TrendingUp, Calendar, DollarSign, Tag, Search, Filter } from 'lucide-react';
+import { formatChartDate } from '../utils/dateUtils.js';
 
 export default function Contributions() {
   const { user } = useAuth();
@@ -99,13 +100,12 @@ export default function Contributions() {
             <table className="w-full text-sm text-left">
               <thead className="text-xs text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="px-6 py-3 font-medium">Data</th>
-                  <th className="px-6 py-3 font-medium">Ativo</th>
-                  <th className="px-6 py-3 font-medium hidden md:table-cell">Nome</th>
+                  <th className="px-6 py-3 font-medium text-center">Data</th>
+                  <th className="px-6 py-3 font-medium text-center">Ativo</th>
                   <th className="px-6 py-3 font-medium text-center">Tipo</th>
-                  <th className="px-6 py-3 font-medium text-right">Qtd</th>
-                  <th className="px-6 py-3 font-medium text-right">Preço Unit.</th>
-                  <th className="px-6 py-3 font-medium text-right">Total</th>
+                  <th className="px-6 py-3 font-medium text-center">Quantidade</th>
+                  <th className="px-6 py-3 font-medium text-center">Preço Unitário</th>
+                  <th className="px-6 py-3 font-medium text-center">Total</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -115,17 +115,11 @@ export default function Contributions() {
                       key={item.id}
                       className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
                     >
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-600 dark:text-gray-300">
-                        {new Date(item.trade_date).toLocaleDateString('pt-BR')}
+                      <td className="px-6 py-4 text-center whitespace-nowrap text-gray-600 dark:text-gray-300">
+                        {formatChartDate(item.trade_date)}
                       </td>
-                      <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
+                      <td className="px-6 py-4 text-center font-bold text-gray-900 dark:text-white">
                         {item.ticker}
-                      </td>
-                      <td
-                        className="px-6 py-4 hidden md:table-cell text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
-                        title={item.name}
-                      >
-                        {item.name}
                       </td>
                       <td className="px-6 py-4 text-center">
                         <span
@@ -134,16 +128,16 @@ export default function Contributions() {
                           {item.type}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-right text-gray-900 dark:text-white">
+                      <td className="px-6 py-4 text-center text-gray-900 dark:text-white">
                         {item.qty}
                       </td>
-                      <td className="px-6 py-4 text-right text-gray-600 dark:text-gray-300">
+                      <td className="px-6 py-4 text-center text-gray-600 dark:text-gray-300">
                         {Number(item.price).toLocaleString('pt-BR', {
                           style: 'currency',
                           currency: 'BRL',
                         })}
                       </td>
-                      <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white">
+                      <td className="px-6 py-4 text-center font-medium text-gray-900 dark:text-white">
                         {(Number(item.price) * Number(item.qty)).toLocaleString('pt-BR', {
                           style: 'currency',
                           currency: 'BRL',
