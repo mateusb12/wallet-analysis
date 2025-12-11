@@ -8,7 +8,16 @@ import { fetchB3Prices } from '../../services/b3service.js';
 import WalletHistoryChart from './WalletHistoryChart.jsx';
 import DataConsistencyAlert from '../../components/DataConsistencyAlert.jsx';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { ArrowUp, ArrowDown, Minus, Wallet, TrendingUp, DollarSign, Percent } from 'lucide-react';
+import {
+  ArrowUp,
+  ArrowDown,
+  Minus,
+  Wallet,
+  TrendingUp,
+  DollarSign,
+  Percent,
+  Clock,
+} from 'lucide-react';
 
 import iconStocks from '../../assets/stocks.png';
 import iconEtf from '../../assets/etf.png';
@@ -31,6 +40,13 @@ const TIME_RANGES = [
   { id: 'PRE_3M', label: '3M Antes', offsetMonths: 3 },
   { id: 'PRE_6M', label: '6M Antes', offsetMonths: 6 },
   { id: 'MAX', label: 'Max Hist.', offsetMonths: 999 },
+];
+
+export const PROFIT_PERIODS = [
+  { id: 'total', label: 'Total (Acumulado)' },
+  { id: 'day', label: 'Média por Dia' },
+  { id: 'month', label: 'Média por Mês' },
+  { id: 'year', label: 'Média por Ano (Projeção)' },
 ];
 
 const formatCurrency = (value) =>
@@ -574,6 +590,8 @@ function WalletDashboard() {
   const [loadingSpecific, setLoadingSpecific] = useState(false);
   const [dataWarnings, setDataWarnings] = useState([]);
 
+  const [profitPeriod, setProfitPeriod] = useState('total');
+
   const [highlightedDate, setHighlightedDate] = useState(null);
 
   useEffect(() => {
@@ -740,8 +758,66 @@ function WalletDashboard() {
     (acc, curr) => acc + curr.purchase_price * curr.qty,
     0
   );
-  const totalProfit = totalValue - totalInvested;
-  const totalYield = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
+
+  const walletAgeInDays = useMemo(() => {
+    if (!earliestPurchaseDate) return 0;
+    const start = new Date(earliestPurchaseDate);
+    const now = new Date();
+    const diffTime = Math.abs(now - start);
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+  }, [earliestPurchaseDate]);
+
+  const availablePeriods = useMemo(() => {
+    return PROFIT_PERIODS.filter((period) => {
+      if (period.id === 'year' && walletAgeInDays < 90) return false;
+      if (period.id === 'month' && walletAgeInDays < 7) return false;
+      return true;
+    });
+  }, [walletAgeInDays]);
+
+  useEffect(() => {
+    const currentIsAvailable = availablePeriods.find((p) => p.id === profitPeriod);
+    if (!currentIsAvailable) {
+      setProfitPeriod('total');
+    }
+  }, [availablePeriods, profitPeriod]);
+
+  const periodStats = useMemo(() => {
+    const profit = totalValue - totalInvested;
+    const yieldVal = totalInvested > 0 ? (profit / totalInvested) * 100 : 0;
+
+    if (profitPeriod === 'total') {
+      return { profit, yield: yieldVal, labelSuffix: '(Acumulado)' };
+    }
+
+    if (!earliestPurchaseDate) {
+      return { profit: 0, yield: 0, labelSuffix: '(Sem data)' };
+    }
+
+    const diffDays = walletAgeInDays;
+
+    let divider = 1;
+    let suffix = '';
+
+    if (profitPeriod === 'day') {
+      divider = diffDays;
+      suffix = '(Média/Dia)';
+    } else if (profitPeriod === 'month') {
+      divider = diffDays / 30;
+      suffix = '(Média/Mês)';
+    } else if (profitPeriod === 'year') {
+      divider = diffDays / 365;
+      suffix = '(Média/Ano)';
+    }
+
+    if (divider === 0) divider = 1;
+
+    return {
+      profit: profit / divider,
+      yield: yieldVal / divider,
+      labelSuffix: suffix,
+    };
+  }, [profitPeriod, totalValue, totalInvested, earliestPurchaseDate, walletAgeInDays]);
 
   if (loading) {
     return (
@@ -767,6 +843,29 @@ function WalletDashboard() {
       </div>
 
       <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+        {}
+        <div className="flex flex-col sm:flex-row justify-between items-end sm:items-center mb-4 gap-2">
+          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+            Resumo Financeiro
+          </h3>
+
+          <div className="flex items-center gap-2 bg-white dark:bg-gray-800 p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm hover:border-blue-400 transition-colors">
+            <Clock className="w-4 h-4 text-blue-500 ml-2" />
+            <select
+              value={profitPeriod}
+              onChange={(e) => setProfitPeriod(e.target.value)}
+              className="bg-transparent border-none text-sm font-medium text-gray-700 dark:text-gray-200 focus:ring-0 cursor-pointer py-1 pr-8 outline-none"
+            >
+              {}
+              {availablePeriods.map((period) => (
+                <option key={period.id} value={period.id}>
+                  {period.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <SummaryCard
             title="Total Investido"
@@ -779,22 +878,22 @@ function WalletDashboard() {
             subtext={`Cotação Atual (${selectedAssetTicker ? selectedAssetTicker : CATEGORIES_CONFIG[activeTab].label})`}
           />
           <SummaryCard
-            title={totalProfit >= 0 ? 'Lucro (R$)' : 'Prejuízo (R$)'}
-            value={formatCurrency(totalProfit)}
-            rawValue={totalProfit}
+            title={periodStats.profit >= 0 ? 'Lucro (R$)' : 'Prejuízo (R$)'}
+            value={formatCurrency(periodStats.profit)}
+            rawValue={periodStats.profit}
             type="profit"
+            subtext={periodStats.labelSuffix}
           />
           <SummaryCard
             title="Rentabilidade (%)"
-            value={formatPercent(totalYield)}
-            rawValue={totalYield}
+            value={formatPercent(periodStats.yield)}
+            rawValue={periodStats.yield}
             type="profit"
+            subtext={periodStats.labelSuffix}
           />
         </div>
 
-        {}
         {activeTab === 'total' && <TopPerformersSection positions={positions} />}
-        {}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           <PerformanceSection
