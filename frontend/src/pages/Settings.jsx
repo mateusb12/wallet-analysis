@@ -1,24 +1,26 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { useTheme } from '../features/theme/ThemeContext';
 import { useAuth } from '../features/auth/AuthContext';
-
 import { useDataConsistency } from '../hooks/useDataConsistency';
 import DataConsistencyAlert from '../components/DataConsistencyAlert';
 import ManualPriceSync from '../components/ManualPriceSync.jsx';
+import {
+  AlertTriangle,
+  CheckCircle,
+  Database,
+  UploadCloud,
+  X,
+  RefreshCw,
+  AlertCircle,
+} from 'lucide-react';
 
 export default function Settings() {
   const { theme, toggleTheme } = useTheme();
   const { user } = useAuth();
   const fileInputRef = useRef(null);
-
   const { warnings } = useDataConsistency();
 
-  const [notifications, setNotifications] = useState({
-    email: true,
-    browser: false,
-    offers: false,
-  });
   const [apiKey, setApiKey] = useState('hg_29384...8s7d');
 
   const [importPreview, setImportPreview] = useState([]);
@@ -26,8 +28,61 @@ export default function Settings() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [fileName, setFileName] = useState('');
 
+  const [existingPurchases, setExistingPurchases] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
   const userEmail = user?.email || 'usuario@exemplo.com';
   const userName = userEmail.split('@')[0];
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchExistingPurchases();
+    }
+  }, [user]);
+
+  const fetchExistingPurchases = async () => {
+    setIsLoadingHistory(true);
+    try {
+      const response = await fetch(`${API_URL}/wallet/purchases?user_id=${user.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setExistingPurchases(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch history:', error);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const normalizeDateISO = (dateInput) => {
+    if (!dateInput) return '';
+
+    if (dateInput.match(/^\d{4}-\d{2}-\d{2}$/)) return dateInput;
+
+    if (dateInput.includes('/')) {
+      const [day, month, year] = dateInput.split('/');
+      return `${year}-${month}-${day}`;
+    }
+    return dateInput;
+  };
+
+  const isDuplicate = (row) => {
+    if (!existingPurchases.length) return false;
+
+    const rowDateISO = normalizeDateISO(row.date);
+
+    return existingPurchases.some((dbItem) => {
+      const sameTicker = dbItem.ticker === row.ticker;
+      const sameDate = dbItem.trade_date === rowDateISO;
+
+      const sameQty = Number(dbItem.qty) === Number(row.qty);
+      const samePrice = Math.abs(Number(dbItem.price) - Number(row.price)) < 0.01;
+
+      return sameTicker && sameDate && sameQty && samePrice;
+    });
+  };
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -76,6 +131,7 @@ export default function Settings() {
           let type = 'stock';
           if (ticker.endsWith('11')) type = 'fii';
           if (ticker.endsWith('34')) type = 'bdr';
+          if (ticker === 'IVVB11' || ticker === 'BOVA11') type = 'etf';
 
           return {
             ticker,
@@ -100,18 +156,65 @@ export default function Settings() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
+    if (!user || !user.id) {
+      alert('Erro: Usuário não autenticado.');
+      return;
+    }
+
+    const newItems = importPreview.filter((row) => !isDuplicate(row));
+
+    if (newItems.length === 0) {
+      alert('Todos os itens já foram importados anteriormente.');
+      return;
+    }
+
     setIsProcessing(true);
 
-    setTimeout(() => {
-      setIsProcessing(false);
-      alert(`${importPreview.length} itens importados com sucesso!`);
+    try {
+      const payload = {
+        user_id: user.id,
+        purchases: newItems.map((item) => ({
+          ticker: item.ticker,
+          name: item.name,
+          type: item.type,
+          qty: item.qty,
+          price: item.price,
+          trade_date: normalizeDateISO(item.date),
+        })),
+      };
+
+      const response = await fetch(`${API_URL}/wallet/import`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) throw new Error(data.detail || 'Falha na importação');
+
+      const skippedCount = importPreview.length - newItems.length;
+      alert(`Sucesso! ${data.count} novos ativos salvos. (${skippedCount} duplicados ignorados)`);
+
+      await fetchExistingPurchases();
       handleClearImport();
-    }, 1500);
+    } catch (error) {
+      console.error(error);
+      alert(`Erro ao salvar: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
   };
+
+  const newItemsCount = importPreview.filter((r) => !isDuplicate(r)).length;
+  const duplicateCount = importPreview.length - newItemsCount;
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto pb-20">
+      {}
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Configurações</h2>
         <p className="text-gray-600 dark:text-gray-400 mt-1">
@@ -186,27 +289,20 @@ export default function Settings() {
         <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-                stroke="currentColor"
-                className="w-5 h-5 text-indigo-500"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
-                />
-              </svg>
+              <UploadCloud className="w-5 h-5 text-indigo-500" />
               Importador de Ativos
             </h3>
+            {isLoadingHistory && (
+              <span className="text-xs text-gray-500 flex items-center gap-1">
+                <RefreshCw className="w-3 h-3 animate-spin" /> Verificando histórico...
+              </span>
+            )}
           </div>
 
           <div className="p-6">
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Selecione um arquivo Excel (.xlsx) para carregar sua carteira.
+              Selecione um arquivo Excel (.xlsx) para carregar sua carteira. O sistema verificará
+              duplicatas automaticamente.
             </p>
 
             <div className="mb-6">
@@ -222,20 +318,7 @@ export default function Settings() {
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
                   {fileName ? (
                     <>
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={1.5}
-                        stroke="currentColor"
-                        className="w-8 h-8 text-green-500 mb-2"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
+                      <CheckCircle className="w-8 h-8 text-green-500 mb-2" />
                       <p className="text-sm text-green-600 dark:text-green-400 font-medium">
                         {fileName}
                       </p>
@@ -245,20 +328,7 @@ export default function Settings() {
                     </>
                   ) : (
                     <>
-                      <svg
-                        className="w-8 h-8 mb-3 text-gray-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                        ></path>
-                      </svg>
+                      <UploadCloud className="w-8 h-8 mb-3 text-gray-400" />
                       <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
                         <span className="font-semibold">Clique para enviar</span> ou arraste
                       </p>
@@ -293,6 +363,11 @@ export default function Settings() {
                     <span className="px-2 py-0.5 text-xs rounded-full bg-indigo-200 dark:bg-indigo-800 text-indigo-800 dark:text-indigo-200">
                       {importPreview.length} itens encontrados
                     </span>
+                    {duplicateCount > 0 && (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-yellow-200 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> {duplicateCount} Duplicados
+                      </span>
+                    )}
                   </div>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -314,7 +389,7 @@ export default function Settings() {
                   <div className="bg-white dark:bg-gray-800 border-t border-indigo-100 dark:border-indigo-900/50">
                     <div className="max-h-60 overflow-y-auto custom-scrollbar">
                       <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700 sticky top-0">
+                        <thead className="text-xs text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700 sticky top-0 z-10">
                           <tr>
                             <th className="px-4 py-2">Data</th>
                             <th className="px-4 py-2">Ticker</th>
@@ -325,53 +400,88 @@ export default function Settings() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                          {importPreview.map((row, index) => (
-                            <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                              <td className="px-4 py-2 text-gray-900 dark:text-white">
-                                {row.date}
-                              </td>
-                              <td className="px-4 py-2 font-medium text-gray-900 dark:text-white">
-                                {row.ticker}
-                              </td>
-                              <td
-                                className="px-4 py-2 text-gray-600 dark:text-gray-300 truncate max-w-[150px]"
-                                title={row.name}
+                          {importPreview.map((row, index) => {
+                            const duplicate = isDuplicate(row);
+                            return (
+                              <tr
+                                key={index}
+                                className={`
+                                  ${
+                                    duplicate
+                                      ? 'bg-yellow-50 dark:bg-yellow-900/20 hover:bg-yellow-100 dark:hover:bg-yellow-900/30'
+                                      : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                                  } transition-colors
+                                `}
                               >
-                                {row.name}
-                              </td>
-                              <td className="px-4 py-2 text-right text-gray-900 dark:text-white">
-                                {row.qty}
-                              </td>
-                              <td className="px-4 py-2 text-right text-gray-900 dark:text-white">
-                                {Number(row.price).toLocaleString('pt-BR', {
-                                  style: 'currency',
-                                  currency: 'BRL',
-                                })}
-                              </td>
-                              <td className="px-4 py-2 text-right text-xs uppercase text-gray-500 dark:text-gray-400">
-                                {row.type}
-                              </td>
-                            </tr>
-                          ))}
+                                <td className="px-4 py-2 text-gray-900 dark:text-white flex items-center gap-2">
+                                  {duplicate && (
+                                    <div className="group relative">
+                                      <AlertTriangle className="w-4 h-4 text-yellow-500 cursor-help" />
+                                      <span className="absolute left-6 top-0 w-max bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none">
+                                        Já cadastrado no banco
+                                      </span>
+                                    </div>
+                                  )}
+                                  {row.date}
+                                </td>
+                                <td className="px-4 py-2 font-medium text-gray-900 dark:text-white">
+                                  {row.ticker}
+                                </td>
+                                <td
+                                  className="px-4 py-2 text-gray-600 dark:text-gray-300 truncate max-w-[150px]"
+                                  title={row.name}
+                                >
+                                  {row.name}
+                                </td>
+                                <td className="px-4 py-2 text-right text-gray-900 dark:text-white">
+                                  {row.qty}
+                                </td>
+                                <td className="px-4 py-2 text-right text-gray-900 dark:text-white">
+                                  {Number(row.price).toLocaleString('pt-BR', {
+                                    style: 'currency',
+                                    currency: 'BRL',
+                                  })}
+                                </td>
+                                <td className="px-4 py-2 text-right text-xs uppercase text-gray-500 dark:text-gray-400">
+                                  {row.type}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
 
-                    <div className="p-4 bg-gray-50 dark:bg-gray-900/30 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700">
+                    <div className="p-4 bg-gray-50 dark:bg-gray-900/30 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700 items-center">
                       <button
                         onClick={handleClearImport}
                         className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
                       >
                         Cancelar
                       </button>
+
                       <button
                         onClick={handleConfirmImport}
-                        disabled={isProcessing}
+                        disabled={isProcessing || newItemsCount === 0}
                         className={`flex items-center gap-2 px-4 py-2 text-sm rounded-lg font-medium text-white transition-all
-                          ${isProcessing ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}
+                          ${
+                            isProcessing || newItemsCount === 0
+                              ? 'bg-gray-400 cursor-not-allowed'
+                              : 'bg-green-600 hover:bg-green-700 shadow-md hover:shadow-lg'
+                          }
                         `}
                       >
-                        {isProcessing ? 'Salvando...' : 'Confirmar Importação'}
+                        {isProcessing ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" /> Salvando...
+                          </>
+                        ) : newItemsCount === 0 ? (
+                          'Todos duplicados'
+                        ) : duplicateCount > 0 ? (
+                          `Importar ${newItemsCount} Novos (Ignorar ${duplicateCount})`
+                        ) : (
+                          'Confirmar Importação'
+                        )}
                       </button>
                     </div>
                   </div>

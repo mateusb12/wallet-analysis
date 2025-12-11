@@ -1,8 +1,10 @@
+from typing import List
+
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from backend.source.core.database import get_db
 from backend.source.models.sql_models import AssetPurchase
-from backend.source.features.wallet.wallet_schema import ImportPurchasesRequest
+from backend.source.features.wallet.wallet_schema import ImportPurchasesRequest, AssetPurchaseResponse
 
 wallet_bp = APIRouter(prefix="/wallet", tags=["Wallet"])
 
@@ -30,3 +32,9 @@ def import_purchases(payload: ImportPurchasesRequest, db: Session = Depends(get_
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+@wallet_bp.get("/purchases", response_model=List[AssetPurchaseResponse])
+def get_user_purchases(user_id: str, db: Session = Depends(get_db)):
+    """Fetch all asset purchases for a specific user to check for duplicates."""
+    purchases = db.query(AssetPurchase).filter(AssetPurchase.user_id == user_id).all()
+    return purchases
