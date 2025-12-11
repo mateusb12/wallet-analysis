@@ -8,19 +8,7 @@ import { fetchB3Prices } from '../../services/b3service.js';
 import WalletHistoryChart from './WalletHistoryChart.jsx';
 import DataConsistencyAlert from '../../components/DataConsistencyAlert.jsx';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import {
-  ArrowUp,
-  ArrowDown,
-  Minus,
-  Wallet,
-  TrendingUp,
-  DollarSign,
-  Percent,
-  Database,
-  ChevronDown,
-  ChevronUp,
-} from 'lucide-react';
-import { formatChartDate } from '../../utils/dateUtils.js';
+import { ArrowUp, ArrowDown, Minus, Wallet, TrendingUp, DollarSign, Percent } from 'lucide-react';
 
 import iconStocks from '../../assets/stocks.png';
 import iconEtf from '../../assets/etf.png';
@@ -54,12 +42,6 @@ const formatPercent = (value) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value / 100);
-
-const formatDecimal = (val, digits = 2) =>
-  new Intl.NumberFormat('pt-BR', {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(val);
 
 const VariationBadge = ({ value, isPercent = false }) => {
   const numValue = parseFloat(value);
@@ -177,6 +159,79 @@ const CategoryTabs = ({ activeTab, setActiveTab, categoryTotals }) => {
           </button>
         );
       })}
+    </div>
+  );
+};
+
+const TopPerformersSection = ({ positions }) => {
+  const getTop3 = (type) => {
+    return positions
+      .filter((p) => p.type === type)
+      .map((p) => {
+        const cost = p.purchase_price * p.qty;
+
+        const current = p.total_value_current || 0;
+        const profit = current - cost;
+        const yieldPercent = cost > 0 ? (profit / cost) * 100 : 0;
+        return { ...p, yieldPercent };
+      })
+      .sort((a, b) => b.yieldPercent - a.yieldPercent)
+      .slice(0, 3);
+  };
+
+  const topStocks = getTop3('stock');
+  const topEtfs = getTop3('etf');
+  const topFiis = getTop3('fii');
+
+  const renderList = (title, items, icon) => (
+    <div className="bg-white dark:bg-gray-800 p-5 rounded-lg shadow border border-gray-200 dark:border-gray-700 flex-1">
+      <div className="flex items-center gap-3 mb-4 border-b border-gray-100 dark:border-gray-700 pb-3">
+        <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+          <img src={icon} alt={title} className="w-6 h-6 object-contain" />
+        </div>
+        <h3 className="font-bold text-gray-800 dark:text-gray-200">{title}</h3>
+      </div>
+
+      {items.length > 0 ? (
+        <div className="space-y-3">
+          {items.map((item, idx) => (
+            <div key={item.ticker} className="flex items-center justify-between group">
+              <div className="flex items-center gap-3">
+                <span
+                  className={`text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full ${
+                    idx === 0
+                      ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                      : idx === 1
+                        ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                        : 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400'
+                  }`}
+                >
+                  {idx + 1}
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-gray-700 dark:text-gray-200 group-hover:text-blue-500 transition-colors">
+                    {item.ticker}
+                  </p>
+                  <p className="text-[10px] text-gray-400 truncate w-24">{item.name}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <VariationBadge value={item.yieldPercent} isPercent />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-sm text-gray-500 text-center py-4 italic">Sem ativos</div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 animate-in fade-in slide-in-from-bottom-3 duration-700">
+      {renderList('Top Ações', topStocks, iconStocks)}
+      {renderList('Top ETFs', topEtfs, iconEtf)}
+      {renderList('Top FIIs', topFiis, iconFiis)}
     </div>
   );
 };
@@ -731,6 +786,10 @@ function WalletDashboard() {
             type="profit"
           />
         </div>
+
+        {}
+        {activeTab === 'total' && <TopPerformersSection positions={positions} />}
+        {}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           <PerformanceSection
