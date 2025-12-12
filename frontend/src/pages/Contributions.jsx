@@ -22,13 +22,11 @@ const getTimeElapsed = (dateString) => {
   // Ajuste se o mês atual for anterior ao mês de compra
   if (months < 0 || (months === 0 && end.getDate() < start.getDate())) {
     months += 12;
-    // Se passou de ano mas não completou o mês, remove 1 ano do cálculo de anos
     if (end.getMonth() < start.getMonth()) {
-      // Já tratado pelo months += 12, mas anos precisa diminuir 1 se a lógica base foi diff simples
+      // Ajuste de ano já coberto pela lógica de meses
     }
   }
 
-  // Recalculo simples aproximado para exibição amigável
   const totalMonths =
     (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
 
@@ -64,15 +62,14 @@ export default function Contributions() {
 
       const data = await response.json();
 
-      // 2. Identificar Tickers Únicos para buscar cotação atual (evita chamadas repetidas)
+      // 2. Identificar Tickers Únicos
       const uniqueTickers = [...new Set(data.map((item) => item.ticker))];
       const currentPricesMap = {};
 
-      // 3. Buscar preço atual para cada ticker único
+      // 3. Buscar preço atual para cada ticker
       await Promise.all(
         uniqueTickers.map(async (ticker) => {
           try {
-            // Pega o registro mais recente (page 1, size 1)
             const { data: priceData } = await fetchB3Prices(ticker, 1, 1);
             if (priceData && priceData.length > 0) {
               currentPricesMap[ticker] = parseFloat(priceData[0].close);
@@ -83,11 +80,9 @@ export default function Contributions() {
         })
       );
 
-      // 4. Combinar dados
+      // 4. Combinar dados e calcular rentabilidade
       const enrichedData = data.map((item) => {
-        const currentPrice = currentPricesMap[item.ticker] || null; // Null se não achar cotação
-
-        // Cálculos
+        const currentPrice = currentPricesMap[item.ticker] || null;
         let profitValue = 0;
         let profitPercent = 0;
 
@@ -107,7 +102,25 @@ export default function Contributions() {
         };
       });
 
-      const sorted = enrichedData.sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
+      // 5. Ordenação em 3 Camadas
+      const sorted = enrichedData.sort((a, b) => {
+        const dateA = new Date(a.trade_date);
+        const dateB = new Date(b.trade_date);
+
+        // Camada 1: Data (Decrescente - mais recente primeiro)
+        const dateDiff = dateB - dateA;
+        if (dateDiff !== 0) return dateDiff;
+
+        // Camada 2: Agrupamento por Tipo (ETF -> FII -> STOCK)
+        // Se quiser outra ordem de grupos, precisaria de um mapa de pesos, mas alfabética funciona bem aqui
+        if (a.type < b.type) return -1;
+        if (a.type > b.type) return 1;
+
+        // Camada 3: Rentabilidade % (Decrescente - maior lucro primeiro)
+        // Isso coloca os destaques verdes no topo de cada grupo
+        return b.profitPercent - a.profitPercent;
+      });
+
       setPurchases(sorted);
     } catch (error) {
       console.error('Erro ao buscar aportes:', error);
@@ -147,7 +160,7 @@ export default function Contributions() {
             Meus Aportes
           </h2>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Histórico completo de negociações e rentabilidade por aporte
+            Histórico completo de negociações ordenado por data, tipo e rentabilidade
           </p>
         </div>
 
@@ -187,17 +200,15 @@ export default function Contributions() {
                   <th className="px-6 py-3 font-medium text-center">Data</th>
                   <th className="px-6 py-3 font-medium text-center">Ativo</th>
                   <th className="px-6 py-3 font-medium text-center">Tipo</th>
-                  <th className="px-6 py-3 font-medium text-center">Qtd</th>
-                  <th className="px-6 py-3 font-medium text-right">Preço Pago</th>
-                  <th className="px-6 py-3 font-medium text-right">Total Pago</th>
-
-                  {/* Novas Colunas */}
+                  <th className="px-6 py-3 font-medium text-center">Quantidade</th>
+                  <th className="px-6 py-3 font-medium text-center">Preço por Unidade</th>
+                  <th className="px-6 py-3 font-medium text-center">Total Pago</th>
                   <th className="px-6 py-3 font-medium text-center border-l border-gray-100 dark:border-gray-700">
                     <div className="flex items-center justify-center gap-1">
                       <Clock className="w-3 h-3" /> Tempo
                     </div>
                   </th>
-                  <th className="px-6 py-3 font-medium text-right">Rentab. (R$)</th>
+                  <th className="px-6 py-3 font-medium text-center">Rentab. (R$)</th>
                   <th className="px-6 py-3 font-medium text-center">Rentab. (%)</th>
                 </tr>
               </thead>
@@ -233,25 +244,21 @@ export default function Contributions() {
                         <td className="px-6 py-4 text-center text-gray-900 dark:text-white">
                           {item.qty}
                         </td>
-                        <td className="px-6 py-4 text-right text-gray-600 dark:text-gray-300">
+                        <td className="px-6 py-4 text-center text-gray-600 dark:text-gray-300">
                           {Number(item.price).toLocaleString('pt-BR', {
                             style: 'currency',
                             currency: 'BRL',
                           })}
                         </td>
-                        <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white">
+                        <td className="px-6 py-4 text-center font-medium text-gray-900 dark:text-white">
                           {(Number(item.price) * Number(item.qty)).toLocaleString('pt-BR', {
                             style: 'currency',
                             currency: 'BRL',
                           })}
                         </td>
-
-                        {/* Coluna Rendendo Por */}
                         <td className="px-6 py-4 text-center text-gray-500 dark:text-gray-400 border-l border-gray-100 dark:border-gray-700 font-medium text-xs">
                           {getTimeElapsed(item.trade_date)}
                         </td>
-
-                        {/* Coluna Diferença R$ */}
                         <td className={`px-6 py-4 text-right font-bold ${colorClass}`}>
                           {item.hasPriceData ? (
                             item.profitValue.toLocaleString('pt-BR', {
@@ -262,8 +269,6 @@ export default function Contributions() {
                             <span className="text-gray-400 text-xs">-</span>
                           )}
                         </td>
-
-                        {/* Coluna Diferença % */}
                         <td className="px-6 py-4 text-center">
                           {item.hasPriceData ? (
                             <div
