@@ -15,11 +15,11 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: frontend/Dockerfile
+      dockerfile: frontend/Dockerfile.dev   # <-- AQUI MUDA
     environment:
       APP_ENV: development
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - ./frontend:/app                     # hot reload
+      - /app/node_modules                   # evita sobrescrever o node_modules
     ports:
       - "5173:5173"

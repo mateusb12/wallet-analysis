@@ -1,6 +1,7 @@
-FROM python:3.12-slim
+# ---------- STAGE 1: BUILDER ----------
+FROM python:3.12-slim AS builder
 
-# Install system deps
+# Install system deps required to build wheels
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl build-essential && \
     rm -rf /var/lib/apt/lists/*
@@ -12,23 +13,37 @@ ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /app
 
-# Copy poetry configs
+# Copy only dependency files first (better caching)
 COPY backend/pyproject.toml backend/poetry.lock* ./
 
-# Install dependencies
-# --no-root means we don't install the project itself, just deps
-RUN poetry install --no-root --no-interaction --no-ansi
+# Generate requirements.txt and build wheel packages
+RUN poetry export --without-hashes --format=requirements.txt > requirements.txt
 
-# IMPORTANT: Copy the backend folder into /app/backend
+# Install dependencies into /wheelhouse (no poetry in final image)
+RUN pip wheel --wheel-dir=/wheelhouse -r requirements.txt
+
+
+# ---------- STAGE 2: RUNTIME ----------
+FROM python:3.12-slim
+
+# Install only what FastAPI runtime needs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy wheels generated in builder
+COPY --from=builder /wheelhouse /wheelhouse
+RUN pip install --no-cache-dir /wheelhouse/*
+
+# Copy only application code
 COPY backend /app/backend
 
 ENV APP_ENV=production
 
-# We run from /app, so 'backend.main:app' is found in /app/backend/main.py
-CMD ["sh", "-c", "\
-    if [ \"$APP_ENV\" = \"development\" ]; then \
-        poetry run uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload; \
-    else \
-        poetry run uvicorn backend.main:app --host 0.0.0.0 --port 8000; \
-    fi \
-"]
+# Always expose port 8000
+EXPOSE 8000
+
+# Run app without poetry (MUCH faster)
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,19 +1,30 @@
-FROM node:20
+# ---------- STAGE 1: BUILDER ----------
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
+# Desativar TODOS os scripts do npm (inclui prepare/husky)
+ENV NPM_CONFIG_IGNORE_SCRIPTS=true
+
+# Copia apenas package*.json
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm install
 
-COPY frontend /app
+# Instala dependências sem dev
+RUN npm ci --omit=dev
 
-# Default: production
-ENV APP_ENV=production
+# Agora copia o restante do frontend
+COPY frontend .
 
-CMD ["sh", "-c", "\
-  if [ \"$APP_ENV\" = \"development\" ]; then \
-      npm run dev -- --host; \
-  else \
-      npm run build && npm run preview -- --host; \
-  fi \
-"]
+# Build do Vite
+RUN npm run build
+
+
+# ---------- RUNTIME ----------
+FROM nginx:alpine AS production
+
+RUN rm -rf /usr/share/nginx/html/*
+
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
