@@ -7,13 +7,13 @@ WORKDIR /app
 ENV NPM_CONFIG_IGNORE_SCRIPTS=true
 
 # Copia apenas package*.json
-COPY frontend/package.json frontend/package-lock.json ./
+COPY package.json package-lock.json ./
 
 # Instala dependências sem dev
 RUN npm ci --omit=dev
 
 # Agora copia o restante do frontend
-COPY frontend .
+COPY . .
 
 # Build do Vite
 RUN npm run build

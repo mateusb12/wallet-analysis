@@ -7,8 +7,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: './vitest.setup.js', // path to your setup file
-    css: false, // Disable CSS parsing for speed
+    setupFiles: './vitest.setup.js',
+    css: false,
   },
-  base: '/wallet-analysis/',
+  base: '/', // 👈 CORRETO para Fly.io / Nginx / Produção
 });
