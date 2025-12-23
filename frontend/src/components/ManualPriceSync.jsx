@@ -7,10 +7,13 @@ import {
   BarChart3,
   Landmark,
   LineChart,
+  Layers,
 } from 'lucide-react';
 import { syncService } from '../services/api.js';
 import { syncIpcaHistory } from '../services/ipcaService.js';
 import { cdiService } from '../services/cdiService.js';
+
+import { fetchWalletPositions } from '../services/walletDataService.js';
 
 export default function ManualPriceSync() {
   const [ticker, setTicker] = useState('');
@@ -18,38 +21,7 @@ export default function ManualPriceSync() {
   const [status, setStatus] = useState(null);
   const [msg, setMsg] = useState('');
 
-  const handleSync = async (e) => {
-    e.preventDefault();
-    if (!ticker) return;
-    executeSync(() => syncService.syncTicker(ticker));
-  };
-
-  const handleIbovSync = async () => {
-    executeSync(() => syncService.syncIbov());
-  };
-
-  const handleIfixSync = async () => {
-    const tickerToUse = ticker || '^IFIX';
-    executeSync(() => syncService.syncIfix(tickerToUse));
-  };
-
-  const handleIpcaSync = async () => {
-    executeSync(async () => {
-      const result = await syncIpcaHistory();
-      if (result && (result.inserted >= 0 || result.message)) {
-        return {
-          success: true,
-          count: result.inserted,
-          message: result.message || `${result.inserted} meses do IPCA sincronizados.`,
-        };
-      }
-      return { success: false, error: 'Falha ao sincronizar IPCA' };
-    });
-  };
-
-  const handleCdiSync = async () => {
-    executeSync(() => cdiService.syncCdi());
-  };
+  const [batchProgress, setBatchProgress] = useState(null);
 
   const executeSync = async (syncFunction) => {
     setLoading(true);
@@ -76,25 +48,190 @@ export default function ManualPriceSync() {
     }
   };
 
+  const handleSync = async (e) => {
+    e.preventDefault();
+    if (!ticker) return;
+    executeSync(() => syncService.syncTicker(ticker));
+  };
+
+  const handleSyncAll = async () => {
+    setLoading(true);
+    setStatus(null);
+    setMsg('');
+    setBatchProgress({ current: 0, total: 0, ticker: 'Iniciando...' });
+
+    try {
+      const positions = await fetchWalletPositions(true);
+      const uniqueTickers = [...new Set(positions.map((p) => p.ticker))];
+
+      const indicesToSync = [
+        { id: 'IBOV', label: 'Índice IBOVESPA', action: () => syncService.syncIbov() },
+        { id: 'IFIX', label: 'Índice IFIX', action: () => syncService.syncIfix('^IFIX') },
+        { id: 'CDI', label: 'Taxa CDI', action: () => cdiService.syncCdi() },
+        {
+          id: 'IPCA',
+          label: 'Inflação IPCA',
+          action: async () => {
+            const res = await syncIpcaHistory();
+            if (res && (res.inserted >= 0 || res.message)) return res;
+            throw new Error('Falha na resposta do IPCA');
+          },
+        },
+      ];
+
+      const totalTasks = uniqueTickers.length + indicesToSync.length;
+
+      if (totalTasks === 0) {
+        throw new Error('Nada para atualizar.');
+      }
+
+      setBatchProgress({ current: 0, total: totalTasks, ticker: '' });
+
+      let successCount = 0;
+      let errors = [];
+      let currentStep = 0;
+
+      for (const currentTicker of uniqueTickers) {
+        currentStep++;
+        setBatchProgress({
+          current: currentStep,
+          total: totalTasks,
+          ticker: currentTicker,
+        });
+
+        try {
+          await syncService.syncTicker(currentTicker);
+          successCount++;
+        } catch (err) {
+          console.error(`Falha ao atualizar ${currentTicker}`, err);
+          errors.push(currentTicker);
+        }
+      }
+
+      for (const indexObj of indicesToSync) {
+        currentStep++;
+        setBatchProgress({
+          current: currentStep,
+          total: totalTasks,
+          ticker: indexObj.label,
+        });
+
+        try {
+          await indexObj.action();
+          successCount++;
+        } catch (err) {
+          console.error(`Falha ao atualizar ${indexObj.id}`, err);
+          errors.push(indexObj.id);
+        }
+      }
+
+      if (errors.length === 0) {
+        setStatus('success');
+        setMsg(
+          `Sucesso! ${uniqueTickers.length} ativos e ${indicesToSync.length} índices atualizados.`
+        );
+      } else {
+        setStatus('error');
+        setMsg(`Concluído com falhas em: ${errors.join(', ')}`);
+      }
+    } catch (error) {
+      setStatus('error');
+      setMsg(error.message || 'Erro ao iniciar sincronização em lote.');
+    } finally {
+      setLoading(false);
+      setBatchProgress(null);
+    }
+  };
+
+  const handleIbovSync = () => executeSync(() => syncService.syncIbov());
+
+  const handleIfixSync = () => {
+    const tickerToUse = ticker || '^IFIX';
+    executeSync(() => syncService.syncIfix(tickerToUse));
+  };
+
+  const handleIpcaSync = () => {
+    executeSync(async () => {
+      const result = await syncIpcaHistory();
+      if (result && (result.inserted >= 0 || result.message)) {
+        return {
+          success: true,
+          count: result.inserted,
+          message: result.message || `${result.inserted} meses do IPCA sincronizados.`,
+        };
+      }
+      return { success: false, error: 'Falha ao sincronizar IPCA' };
+    });
+  };
+
+  const handleCdiSync = () => executeSync(() => cdiService.syncCdi());
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-      <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-          <RefreshCw className="w-5 h-5 text-blue-600" />
-          Sincronização Manual
-        </h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Atualiza cotações via Yahoo Finance (Proxy) e índices oficiais (BCB/B3).
-        </p>
+      <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <RefreshCw className="w-5 h-5 text-blue-600" />
+            Sincronização Manual
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Atualiza cotações via Yahoo Finance (Proxy) e índices oficiais (BCB/B3).
+          </p>
+        </div>
+
+        {}
+        {!batchProgress && (
+          <button
+            onClick={handleSyncAll}
+            disabled={loading}
+            className="hidden sm:flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Layers className="w-4 h-4" />
+            Sincronizar Carteira Completa
+          </button>
+        )}
       </div>
 
       <div className="p-6">
+        {}
+        {batchProgress && (
+          <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800 animate-pulse">
+            <div className="flex justify-between text-sm font-bold text-blue-700 dark:text-blue-300 mb-2">
+              <span>Atualizando preços...</span>
+              <span>
+                {batchProgress.current} / {batchProgress.total}
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-2">
+              <div
+                className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+              ></div>
+            </div>
+            <p className="text-xs text-blue-600/70 dark:text-blue-400">
+              Processando: <span className="font-bold">{batchProgress.ticker}</span>
+            </p>
+          </div>
+        )}
+
+        {}
+        {!batchProgress && (
+          <button
+            onClick={handleSyncAll}
+            disabled={loading}
+            className="sm:hidden w-full mb-6 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors shadow-sm disabled:opacity-50"
+          >
+            <Layers className="w-4 h-4" />
+            Sincronizar Carteira Completa
+          </button>
+        )}
+
         <div className="flex flex-col gap-4">
           {}
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Ticker (ex: BTLG11)
+                Ticker Individual (ex: BTLG11)
               </label>
               <div className="flex gap-2">
                 <input
@@ -110,7 +247,7 @@ export default function ManualPriceSync() {
                   className={`px-6 py-2 rounded-lg font-medium text-white transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap ${
                     loading || !ticker
                       ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-blue-600 hover:bg-blue-700'
+                      : 'bg-gray-600 hover:bg-gray-700'
                   }`}
                 >
                   {loading && ticker ? (
@@ -129,13 +266,12 @@ export default function ManualPriceSync() {
               Índices de Mercado
             </label>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {}
               <button
                 onClick={handleIbovSync}
                 disabled={loading}
                 className="px-3 py-2.5 rounded-lg font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800 transition-colors flex items-center justify-center gap-2 text-sm"
               >
-                {loading && !ticker ? (
+                {loading && !ticker && !batchProgress ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />
                 ) : (
                   <LineChart className="w-4 h-4" />
@@ -143,13 +279,12 @@ export default function ManualPriceSync() {
                 Sync IBOV
               </button>
 
-              {}
               <button
                 onClick={handleIfixSync}
                 disabled={loading}
                 className="px-3 py-2.5 rounded-lg font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 transition-colors flex items-center justify-center gap-2 text-sm"
               >
-                {loading && !ticker ? (
+                {loading && !ticker && !batchProgress ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />
                 ) : (
                   <TrendingUp className="w-4 h-4" />
@@ -157,13 +292,12 @@ export default function ManualPriceSync() {
                 Sync IFIX
               </button>
 
-              {}
               <button
                 onClick={handleIpcaSync}
                 disabled={loading}
                 className="px-3 py-2.5 rounded-lg font-medium text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/30 hover:bg-orange-100 dark:hover:bg-orange-900/50 border border-orange-200 dark:border-orange-800 transition-colors flex items-center justify-center gap-2 text-sm"
               >
-                {loading && !ticker ? (
+                {loading && !ticker && !batchProgress ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />
                 ) : (
                   <BarChart3 className="w-4 h-4" />
@@ -171,13 +305,12 @@ export default function ManualPriceSync() {
                 Sync IPCA
               </button>
 
-              {}
               <button
                 onClick={handleCdiSync}
                 disabled={loading}
                 className="px-3 py-2.5 rounded-lg font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center justify-center gap-2 text-sm"
               >
-                {loading && !ticker ? (
+                {loading && !ticker && !batchProgress ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />
                 ) : (
                   <Landmark className="w-4 h-4" />
