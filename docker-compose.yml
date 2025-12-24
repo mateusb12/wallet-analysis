@@ -3,12 +3,12 @@ version: "3.9"
 services:
   backend:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ./backend
+      dockerfile: Dockerfile
     environment:
       APP_ENV: development
     volumes:
-      - ./backend:/app/backend
+      - ./backend:/app
     ports:
       - "8000:8000"
     command: bash -c "pip install pydevd-pycharm==253.29346.142 && uvicorn backend.main:app --host 0.0.0.0 --port 8000"

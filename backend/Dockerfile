@@ -13,8 +13,10 @@ ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /app
 
-# Copy only dependency files first (correct paths!)
-COPY backend/pyproject.toml backend/poetry.lock* ./
+# ⬇⬇⬇ ÚNICA LINHA QUE PRECISA MUDAR ⬇⬇⬇
+# Antes: COPY backend/pyproject.toml backend/poetry.lock* ./
+COPY pyproject.toml poetry.lock* ./
+# ⬆⬆⬆ usando os arquivos na raiz do contexto (que é a pasta backend) ⬆⬆⬆
 
 # Generate requirements.txt and build wheel packages
 RUN poetry export --without-hashes --format=requirements.txt > requirements.txt
@@ -36,7 +38,7 @@ WORKDIR /app
 COPY --from=builder /wheelhouse /wheelhouse
 RUN pip install --no-cache-dir /wheelhouse/*
 
-# Copy application code (correct path!)
+# Copy application code (mantém igual)
 COPY . .
 
 ENV APP_ENV=production
@@ -44,4 +46,3 @@ ENV APP_ENV=production
 EXPOSE 8000
 
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
