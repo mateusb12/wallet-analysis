@@ -7,10 +7,16 @@ services:
       dockerfile: Dockerfile
     environment:
       APP_ENV: development
+      # Essencial para o Python entender que /app contém módulos importáveis
+      PYTHONPATH: /app
     volumes:
-      - ./backend:/app
+      # --- MUDANÇA CRÍTICA ---
+      # Montamos o código local DENTRO da pasta backend no container
+      # Isso garante que a estrutura seja idêntica à de produção (/app/backend)
+      - ./backend:/app/backend
     ports:
       - "8000:8000"
+    # O comando uvicorn backend.main:app agora funcionará perfeitamente
     command: bash -c "pip install pydevd-pycharm==253.29346.142 && uvicorn backend.main:app --host 0.0.0.0 --port 8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -18,11 +24,11 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: frontend/Dockerfile.dev   # <-- AQUI MUDA
+      dockerfile: frontend/Dockerfile.dev
     environment:
       APP_ENV: development
     volumes:
-      - ./frontend:/app                     # hot reload
-      - /app/node_modules                   # evita sobrescrever o node_modules
+      - ./frontend:/app
+      - /app/node_modules
     ports:
       - "5173:5173"

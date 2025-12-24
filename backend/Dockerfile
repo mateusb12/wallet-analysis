@@ -13,10 +13,8 @@ ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /app
 
-# ⬇⬇⬇ ÚNICA LINHA QUE PRECISA MUDAR ⬇⬇⬇
-# Antes: COPY backend/pyproject.toml backend/poetry.lock* ./
+# Copia arquivos de dependência para a raiz do build
 COPY pyproject.toml poetry.lock* ./
-# ⬆⬆⬆ usando os arquivos na raiz do contexto (que é a pasta backend) ⬆⬆⬆
 
 # Generate requirements.txt and build wheel packages
 RUN poetry export --without-hashes --format=requirements.txt > requirements.txt
@@ -38,8 +36,12 @@ WORKDIR /app
 COPY --from=builder /wheelhouse /wheelhouse
 RUN pip install --no-cache-dir /wheelhouse/*
 
-# Copy application code (mantém igual)
-COPY . .
+# --- AQUI ESTÁ O TRUQUE PARA OS IMPORTS FUNCIONAREM ---
+# 1. Copiamos o código para uma subpasta 'backend' para criar a estrutura de pacote
+COPY . ./backend
+
+# 2. Adicionamos /app ao PYTHONPATH para o Python encontrar o pacote 'backend'
+ENV PYTHONPATH=/app
 
 ENV APP_ENV=production
 
