@@ -10,6 +10,10 @@ primary_region = 'gru'
   dockerfile = "Dockerfile"
   context = "."
 
+[build.args]
+  VITE_SUPABASE_URL = "https://wkhphbnvpluwdgsfbmow.supabase.co"
+  VITE_API_URL = "https://wallet-analysis-backend.fly.dev"
+
 [http_service]
   internal_port = 80
   force_https = true
