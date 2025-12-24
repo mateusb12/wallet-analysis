@@ -10,7 +10,7 @@ ENV NPM_CONFIG_IGNORE_SCRIPTS=true
 COPY package.json package-lock.json ./
 
 # Instala dependências sem dev
-RUN npm ci --omit=dev
+RUN npm ci
 
 # Agora copia o restante do frontend
 COPY . .
