@@ -9,8 +9,11 @@ export default function TopBar({ onMobileMenuOpen }) {
   const userInitial = user?.email ? user.email.charAt(0).toUpperCase() : 'U';
 
   const userName =
-    user?.user_metadata?.full_name || (user?.email ? user.email.split('@')[0] : 'Usuário');
-  const userAvatarUrl = user?.user_metadata?.avatar_url;
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    (user?.email ? user.email.split('@')[0] : 'Usuário');
+
+  const userAvatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
 
   return (
     <header className="h-20 bg-white dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700 flex items-center justify-between px-4 lg:px-8 transition-colors duration-200 z-10">
@@ -108,8 +111,6 @@ export default function TopBar({ onMobileMenuOpen }) {
           )}
         </button>
 
-        {}
-        {}
         <div className="h-8 w-px bg-gray-300 dark:bg-gray-700 mx-1 hidden sm:block"></div>
 
         {}
@@ -129,6 +130,9 @@ export default function TopBar({ onMobileMenuOpen }) {
               alt="Profile"
               className="h-10 w-10 rounded-full object-cover shadow-md shadow-blue-500/20 ring-2 ring-white dark:ring-gray-700"
               referrerPolicy="no-referrer"
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
             />
           ) : (
             <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-blue-500/20 ring-2 ring-white dark:ring-gray-700">

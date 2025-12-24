@@ -56,12 +56,25 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
   const [activeItem, setActiveItem] = useState(defaultCalculator.id);
   const { user, signOut } = useAuth();
 
+  if (user) {
+    console.group('Sidebar User Debug');
+    console.log('Full User Object:', user);
+    console.log('User Metadata:', user.user_metadata);
+    console.log('Avatar URL candidate:', user.user_metadata?.avatar_url);
+    console.log('Picture candidate:', user.user_metadata?.picture);
+    console.groupEnd();
+  }
+
   const userInitial = user?.email ? user.email.charAt(0).toUpperCase() : 'U';
 
   const userName =
-    user?.user_metadata?.full_name || (user?.email ? user.email.split('@')[0] : 'Visitante');
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    (user?.email ? user.email.split('@')[0] : 'Visitante');
+
   const userEmail = user?.email || '';
-  const userAvatarUrl = user?.user_metadata?.avatar_url;
+
+  const userAvatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
 
   const handleItemClick = (item) => {
     setActiveItem(item.id);
@@ -126,6 +139,10 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
               alt={userName}
               className="w-10 h-10 rounded-full object-cover shadow-md ring-2 ring-white dark:ring-gray-600 shrink-0"
               referrerPolicy="no-referrer"
+              onError={(e) => {
+                console.error('Error loading avatar image:', userAvatarUrl);
+                e.target.style.display = 'none';
+              }}
             />
           ) : (
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-white dark:ring-gray-600 shrink-0">
@@ -140,7 +157,6 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
             </p>
           </div>
 
-          {}
           <button
             onClick={handleSettingsClick}
             title="Configurações"
