@@ -15,6 +15,12 @@ jobs:
 
       - name: Deploy frontend
         working-directory: ./frontend
-        run: flyctl deploy --remote-only
+        # The syntax below splits the command into multiple lines for readability
+        # and passes the GitHub Secrets to the Docker args declared above
+        run: |
+          flyctl deploy --remote-only \
+            --build-arg VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }} \
+            --build-arg VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }} \
+            --build-arg VITE_API_URL=${{ secrets.VITE_API_URL }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
