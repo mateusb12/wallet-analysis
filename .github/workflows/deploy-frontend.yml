@@ -18,7 +18,7 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy frontend
-        run: flyctl deploy --remote
+        run: flyctl deploy
         working-directory: ./frontend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
