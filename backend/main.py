@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
+from backend.debugger import start_debugger_monitor
 from backend.source.features.analysis import analysis_router
 from backend.source.features.analysis.analysis_router import analysis_bp
 from backend.source.features.auth import auth_router
@@ -14,6 +15,9 @@ from backend.source.features.wallet.wallet_router import wallet_bp
 
 # Load env from the root of your project
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
+
+if os.getenv('APP_ENV') == 'development':
+    start_debugger_monitor()
 
 app = FastAPI(title="CalcInvest API", version="0.2.0")
 

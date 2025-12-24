@@ -11,6 +11,9 @@ services:
       - ./backend:/app/backend
     ports:
       - "8000:8000"
+    command: bash -c "pip install pydevd-pycharm==253.29346.142 && uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   frontend:
     build:
