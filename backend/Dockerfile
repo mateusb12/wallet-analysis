@@ -14,7 +14,7 @@ ENV PATH="/root/.local/bin:$PATH"
 WORKDIR /app
 
 # Copy only dependency files first (correct paths!)
-COPY pyproject.toml poetry.lock* ./
+COPY backend/pyproject.toml backend/poetry.lock* ./
 
 # Generate requirements.txt and build wheel packages
 RUN poetry export --without-hashes --format=requirements.txt > requirements.txt
