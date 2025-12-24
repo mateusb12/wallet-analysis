@@ -7,7 +7,10 @@ export default function TopBar({ onMobileMenuOpen }) {
   const { user, signOut } = useAuth();
 
   const userInitial = user?.email ? user.email.charAt(0).toUpperCase() : 'U';
-  const userName = user?.email ? user.email.split('@')[0] : 'Usuário';
+
+  const userName =
+    user?.user_metadata?.full_name || (user?.email ? user.email.split('@')[0] : 'Usuário');
+  const userAvatarUrl = user?.user_metadata?.avatar_url;
 
   return (
     <header className="h-20 bg-white dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700 flex items-center justify-between px-4 lg:px-8 transition-colors duration-200 z-10">
@@ -120,9 +123,18 @@ export default function TopBar({ onMobileMenuOpen }) {
             </p>
           </div>
 
-          <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-blue-500/20 ring-2 ring-white dark:ring-gray-700">
-            {userInitial}
-          </div>
+          {userAvatarUrl ? (
+            <img
+              src={userAvatarUrl}
+              alt="Profile"
+              className="h-10 w-10 rounded-full object-cover shadow-md shadow-blue-500/20 ring-2 ring-white dark:ring-gray-700"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-blue-500/20 ring-2 ring-white dark:ring-gray-700">
+              {userInitial}
+            </div>
+          )}
 
           {}
           <button
