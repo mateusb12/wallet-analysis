@@ -1,4 +1,17 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const getBaseUrl = () => {
+  let url = import.meta.env.VITE_API_URL;
+
+  if (!url) {
+    console.warn('⚠️ VITE_API_URL não encontrada. Usando localhost.');
+    url = 'http://localhost:8000';
+  }
+
+  return url.replace(/\/$/, '');
+};
+
+const API_URL = getBaseUrl();
+
+console.log('🔌 API Base URL:', API_URL);
 
 export const authService = {
   async login(email, password) {
@@ -29,16 +42,14 @@ export const authService = {
 export const systemService = {
   async checkHealth() {
     try {
-      const baseUrl = API_URL.replace(/\/api\/?$/, '');
-
-      const response = await fetch(`${baseUrl}/`, {
+      const response = await fetch(`${API_URL}/`, {
         method: 'GET',
-
         signal: AbortSignal.timeout(3000),
       });
 
       return response.ok;
     } catch (error) {
+      console.error('Health Check falhou:', error);
       return false;
     }
   },
