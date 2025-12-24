@@ -15,8 +15,8 @@ jobs:
 
       - name: Deploy frontend
         working-directory: ./frontend
-        # The syntax below splits the command into multiple lines for readability
-        # and passes the GitHub Secrets to the Docker args declared above
+        # AQUI ESTÁ A CORREÇÃO:
+        # Passamos as secrets do GitHub para os ARGs do Dockerfile
         run: |
           flyctl deploy --remote-only \
             --build-arg VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }} \

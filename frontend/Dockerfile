@@ -15,17 +15,17 @@ RUN npm ci
 # Agora copia o restante do frontend
 COPY . .
 
-# --- NEW SECTION START ---
-# Declare build arguments (these come from the deploy command)
+# --- INÍCIO DA CORREÇÃO ---
+# 1. Declara que estes argumentos serão recebidos durante o build
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
 ARG VITE_API_URL
 
-# Map them to environment variables so Vite can read them during build
+# 2. Mapeia os argumentos para variáveis de ambiente para o Vite ler
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 ENV VITE_API_URL=$VITE_API_URL
-# --- NEW SECTION END ---
+# --- FIM DA CORREÇÃO ---
 
 # Build do Vite
 RUN npm run build
