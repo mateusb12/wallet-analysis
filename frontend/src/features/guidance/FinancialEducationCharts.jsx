@@ -16,7 +16,15 @@ import {
   Area,
   ReferenceLine,
 } from 'recharts';
-import { TrendingUp, ShieldAlert, ShieldCheck, Percent, Activity, Info } from 'lucide-react';
+import {
+  TrendingUp,
+  ShieldAlert,
+  ShieldCheck,
+  Percent,
+  Activity,
+  Info,
+  Database,
+} from 'lucide-react';
 import { useTheme } from '../theme/ThemeContext';
 
 const ACTION_LABELS_PT = {
@@ -235,7 +243,16 @@ const CustomCagrTooltip = ({ active, payload, isDark, mode }) => {
   return null;
 };
 
-export const StrategySimulator = () => {
+const AssetBadge = ({ name }) => (
+  <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 self-end md:self-auto mb-2 md:mb-0">
+    <Database size={10} className="text-gray-500 dark:text-gray-400" />
+    <span className="text-[10px] font-mono font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide">
+      Ativo: {name}
+    </span>
+  </div>
+);
+
+export const StrategySimulator = ({ assetName = 'Hipotético' }) => {
   const [mode, setMode] = useState('naive');
   const isNaive = mode === 'naive';
   const { theme } = useTheme();
@@ -311,7 +328,7 @@ export const StrategySimulator = () => {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col h-full">
-      <div className="flex items-start justify-between mb-4">
+      <div className="flex flex-col md:flex-row md:items-start justify-between mb-4 gap-2">
         <div className="flex items-center gap-3">
           <div
             className={`p-2 rounded-lg ${isNaive ? 'bg-red-100 text-red-600 dark:bg-red-900/30' : 'bg-green-100 text-green-600 dark:bg-green-900/30'}`}
@@ -329,19 +346,22 @@ export const StrategySimulator = () => {
             </p>
           </div>
         </div>
-        <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex text-xs font-bold">
-          <button
-            onClick={() => setMode('naive')}
-            className={`px-3 py-1.5 rounded-md transition-all ${isNaive ? 'bg-white text-red-600 shadow-sm dark:bg-gray-600 dark:text-red-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-          >
-            Ingênuo
-          </button>
-          <button
-            onClick={() => setMode('mm200')}
-            className={`px-3 py-1.5 rounded-md transition-all ${!isNaive ? 'bg-white text-green-600 shadow-sm dark:bg-gray-600 dark:text-green-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-          >
-            Com MM200
-          </button>
+        <div className="flex flex-col items-end gap-2">
+          <AssetBadge name={assetName} />
+          <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex text-xs font-bold w-fit">
+            <button
+              onClick={() => setMode('naive')}
+              className={`px-3 py-1.5 rounded-md transition-all ${isNaive ? 'bg-white text-red-600 shadow-sm dark:bg-gray-600 dark:text-red-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+            >
+              Ingênuo
+            </button>
+            <button
+              onClick={() => setMode('mm200')}
+              className={`px-3 py-1.5 rounded-md transition-all ${!isNaive ? 'bg-white text-green-600 shadow-sm dark:bg-gray-600 dark:text-green-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+            >
+              Com MM200
+            </button>
+          </div>
         </div>
       </div>
       <div
@@ -488,7 +508,7 @@ export const DrawdownAnalysis = () => {
   );
 };
 
-export const CagrSimulator = () => {
+export const CagrSimulator = ({ assetName = 'Hipotético' }) => {
   const [mode, setMode] = useState('illusion');
   const isIllusion = mode === 'illusion';
   const { theme } = useTheme();
@@ -497,7 +517,7 @@ export const CagrSimulator = () => {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col h-full">
-      <div className="flex items-start justify-between mb-4">
+      <div className="flex flex-col md:flex-row md:items-start justify-between mb-4 gap-2">
         <div className="flex items-center gap-3">
           <div
             className={`p-2 rounded-lg ${isIllusion ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' : 'bg-purple-100 text-purple-600 dark:bg-purple-900/30'}`}
@@ -515,19 +535,22 @@ export const CagrSimulator = () => {
             </p>
           </div>
         </div>
-        <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex text-xs font-bold">
-          <button
-            onClick={() => setMode('illusion')}
-            className={`px-3 py-1.5 rounded-md transition-all ${isIllusion ? 'bg-white text-blue-600 shadow-sm dark:bg-gray-600 dark:text-blue-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-          >
-            Média
-          </button>
-          <button
-            onClick={() => setMode('real')}
-            className={`px-3 py-1.5 rounded-md transition-all ${!isIllusion ? 'bg-white text-purple-600 shadow-sm dark:bg-gray-600 dark:text-purple-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-          >
-            CAGR
-          </button>
+        <div className="flex flex-col items-end gap-2">
+          <AssetBadge name={assetName} />
+          <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex text-xs font-bold w-fit">
+            <button
+              onClick={() => setMode('illusion')}
+              className={`px-3 py-1.5 rounded-md transition-all ${isIllusion ? 'bg-white text-blue-600 shadow-sm dark:bg-gray-600 dark:text-blue-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+            >
+              Média
+            </button>
+            <button
+              onClick={() => setMode('real')}
+              className={`px-3 py-1.5 rounded-md transition-all ${!isIllusion ? 'bg-white text-purple-600 shadow-sm dark:bg-gray-600 dark:text-purple-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+            >
+              CAGR
+            </button>
+          </div>
         </div>
       </div>
       <div

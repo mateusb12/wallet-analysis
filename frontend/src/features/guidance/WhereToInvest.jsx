@@ -54,6 +54,8 @@ export default function WhereToInvest() {
   const [analysis, setAnalysis] = useState([]);
   const [recommendation, setRecommendation] = useState(null);
 
+  const selectedAssetForEducation = 'Hipotético';
+
   useEffect(() => {
     setTimeout(() => {
       const processed = MOCK_MARKET_DATA.map((asset) => {
@@ -256,8 +258,8 @@ export default function WhereToInvest() {
 
           {}
           <div className="grid md:grid-cols-2 gap-6 pt-4">
-            <StrategySimulator />
-            <CagrSimulator />
+            <StrategySimulator assetName={selectedAssetForEducation} />
+            <CagrSimulator assetName={selectedAssetForEducation} />
             <DrawdownAnalysis />
             <VolatilityImpact />
           </div>
