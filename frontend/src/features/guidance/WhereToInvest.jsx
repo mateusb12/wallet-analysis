@@ -11,6 +11,9 @@ import {
   ReferenceLine,
   Label,
   LabelList,
+  LineChart,
+  Line,
+  Dot,
 } from 'recharts';
 import {
   TrendingUp,
@@ -22,8 +25,27 @@ import {
   TrendingDown,
   ArrowRight,
   Info,
+  ShieldAlert,
+  ShieldCheck,
+  MousePointerClick,
 } from 'lucide-react';
 import { useTheme } from '../theme/ThemeContext.jsx';
+
+const ACTION_LABELS_PT = {
+  BUY: 'COMPRAR',
+  WAIT: 'AGUARDAR',
+  PANIC: 'PÂNICO',
+  BLOCKED: 'BLOQUEADO',
+};
+
+const CRASH_SCENARIO = [
+  { day: 'D1', price: 100, mm200: 102, action_naive: 'BUY', action_mm200: 'WAIT' },
+  { day: 'D2', price: 90, mm200: 101, action_naive: 'BUY', action_mm200: 'WAIT' },
+  { day: 'D3', price: 80, mm200: 99, action_naive: 'BUY', action_mm200: 'WAIT' },
+  { day: 'D4', price: 70, mm200: 97, action_naive: 'BUY', action_mm200: 'WAIT' },
+  { day: 'D5', price: 60, mm200: 94, action_naive: 'BUY', action_mm200: 'WAIT' },
+  { day: 'D6', price: 50, mm200: 90, action_naive: 'PANIC', action_mm200: 'WAIT' },
+];
 
 const DRAWDOWN_DATA = [
   { loss: 10, recovery: 11.1, risk: 'low', label: 'Leve' },
@@ -60,14 +82,12 @@ const CustomDrawdownTooltip = ({ active, payload, label, isDark }) => {
     const bgClass = isDark
       ? 'bg-gray-800 border-gray-600 text-gray-200'
       : 'bg-white border-gray-300 text-gray-700';
-
     return (
       <div className={`${bgClass} border p-3 rounded-lg shadow-xl text-sm z-50`}>
         <div className="border-b border-gray-500/20 pb-2 mb-2">
           <p className="font-bold text-xs uppercase tracking-wider opacity-70">Cenário de Queda</p>
           <p className="text-lg font-bold text-red-500">-{data.loss}%</p>
         </div>
-
         <div className="space-y-1">
           <div className="flex justify-between gap-8 text-xs">
             <span className="text-gray-500 dark:text-gray-400">Capital Restante:</span>
@@ -81,9 +101,6 @@ const CustomDrawdownTooltip = ({ active, payload, label, isDark }) => {
               +{data.recovery.toLocaleString('pt-BR')}%
             </span>
           </div>
-          <div className="mt-2 pt-2 border-t border-gray-500/20 text-[10px] text-center italic opacity-60">
-            Nível de Risco: {data.label}
-          </div>
         </div>
       </div>
     );
@@ -95,7 +112,6 @@ const DrawdownChart = () => {
   let isDark = true;
   const { theme } = useTheme();
   isDark = theme === 'dark';
-
   const gridColor = isDark ? '#374151' : '#e5e7eb';
   const textColor = isDark ? '#9ca3af' : '#6b7280';
   const labelColor = isDark ? '#e5e7eb' : '#374151';
@@ -109,7 +125,6 @@ const DrawdownChart = () => {
           barSize={32}
         >
           <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-
           <XAxis
             dataKey="loss"
             tickFormatter={(val) => `-${val}%`}
@@ -121,14 +136,9 @@ const DrawdownChart = () => {
               value="Perda Inicial (Drawdown)"
               position="insideBottom"
               dy={18}
-              style={{
-                fill: labelColor,
-                fontSize: 11,
-                fontWeight: 600,
-              }}
+              style={{ fill: labelColor, fontSize: 11, fontWeight: 600 }}
             />
           </XAxis>
-
           <YAxis
             tickFormatter={(val) => `+${val}%`}
             tick={{ fill: textColor, fontSize: 11 }}
@@ -141,20 +151,13 @@ const DrawdownChart = () => {
               angle={-90}
               position="insideLeft"
               dx={-5}
-              style={{
-                fill: labelColor,
-                fontSize: 11,
-                fontWeight: 600,
-                textAnchor: 'middle',
-              }}
+              style={{ fill: labelColor, fontSize: 11, fontWeight: 600, textAnchor: 'middle' }}
             />
           </YAxis>
-
           <Tooltip
             content={<CustomDrawdownTooltip isDark={isDark} />}
             cursor={{ fill: isDark ? '#ffffff10' : '#00000005' }}
           />
-
           <Bar dataKey="recovery" radius={[4, 4, 0, 0]} animationDuration={1500}>
             {DRAWDOWN_DATA.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={getRiskHex(entry.risk, isDark)} />
@@ -172,6 +175,164 @@ const DrawdownChart = () => {
   );
 };
 
+const StrategySimulator = () => {
+  const [mode, setMode] = useState('naive');
+  const isNaive = mode === 'naive';
+
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  const gridColor = isDark ? '#374151' : '#e5e7eb';
+
+  const CustomDot = (props) => {
+    const { cx, cy, payload } = props;
+    if (!cx || !cy) return null;
+
+    if (isNaive) {
+      if (payload.action_naive === 'BUY') {
+        return <circle cx={cx} cy={cy} r={4} fill="#22c55e" stroke="white" strokeWidth={2} />;
+      }
+      if (payload.action_naive === 'PANIC') {
+        return (
+          <text
+            x={cx}
+            y={cy - 10}
+            textAnchor="middle"
+            fill="#ef4444"
+            fontSize={16}
+            fontWeight="bold"
+          >
+            💀
+          </text>
+        );
+      }
+    } else {
+      return (
+        <g transform={`translate(${cx - 5},${cy - 5})`}>
+          <rect width="10" height="10" fill="#ef4444" rx="2" />
+          <path d="M2.5 2.5L7.5 7.5M7.5 2.5L2.5 7.5" stroke="white" strokeWidth="1.5" />
+        </g>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col h-full">
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div
+            className={`p-2 rounded-lg ${isNaive ? 'bg-red-100 text-red-600 dark:bg-red-900/30' : 'bg-green-100 text-green-600 dark:bg-green-900/30'}`}
+          >
+            {isNaive ? <ShieldAlert size={20} /> : <ShieldCheck size={20} />}
+          </div>
+          <div>
+            <h4 className="font-bold text-gray-900 dark:text-white text-base">
+              {isNaive ? 'Estratégia "Preço Médio"' : 'Filtro de Segurança MM200'}
+            </h4>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {isNaive
+                ? 'Comprando durante a queda (intuitivo)'
+                : 'Evitando a faca caindo (Sistêmico)'}
+            </p>
+          </div>
+        </div>
+
+        {}
+        <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex text-xs font-bold">
+          <button
+            onClick={() => setMode('naive')}
+            className={`px-3 py-1.5 rounded-md transition-all ${isNaive ? 'bg-white text-red-600 shadow-sm dark:bg-gray-600 dark:text-red-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+          >
+            Ingênuo
+          </button>
+          <button
+            onClick={() => setMode('mm200')}
+            className={`px-3 py-1.5 rounded-md transition-all ${!isNaive ? 'bg-white text-green-600 shadow-sm dark:bg-gray-600 dark:text-green-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+          >
+            Com MM200
+          </button>
+        </div>
+      </div>
+
+      {}
+      <div
+        className={`mb-4 p-3 rounded-lg text-sm border ${isNaive ? 'bg-red-50 border-red-100 text-red-800 dark:bg-red-900/10 dark:border-red-900/30 dark:text-red-200' : 'bg-green-50 border-green-100 text-green-800 dark:bg-green-900/10 dark:border-green-900/30 dark:text-green-200'}`}
+      >
+        {isNaive ? (
+          <p>
+            <strong>O Problema:</strong> "Tô achando barato!" Você compra aquela ação à 100, 90,
+            80... sempre tentando baixar o preço médio. Quando o ativo chega a 50, seu capital foi
+            dizimado e você termina "preso" na posição
+          </p>
+        ) : (
+          <p>
+            <strong>A Solução:</strong> O preço está abaixo da MM200 (Linha Laranja). O sistema
+            identifica tendência de baixa e <strong>BLOQUEIA</strong> novos aportes. Você fica em
+            caixa e não perde nada.
+          </p>
+        )}
+      </div>
+
+      {}
+      <div className="w-full h-40">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={CRASH_SCENARIO} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+            <XAxis dataKey="day" hide />
+            <YAxis domain={[40, 110]} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+            <Tooltip
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  return (
+                    <div className="bg-gray-900 text-white text-xs p-2 rounded shadow-lg">
+                      <p>Preço: R$ {payload[0].value}</p>
+                      <p className="font-bold mt-1">
+                        Ação:{' '}
+                        {isNaive
+                          ? (ACTION_LABELS_PT[payload[0].payload.action_naive] ?? '—')
+                          : 'BLOQUEADO ⛔'}
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+            {}
+            <Line
+              type="monotone"
+              dataKey="mm200"
+              stroke="#f97316"
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              dot={false}
+              activeDot={false}
+            />
+            {}
+            <Line
+              type="monotone"
+              dataKey="price"
+              stroke={isNaive ? '#ef4444' : '#9ca3af'}
+              strokeWidth={3}
+              dot={<CustomDot />}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {}
+      <div className="mt-auto pt-4 flex items-center justify-between border-t border-gray-100 dark:border-gray-700">
+        <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+          Resultado Final
+        </span>
+        <span className={`text-xl font-bold ${isNaive ? 'text-red-600' : 'text-gray-400'}`}>
+          {isNaive ? '-50% de Perda' : '0% (Caixa Protegido)'}
+        </span>
+      </div>
+    </div>
+  );
+};
+
 const getTypeColor = (type) => {
   switch (type) {
     case 'STOCK':
@@ -184,7 +345,6 @@ const getTypeColor = (type) => {
       return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
   }
 };
-
 const getStatusColor = (status) => {
   switch (status) {
     case 'LÍDER':
@@ -242,6 +402,7 @@ export default function WhereToInvest() {
 
   return (
     <div className="p-4 md:p-8 max-w-[90rem] mx-auto pb-20 space-y-8">
+      {}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
@@ -260,7 +421,9 @@ export default function WhereToInvest() {
         </div>
       ) : (
         <>
+          {}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {}
             <div className="lg:col-span-1 flex flex-col">
               <div
                 className={`flex-1 rounded-xl shadow-sm border p-6 relative overflow-hidden flex flex-col
@@ -277,11 +440,7 @@ export default function WhereToInvest() {
                 <div>
                   <div className="flex items-center gap-2 mb-6">
                     <div
-                      className={`p-2 rounded-lg ${
-                        recommendation.type === 'CASH'
-                          ? 'bg-red-100 text-red-600'
-                          : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400'
-                      }`}
+                      className={`p-2 rounded-lg ${recommendation.type === 'CASH' ? 'bg-red-100 text-red-600' : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400'}`}
                     >
                       {recommendation.type === 'CASH' ? (
                         <AlertTriangle size={24} />
@@ -310,9 +469,7 @@ export default function WhereToInvest() {
                           {recommendation.ticker}
                         </h3>
                         <span
-                          className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${getTypeColor(
-                            recommendation.type
-                          )}`}
+                          className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${getTypeColor(recommendation.type)}`}
                         >
                           {recommendation.type}
                         </span>
@@ -359,6 +516,7 @@ export default function WhereToInvest() {
               </div>
             </div>
 
+            {}
             <div className="lg:col-span-2">
               <div className="h-full bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
                 <div className="flex items-center justify-between mb-8">
@@ -394,9 +552,7 @@ export default function WhereToInvest() {
                               {isLocked && <Lock size={12} className="text-red-400" />}
                             </div>
                             <div
-                              className={`text-[10px] uppercase font-bold w-fit px-1.5 py-0.5 rounded border ${getStatusColor(
-                                asset.status
-                              )}`}
+                              className={`text-[10px] uppercase font-bold w-fit px-1.5 py-0.5 rounded border ${getStatusColor(asset.status)}`}
                             >
                               {asset.status}
                             </div>
@@ -407,11 +563,7 @@ export default function WhereToInvest() {
                                 CAGR {asset.cagr}%
                               </span>
                               <span
-                                className={`${
-                                  asset.distMM200 >= 0
-                                    ? 'text-green-600 dark:text-green-400'
-                                    : 'text-red-500'
-                                } font-medium`}
+                                className={`${asset.distMM200 >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'} font-medium`}
                               >
                                 MM200 {asset.distMM200 > 0 ? '+' : ''}
                                 {asset.distMM200.toFixed(1)}%
@@ -419,9 +571,7 @@ export default function WhereToInvest() {
                             </div>
                             <div className="h-3 bg-gray-100 dark:bg-gray-700/50 rounded-full overflow-hidden">
                               <div
-                                className={`h-full rounded-full transition-all duration-1000 ${
-                                  isLocked ? 'bg-gray-400' : 'bg-indigo-500'
-                                }`}
+                                className={`h-full rounded-full transition-all duration-1000 ${isLocked ? 'bg-gray-400' : 'bg-indigo-500'}`}
                                 style={{ width: `${widthPercentage}%` }}
                               />
                             </div>
@@ -435,46 +585,12 @@ export default function WhereToInvest() {
             </div>
           </div>
 
+          {}
           <div className="grid md:grid-cols-2 gap-6 pt-4">
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col justify-center">
-              <div className="flex items-start gap-3 mb-4">
-                <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg text-orange-600 dark:text-orange-400">
-                  <TrendingDown size={20} />
-                </div>
-                <div>
-                  <h4 className="font-bold text-gray-900 dark:text-white text-base">
-                    Por que usar a MM200?
-                  </h4>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Evitando "facas caindo".
-                  </p>
-                </div>
-              </div>
+            {}
+            <StrategySimulator />
 
-              <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-6">
-                Comprar "na baixa" pode ser desastroso se a tendência primária for de falência ou
-                crise estrutural. A <strong>Média Móvel de 200 dias (MM200)</strong> age como um
-                filtro de segurança:
-              </p>
-
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/30">
-                  <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0"></span>
-                  <div className="text-xs text-gray-700 dark:text-gray-300">
-                    <strong>Acima da MM200:</strong> Sinal Verde. O ativo está saudável e em
-                    tendência de valorização.
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30">
-                  <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></span>
-                  <div className="text-xs text-gray-700 dark:text-gray-300">
-                    <strong>Abaixo da MM200:</strong> Sinal Vermelho. Bloqueio automático para
-                    evitar perdas profundas.
-                  </div>
-                </div>
-              </div>
-            </div>
-
+            {}
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col p-6">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -488,9 +604,9 @@ export default function WhereToInvest() {
               <DrawdownChart />
 
               <div className="mt-4 text-xs text-gray-600 dark:text-gray-300 text-center bg-gray-100 dark:bg-gray-700/50 p-3 rounded border border-gray-200 dark:border-gray-700">
-                <p>Observe como a curva cresce exponencialmente.</p>
+                <p>Observe como a curva cresce exponencialmente...</p>
                 <p className="font-bold text-red-600 dark:text-red-400 mt-1">
-                  Perder 50% exige 100% de ganho apenas para empatar.
+                  Perder 50% de valor exige que a ação tenha 100% de ganho apenas para empatar
                 </p>
               </div>
             </div>
