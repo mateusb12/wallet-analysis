@@ -27,6 +27,10 @@ import {
   Rocket,
   Ban,
   Scale,
+  Zap,
+  Clock,
+  TrendingUpIcon,
+  Anchor,
 } from 'lucide-react';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -936,12 +940,103 @@ export const AsymmetryExplanation = () => {
             </div>
           </div>
           <p className="mt-3 text-xs text-gray-600 dark:text-gray-300 leading-relaxed bg-red-50 dark:bg-red-900/10 p-2 rounded border border-red-100 dark:border-red-900/20">
-            Se cair 40%, você precisa subir 66% só para empatar.{' '}
+            Se cair 40%, você precisa subir 66% só para empatar o que perdeu.{' '}
             <span className="font-bold text-red-600">
-              Quedas grandes quebram os juros compostos.
+              Quedas muito grandes quebram como o jogo dos juros compostos funciona.
             </span>
           </p>
         </div>
+      </div>
+    </div>
+  );
+};
+
+export const CagrExplanation = () => {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 h-full flex flex-col relative overflow-hidden">
+      {}
+      <div className="absolute -right-6 -top-6 opacity-[0.03] pointer-events-none">
+        <Zap size={200} />
+      </div>
+
+      <div className="flex items-center gap-2 mb-6 z-10">
+        <div className="p-2 bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 rounded-lg">
+          <TrendingUp size={20} />
+        </div>
+        <div>
+          <h4 className="font-bold text-gray-900 dark:text-white leading-tight">
+            Por que priorizar o CAGR?
+          </h4>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Velocidade de crescimento vs. Ilusão de segurança
+          </p>
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col md:flex-row gap-8 items-end justify-center z-10 pb-4">
+        {}
+        <div className="flex-1 w-full group cursor-default order-2 md:order-1">
+          <div className="flex justify-between text-xs mb-2 font-medium text-gray-500 dark:text-gray-400">
+            <span>Alta Velocidade (20%)</span>
+            <span className="text-green-500 font-bold flex items-center gap-1">
+              <Zap size={12} fill="currentColor" /> R$ 61.900
+            </span>
+          </div>
+          <div className="h-32 bg-gray-100 dark:bg-gray-700 rounded-t-lg relative w-full overflow-hidden flex items-end">
+            {}
+            <div className="w-full bg-purple-600 h-[90%] transition-all duration-500 group-hover:bg-purple-500 flex items-start justify-center text-white text-[10px] font-bold pt-2 shadow-[0_0_15px_rgba(147,51,234,0.4)]">
+              Aceleração
+            </div>
+            {}
+            <div className="absolute bottom-0 w-full h-1 bg-gray-300 dark:bg-gray-600"></div>
+          </div>
+          <div className="mt-3 bg-purple-50 dark:bg-purple-900/10 p-2 rounded border border-purple-100 dark:border-purple-900/20">
+            <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+              <span className="font-bold text-purple-600 dark:text-purple-400">O Risco Real:</span>{' '}
+              Você aceita volatilidade agora para ganhar <strong>tempo</strong>. Chega no objetivo
+              anos antes.
+            </p>
+          </div>
+        </div>
+
+        {}
+        <div className="text-gray-300 font-bold text-xl italic pb-20 md:pb-12 self-center order-1 md:order-2">
+          VS
+        </div>
+
+        {}
+        <div className="flex-1 w-full group cursor-default order-3">
+          <div className="flex justify-between text-xs mb-2 font-medium text-gray-500 dark:text-gray-400">
+            <span>"Segurança" (10%)</span>
+            <span className="text-gray-500 font-bold">R$ 25.900</span>
+          </div>
+          <div className="h-32 bg-gray-100 dark:bg-gray-700 rounded-t-lg relative w-full overflow-hidden flex items-end">
+            {}
+            <div className="w-full bg-gray-400 dark:bg-gray-500 h-[40%] transition-all duration-500 group-hover:bg-gray-400 flex items-start justify-center text-white text-[10px] font-bold pt-2">
+              Lentidão
+            </div>
+            {}
+            <div className="absolute top-2 right-2 text-gray-400 opacity-50">
+              <Anchor size={16} />
+            </div>
+          </div>
+          <div className="mt-3 bg-gray-50 dark:bg-gray-700/30 p-2 rounded border border-gray-200 dark:border-gray-600">
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+              Parece seguro porque "não cai", mas o preço é invisível:{' '}
+              <span className="underline decoration-dotted">crescer devagar demais.</span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {}
+      <div className="mt-2 text-center">
+        <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">
+          Simulação: R$ 10k em 10 anos
+        </p>
       </div>
     </div>
   );
