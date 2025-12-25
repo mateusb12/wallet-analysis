@@ -29,6 +29,17 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../theme/ThemeContext';
 
+const getFormattedDate = (daysOffset = 0) => {
+  const date = new Date();
+  date.setDate(date.getDate() + daysOffset);
+
+  return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }).replace('.', '');
+};
+
+const getCurrentYear = (yearOffset = 0) => {
+  return new Date().getFullYear() + yearOffset;
+};
+
 const ACTION_LABELS_PT = {
   BUY: 'COMPRAR',
   WAIT: 'AGUARDAR',
@@ -37,12 +48,12 @@ const ACTION_LABELS_PT = {
 };
 
 const RAW_CRASH_SCENARIO = [
-  { day: 'D1', price: 100, mm200: 102, action_naive: 'BUY', action_mm200: 'WAIT' },
-  { day: 'D2', price: 90, mm200: 101, action_naive: 'BUY', action_mm200: 'WAIT' },
-  { day: 'D3', price: 80, mm200: 99, action_naive: 'BUY', action_mm200: 'WAIT' },
-  { day: 'D4', price: 70, mm200: 97, action_naive: 'BUY', action_mm200: 'WAIT' },
-  { day: 'D5', price: 60, mm200: 94, action_naive: 'BUY', action_mm200: 'WAIT' },
-  { day: 'D6', price: 50, mm200: 90, action_naive: 'PANIC', action_mm200: 'WAIT' },
+  { day: getFormattedDate(-5), price: 100, mm200: 102, action_naive: 'BUY', action_mm200: 'WAIT' },
+  { day: getFormattedDate(-4), price: 90, mm200: 101, action_naive: 'BUY', action_mm200: 'WAIT' },
+  { day: getFormattedDate(-3), price: 80, mm200: 99, action_naive: 'BUY', action_mm200: 'WAIT' },
+  { day: getFormattedDate(-2), price: 70, mm200: 97, action_naive: 'BUY', action_mm200: 'WAIT' },
+  { day: getFormattedDate(-1), price: 60, mm200: 94, action_naive: 'BUY', action_mm200: 'WAIT' },
+  { day: getFormattedDate(0), price: 50, mm200: 90, action_naive: 'PANIC', action_mm200: 'WAIT' },
 ];
 
 const DRAWDOWN_DATA = [
@@ -58,13 +69,13 @@ const DRAWDOWN_DATA = [
 ];
 
 const CAGR_SCENARIO_DATA = [
-  { year: 0, val_real: 10000, val_illusion: 10000, pct: 0 },
-  { year: 1, val_real: 15000, val_illusion: 10500, pct: 50 },
-  { year: 2, val_real: 9000, val_illusion: 11025, pct: -40 },
-  { year: 3, val_real: 13500, val_illusion: 11576, pct: 50 },
-  { year: 4, val_real: 8100, val_illusion: 12155, pct: -40 },
-  { year: 5, val_real: 12150, val_illusion: 12762, pct: 50 },
-  { year: 6, val_real: 7290, val_illusion: 13400, pct: -40 },
+  { year: getCurrentYear(0), val_real: 10000, val_illusion: 10000, pct: 0 },
+  { year: getCurrentYear(1), val_real: 15000, val_illusion: 10500, pct: 50 },
+  { year: getCurrentYear(2), val_real: 9000, val_illusion: 11025, pct: -40 },
+  { year: getCurrentYear(3), val_real: 13500, val_illusion: 11576, pct: 50 },
+  { year: getCurrentYear(4), val_real: 8100, val_illusion: 12155, pct: -40 },
+  { year: getCurrentYear(5), val_real: 12150, val_illusion: 12762, pct: 50 },
+  { year: getCurrentYear(6), val_real: 7290, val_illusion: 13400, pct: -40 },
 ];
 
 const CAGR_COMPARISON_DATA = [
@@ -241,7 +252,9 @@ const CustomCagrTooltip = ({ active, payload, isDark, mode }) => {
         <div className="border-b border-gray-500/20 pb-2 mb-2 flex justify-between items-center">
           <span className="font-bold text-gray-500 uppercase">Ano {data.year}</span>
           <span className={`font-bold ${data.pct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-            {data.year === 0 ? 'Início' : `${data.pct > 0 ? '+' : ''}${data.pct}% no ano`}
+            {data.year === getCurrentYear(0)
+              ? 'Início'
+              : `${data.pct > 0 ? '+' : ''}${data.pct}% no ano`}
           </span>
         </div>
         <div className="space-y-1">
@@ -336,8 +349,10 @@ export const StrategySimulator = ({ asset }) => {
     let simMM = asset.mm200;
 
     for (let i = 0; i < 6; i++) {
+      const dayLabel = getFormattedDate(-(5 - i));
+
       points.push({
-        day: `T-${5 - i}`,
+        day: dayLabel,
         price: simPrice,
         mm200: simMM,
         action: asset.momentum ? 'MANTER' : 'AGUARDAR',
@@ -534,8 +549,15 @@ export const CagrSimulator = ({ asset }) => {
       const data = [];
       let value = 10000;
       const rate = asset.cagr / 100;
+      const currentYear = getCurrentYear(0);
+
       for (let i = 0; i <= 5; i++) {
-        data.push({ year: i, val_real: value, val_illusion: value, pct: asset.cagr });
+        data.push({
+          year: currentYear + i,
+          val_real: value,
+          val_illusion: value,
+          pct: asset.cagr,
+        });
         value = value * (1 + rate);
       }
       return data;
@@ -647,7 +669,12 @@ export const CagrSimulator = ({ asset }) => {
               strokeWidth={3}
               fill={isIllusion ? 'url(#colorIllusion)' : 'url(#colorReal)'}
               animationDuration={1000}
-              dot={!isHypothetical ? { r: 4, strokeWidth: 2, fill: '#9333ea' } : false}
+              dot={{
+                r: 4,
+                strokeWidth: 2,
+                fill: isIllusion ? '#3b82f6' : '#9333ea',
+                stroke: '#fff',
+              }}
             />
           </AreaChart>
         </ResponsiveContainer>
