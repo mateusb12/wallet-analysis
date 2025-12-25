@@ -8,6 +8,7 @@ import {
   BarChart2,
   ArrowRight,
   X,
+  Info,
 } from 'lucide-react';
 import {
   StrategySimulator,
@@ -18,6 +19,164 @@ import {
   CagrExplanation,
 } from './FinancialEducationCharts';
 import RiskDisclaimer from './RiskDisclaimer.jsx';
+
+const SHARPE_RANGES = [
+  {
+    min: -999,
+    max: 0,
+    label: 'Pior que renda fixa',
+    description: 'O ativo não compensa o risco. Retorno inferior à taxa livre de risco.',
+    color: 'red',
+  },
+  {
+    min: 0,
+    max: 0.5,
+    label: 'Risco alto para pouco retorno',
+    description: 'Alta volatilidade com retorno ineficiente. Grande chance de erro emocional.',
+    color: 'orange',
+  },
+  {
+    min: 0.5,
+    max: 1.0,
+    label: 'Aceitável, mas sofrido',
+    description: 'Retorno razoável, porém com oscilações que podem testar a disciplina.',
+    color: 'yellow',
+  },
+  {
+    min: 1.0,
+    max: 1.2,
+    label: 'Bom equilíbrio risco/retorno',
+    description: 'Crescimento consistente com volatilidade controlada.',
+    color: 'green',
+  },
+  {
+    min: 1.2,
+    max: 2.0,
+    label: 'Retorno eficiente',
+    description: 'Excelente relação entre retorno e risco. Ativo sustentável para longo prazo.',
+    color: 'blue',
+  },
+  {
+    min: 2.0,
+    max: 999,
+    label: 'Excepcional (raro)',
+    description: 'Retorno muito alto para o risco assumido. Geralmente temporário.',
+    color: 'purple',
+  },
+];
+
+const getColorClasses = (color) => {
+  const map = {
+    red: { border: 'border-red-500', text: 'text-red-400', dotted: 'border-red-500/50' },
+    orange: {
+      border: 'border-orange-500',
+      text: 'text-orange-400',
+      dotted: 'border-orange-500/50',
+    },
+    yellow: {
+      border: 'border-yellow-500',
+      text: 'text-yellow-400',
+      dotted: 'border-yellow-500/50',
+    },
+    green: {
+      border: 'border-emerald-500',
+      text: 'text-emerald-400',
+      dotted: 'border-emerald-500/50',
+    },
+    blue: { border: 'border-blue-500', text: 'text-blue-400', dotted: 'border-blue-500/50' },
+    purple: {
+      border: 'border-purple-500',
+      text: 'text-purple-400',
+      dotted: 'border-purple-500/50',
+    },
+  };
+  return map[color] || map.red;
+};
+
+const SharpeLegend = () => {
+  return (
+    <div className="relative group flex items-center gap-1.5 cursor-help w-fit">
+      {}
+      <span className="text-sm text-gray-500 dark:text-gray-400 border-b border-dashed border-gray-300 dark:border-gray-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors">
+        Sharpe (Risco)
+      </span>
+      <Info size={14} className="text-gray-400 group-hover:text-indigo-500 transition-colors" />
+
+      {}
+      <div className="absolute bottom-full left-0 mb-3 w-64 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all duration-200 z-[60] pointer-events-none">
+        <div className="relative p-3 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+          <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3 border-b border-gray-100 dark:border-gray-800 pb-2">
+            Escala de Classificação
+          </h4>
+
+          <div className="space-y-2">
+            {SHARPE_RANGES.map((range, index) => {
+              const styles = getColorClasses(range.color);
+
+              const rangeText =
+                range.min === -999
+                  ? '< 0'
+                  : range.max === 999
+                    ? '> 2.0'
+                    : `${range.min} - ${range.max}`;
+
+              return (
+                <div key={index} className="flex items-center justify-between text-xs">
+                  <span className={`font-mono font-bold ${styles.text}`}>{rangeText}</span>
+                  <span className="text-gray-600 dark:text-gray-400 text-right font-medium truncate ml-2">
+                    {range.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {}
+          <div className="absolute -bottom-2 left-6 w-4 h-4 rotate-45 border-b border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"></div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SharpeTooltip = ({ value }) => {
+  const info = SHARPE_RANGES.find((r) => value >= r.min && value < r.max) || SHARPE_RANGES[0];
+  const styles = getColorClasses(info.color);
+
+  return (
+    <div className="relative group flex items-center justify-end">
+      {}
+      <span
+        className={`text-xl font-bold border-b-2 border-dotted cursor-help transition-colors ${styles.dotted} hover:${styles.border} text-gray-900 dark:text-white`}
+      >
+        {value}
+      </span>
+
+      {}
+      <div className="absolute bottom-full mb-3 right-0 w-64 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all duration-200 z-[60] pointer-events-none">
+        {}
+        <div
+          className={`relative p-4 rounded-xl shadow-2xl border-2 bg-white dark:bg-gray-900 ${styles.border}`}
+        >
+          {}
+          <h4 className={`font-bold text-sm mb-1 uppercase tracking-wide ${styles.text}`}>
+            {info.label}
+          </h4>
+
+          {}
+          <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed font-medium">
+            {info.description}
+          </p>
+
+          {}
+          <div
+            className={`absolute -bottom-2 right-4 w-4 h-4 rotate-45 border-b-2 border-r-2 bg-white dark:bg-gray-900 ${styles.border}`}
+          ></div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const MOCK_MARKET_DATA = [
   { ticker: 'QQQQ11', type: 'ETF', price: 112.46, mm200: 98.2, cagr: 21.5, sharpe: 1.2 },
@@ -185,12 +344,8 @@ export default function WhereToInvest() {
                           </span>
                         </div>
                         <div className="flex justify-between items-center border-b border-gray-100 dark:border-gray-700/50 pb-3">
-                          <span className="text-sm text-gray-500 dark:text-gray-400">
-                            Sharpe (Risco)
-                          </span>
-                          <span className="text-xl font-bold text-gray-900 dark:text-white">
-                            {recommendation.sharpe}
-                          </span>
+                          <SharpeLegend />
+                          <SharpeTooltip value={recommendation.sharpe} />
                         </div>
                       </div>
                     </div>
