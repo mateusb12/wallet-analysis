@@ -198,7 +198,7 @@ const StrategySimulator = () => {
             y={cy - 10}
             textAnchor="middle"
             fill="#ef4444"
-            fontSize={16}
+            fontSize={20}
             fontWeight="bold"
           >
             💀
@@ -221,7 +221,11 @@ const StrategySimulator = () => {
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div
-            className={`p-2 rounded-lg ${isNaive ? 'bg-red-100 text-red-600 dark:bg-red-900/30' : 'bg-green-100 text-green-600 dark:bg-green-900/30'}`}
+            className={`p-2 rounded-lg ${
+              isNaive
+                ? 'bg-red-100 text-red-600 dark:bg-red-900/30'
+                : 'bg-green-100 text-green-600 dark:bg-green-900/30'
+            }`}
           >
             {isNaive ? <ShieldAlert size={20} /> : <ShieldCheck size={20} />}
           </div>
@@ -237,68 +241,107 @@ const StrategySimulator = () => {
           </div>
         </div>
 
-        {}
         <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex text-xs font-bold">
           <button
             onClick={() => setMode('naive')}
-            className={`px-3 py-1.5 rounded-md transition-all ${isNaive ? 'bg-white text-red-600 shadow-sm dark:bg-gray-600 dark:text-red-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+            className={`px-3 py-1.5 rounded-md transition-all ${
+              isNaive
+                ? 'bg-white text-red-600 shadow-sm dark:bg-gray-600 dark:text-red-300'
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+            }`}
           >
             Ingênuo
           </button>
           <button
             onClick={() => setMode('mm200')}
-            className={`px-3 py-1.5 rounded-md transition-all ${!isNaive ? 'bg-white text-green-600 shadow-sm dark:bg-gray-600 dark:text-green-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+            className={`px-3 py-1.5 rounded-md transition-all ${
+              !isNaive
+                ? 'bg-white text-green-600 shadow-sm dark:bg-gray-600 dark:text-green-300'
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+            }`}
           >
             Com MM200
           </button>
         </div>
       </div>
 
-      {}
       <div
-        className={`mb-4 p-3 rounded-lg text-sm border ${isNaive ? 'bg-red-50 border-red-100 text-red-800 dark:bg-red-900/10 dark:border-red-900/30 dark:text-red-200' : 'bg-green-50 border-green-100 text-green-800 dark:bg-green-900/10 dark:border-green-900/30 dark:text-green-200'}`}
+        className={`mb-4 p-3 rounded-lg text-sm border ${
+          isNaive
+            ? 'bg-red-50 border-red-100 text-red-800 dark:bg-red-900/10 dark:border-red-900/30 dark:text-red-200'
+            : 'bg-green-50 border-green-100 text-green-800 dark:bg-green-900/10 dark:border-green-900/30 dark:text-green-200'
+        }`}
       >
         {isNaive ? (
           <p>
-            <strong>O Problema:</strong> "Tô achando barato!" Você compra aquela ação à 100, 90,
-            80... sempre tentando baixar o preço médio. Quando o ativo chega a 50, seu capital foi
-            dizimado e você termina "preso" na posição
+            <strong>O Problema:</strong> "Tô achando barato!" Você compra a 100, 90, 80... tentando
+            baixar o médio. Quando chega a 50, seu capital derreteu e você termina "preso".
           </p>
         ) : (
           <p>
-            <strong>A Solução:</strong> O preço está abaixo da MM200 (Linha Laranja). O sistema
-            identifica tendência de baixa e <strong>BLOQUEIA</strong> novos aportes. Você fica em
-            caixa e não perde nada.
+            <strong>A Solução:</strong> Abaixo da MM200 (Laranja), o sistema identifica tendência de
+            baixa e <strong>BLOQUEIA</strong> novos aportes. Você fica em caixa e preserva 100% do
+            capital.
           </p>
         )}
       </div>
 
-      {}
       <div className="w-full h-40">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={CRASH_SCENARIO} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+          {}
+          <LineChart data={CRASH_SCENARIO} margin={{ top: 10, right: 30, bottom: 5, left: -10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
             <XAxis dataKey="day" hide />
             <YAxis domain={[40, 110]} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+
             <Tooltip
               content={({ active, payload }) => {
                 if (active && payload && payload.length) {
+                  const data = payload[0].payload;
+                  const price = data.price;
+
+                  const initialCapital = 100;
+                  const currentPatrimony = isNaive ? price : initialCapital;
+                  const variation = ((currentPatrimony - initialCapital) / initialCapital) * 100;
+                  const variationColor = variation < 0 ? 'text-red-400' : 'text-gray-400';
+
                   return (
-                    <div className="bg-gray-900 text-white text-xs p-2 rounded shadow-lg">
-                      <p>Preço: R$ {payload[0].value}</p>
-                      <p className="font-bold mt-1">
-                        Ação:{' '}
-                        {isNaive
-                          ? (ACTION_LABELS_PT[payload[0].payload.action_naive] ?? '—')
-                          : 'BLOQUEADO ⛔'}
-                      </p>
+                    <div className="bg-gray-900 border border-gray-700 text-white text-xs p-3 rounded-lg shadow-xl z-50 min-w-[160px]">
+                      {}
+                      <div className="flex justify-between items-center gap-6 mb-2 pb-2 border-b border-gray-700">
+                        <span className="text-gray-400 font-bold whitespace-nowrap">
+                          {data.day}
+                        </span>
+                        <span className="font-mono text-gray-300 whitespace-nowrap">
+                          Cotação: R$ {price}
+                        </span>
+                      </div>
+
+                      <div className="mb-2">
+                        <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
+                          Seu Patrimônio
+                        </p>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-lg font-bold font-mono">R$ {currentPatrimony}</span>
+                          <span className={`font-bold ${variationColor}`}>
+                            ({variation === 0 ? '0%' : `${variation.toFixed(0)}%`})
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-4 bg-gray-800/50 p-1.5 rounded">
+                        <span className="text-[10px] text-gray-400 uppercase">Ação:</span>
+                        <span className={`font-bold ${isNaive ? 'text-white' : 'text-orange-400'}`}>
+                          {isNaive ? (ACTION_LABELS_PT[data.action_naive] ?? '—') : 'BLOQUEADO ⛔'}
+                        </span>
+                      </div>
                     </div>
                   );
                 }
                 return null;
               }}
             />
-            {}
+
             <Line
               type="monotone"
               dataKey="mm200"
@@ -308,7 +351,6 @@ const StrategySimulator = () => {
               dot={false}
               activeDot={false}
             />
-            {}
             <Line
               type="monotone"
               dataKey="price"
@@ -320,13 +362,12 @@ const StrategySimulator = () => {
         </ResponsiveContainer>
       </div>
 
-      {}
       <div className="mt-auto pt-4 flex items-center justify-between border-t border-gray-100 dark:border-gray-700">
         <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
           Resultado Final
         </span>
-        <span className={`text-xl font-bold ${isNaive ? 'text-red-600' : 'text-gray-400'}`}>
-          {isNaive ? '-50% de Perda' : '0% (Caixa Protegido)'}
+        <span className={`text-xl font-bold ${isNaive ? 'text-red-600' : 'text-green-500'}`}>
+          {isNaive ? '-50% de Perda' : '0% (Caixa Intacto)'}
         </span>
       </div>
     </div>
