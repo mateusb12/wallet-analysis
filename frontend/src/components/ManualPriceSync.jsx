@@ -55,6 +55,10 @@ export default function ManualPriceSync() {
     }
   };
 
+  const isHolidayError = (err) => {
+    return err.message && (err.message.includes('404') || err.message.includes('Not Found'));
+  };
+
   const handleSync = async (e) => {
     e.preventDefault();
     if (!ticker) return;
@@ -81,7 +85,21 @@ export default function ManualPriceSync() {
       const indicesToSync = [
         { id: 'IBOV', label: 'Índice IBOVESPA', action: () => syncService.syncIbov() },
         { id: 'IFIX', label: 'Índice IFIX', action: () => syncService.syncIfix('^IFIX') },
-        { id: 'CDI', label: 'Taxa CDI', action: () => cdiService.syncCdi() },
+
+        {
+          id: 'CDI',
+          label: 'Taxa CDI',
+          action: async () => {
+            try {
+              return await cdiService.syncCdi();
+            } catch (e) {
+              if (isHolidayError(e)) {
+                return { success: true, message: 'Feriado/Fim de semana (Sem dados BCB)' };
+              }
+              throw e;
+            }
+          },
+        },
         {
           id: 'IPCA',
           label: 'Inflação IPCA',
@@ -111,11 +129,7 @@ export default function ManualPriceSync() {
 
       for (const currentTicker of uniqueTickers) {
         currentStep++;
-        setBatchProgress({
-          current: currentStep,
-          total: totalTasks,
-          ticker: currentTicker,
-        });
+        setBatchProgress({ current: currentStep, total: totalTasks, ticker: currentTicker });
 
         try {
           await syncService.syncTicker(currentTicker);
@@ -128,17 +142,19 @@ export default function ManualPriceSync() {
 
       for (const indexObj of indicesToSync) {
         currentStep++;
-        setBatchProgress({
-          current: currentStep,
-          total: totalTasks,
-          ticker: indexObj.label,
-        });
+        setBatchProgress({ current: currentStep, total: totalTasks, ticker: indexObj.label });
 
         try {
-          await indexObj.action();
-          successCount++;
+          const res = await indexObj.action();
+
+          if (res && res.message && res.message.includes('Feriado')) {
+            successCount++;
+          } else {
+            successCount++;
+          }
         } catch (err) {
           console.error(`Falha ao atualizar ${indexObj.id}`, err);
+
           errorDetails.push(`${indexObj.id}: ${err.message || 'Erro desconhecido'}`);
         }
       }
