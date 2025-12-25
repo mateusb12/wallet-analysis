@@ -137,10 +137,103 @@ const CustomDrawdownTooltip = ({ active, payload, isDark }) => {
   return null;
 };
 
+const CustomStrategyTooltip = ({ active, payload, isDark, mode }) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    const price = data.price;
+    const isNaive = mode === 'naive';
+
+    const currentPatrimony = isNaive ? data.naiveStats.equity : 100;
+    const investedCapital = isNaive ? data.naiveStats.invested : 100;
+    const variation = isNaive ? data.naiveStats.variation : 0;
+    const shares = isNaive ? data.naiveStats.shares : 0;
+    const avgPrice = isNaive ? data.naiveStats.avgPrice : 0;
+
+    const variationColor =
+      variation < 0 ? 'text-red-500 dark:text-red-400' : 'text-green-600 dark:text-green-400';
+
+    const bgClass = isDark
+      ? 'bg-gray-900 border-gray-700 text-gray-100'
+      : 'bg-white border-gray-200 text-gray-800 shadow-xl';
+
+    const labelColor = isDark ? 'text-gray-400' : 'text-gray-500';
+    const subLabelColor = isDark ? 'text-gray-500' : 'text-gray-400';
+    const separatorColor = isDark ? 'border-gray-700' : 'border-gray-100';
+
+    return (
+      <div className={`${bgClass} border text-xs p-3 rounded-lg z-50 min-w-[200px]`}>
+        {}
+        <div
+          className={`flex justify-between items-center gap-6 mb-2 pb-2 border-b ${separatorColor}`}
+        >
+          <span className={`font-bold uppercase ${labelColor}`}>{data.day}</span>
+          <span className="font-mono font-bold">Cotação: R$ {price}</span>
+        </div>
+
+        {}
+        {isNaive && (
+          <div className={`mb-3 pb-2 border-b ${separatorColor}`}>
+            <div className="flex justify-between items-center mb-1">
+              <span className={subLabelColor}>Quantidade:</span>
+              <span className="font-mono">x{shares}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className={subLabelColor}>Preço Médio (PM):</span>
+              <span className="font-mono">R$ {avgPrice.toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+
+        {}
+        <div className="mb-3">
+          <p className={`text-[10px] uppercase tracking-wider mb-1 font-bold ${labelColor}`}>
+            Resultado Financeiro
+          </p>
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-right">
+            {}
+            <span className={`text-left ${subLabelColor}`}>Investido:</span>
+            <span className="font-mono text-gray-400 line-through decoration-red-400/50">
+              R$ {investedCapital.toFixed(0)}
+            </span>
+
+            {}
+            <span className={`text-left ${subLabelColor}`}>Atual:</span>
+            <span className="font-mono font-bold">R$ {currentPatrimony.toFixed(0)}</span>
+          </div>
+
+          {}
+          <div className={`mt-2 pt-1 border-t ${separatorColor} flex justify-between items-center`}>
+            <span className="text-[10px] text-gray-500">Rentabilidade:</span>
+            <span className={`text-base font-bold ${variationColor}`}>
+              {variation > 0 ? '+' : ''}
+              {variation.toFixed(1)}%
+            </span>
+          </div>
+        </div>
+
+        {}
+        <div
+          className={`flex items-center justify-between gap-4 p-1.5 rounded ${isDark ? 'bg-gray-800' : 'bg-gray-100'}`}
+        >
+          <span className="text-[10px] uppercase font-bold text-gray-500">Ação:</span>
+          <span
+            className={`font-bold ${
+              isNaive ? (isDark ? 'text-white' : 'text-gray-900') : 'text-orange-500'
+            }`}
+          >
+            {isNaive ? (ACTION_LABELS_PT[data.action_naive] ?? '—') : 'BLOQUEADO ⛔'}
+          </span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 const DrawdownChart = () => {
-  let isDark = true;
   const { theme } = useTheme();
-  isDark = theme === 'dark';
+  const isDark = theme === 'dark';
   const gridColor = isDark ? '#374151' : '#e5e7eb';
   const textColor = isDark ? '#9ca3af' : '#6b7280';
   const labelColor = isDark ? '#e5e7eb' : '#374151';
@@ -211,13 +304,14 @@ const StrategySimulator = () => {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const gridColor = isDark ? '#374151' : '#e5e7eb';
+  const axisColor = isDark ? '#9ca3af' : '#6b7280';
 
   const simulationData = useMemo(() => {
     let accumulatedShares = 0;
     let accumulatedInvested = 0;
     const initialCashMM200 = 100;
 
-    return CRASH_SCENARIO.map((day, index) => {
+    return CRASH_SCENARIO.map((day) => {
       accumulatedShares += 1;
       accumulatedInvested += day.price;
 
@@ -254,7 +348,16 @@ const StrategySimulator = () => {
 
     if (isNaive) {
       if (payload.action_naive === 'BUY') {
-        return <circle cx={cx} cy={cy} r={4} fill="#22c55e" stroke="white" strokeWidth={2} />;
+        return (
+          <circle
+            cx={cx}
+            cy={cy}
+            r={4}
+            fill="#22c55e"
+            stroke={isDark ? '#1f2937' : '#fff'}
+            strokeWidth={2}
+          />
+        );
       }
       if (payload.action_naive === 'PANIC') {
         return (
@@ -273,7 +376,7 @@ const StrategySimulator = () => {
     } else {
       return (
         <g transform={`translate(${cx - 5},${cy - 5})`}>
-          <rect width="10" height="10" fill="#ef4444" rx="2" />
+          <rect width="10" height="10" fill="#f97316" rx="2" />
           <path d="M2.5 2.5L7.5 7.5M7.5 2.5L2.5 7.5" stroke="white" strokeWidth="1.5" />
         </g>
       );
@@ -356,72 +459,16 @@ const StrategySimulator = () => {
           <LineChart data={simulationData} margin={{ top: 10, right: 30, bottom: 5, left: -10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
             <XAxis dataKey="day" hide />
-            <YAxis domain={[40, 110]} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis
+              domain={[40, 110]}
+              tick={{ fontSize: 10, fill: axisColor }}
+              axisLine={false}
+              tickLine={false}
+            />
 
             <Tooltip
-              content={({ active, payload }) => {
-                if (active && payload && payload.length) {
-                  const data = payload[0].payload;
-                  const price = data.price;
-
-                  const currentPatrimony = isNaive ? data.naiveStats.equity : 100;
-                  const investedCapital = isNaive ? data.naiveStats.invested : 100;
-                  const variation = isNaive ? data.naiveStats.variation : 0;
-                  const shares = isNaive ? data.naiveStats.shares : 0;
-                  const avgPrice = isNaive ? data.naiveStats.avgPrice : 0;
-
-                  const variationColor = variation < 0 ? 'text-red-400' : 'text-gray-400';
-
-                  return (
-                    <div className="bg-gray-900 border border-gray-700 text-white text-xs p-3 rounded-lg shadow-xl z-50 min-w-[180px]">
-                      <div className="flex justify-between items-center gap-6 mb-2 pb-2 border-b border-gray-700">
-                        <span className="text-gray-400 font-bold whitespace-nowrap">
-                          {data.day}
-                        </span>
-                        <span className="font-mono text-gray-300 whitespace-nowrap">
-                          Cotação: R$ {price}
-                        </span>
-                      </div>
-
-                      {isNaive && (
-                        <div className="mb-2 pb-2 border-b border-gray-800">
-                          <div className="flex justify-between text-gray-500 mb-0.5">
-                            <span>Ações: {shares}</span>
-                            <span>PM: {avgPrice.toFixed(2)}</span>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="mb-2">
-                        <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
-                          {isNaive ? 'Patrimônio Acumulado' : 'Patrimônio Preservado'}
-                        </p>
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-lg font-bold font-mono">
-                            R$ {currentPatrimony.toFixed(0)}
-                          </span>
-                          <span className={`font-bold ${variationColor}`}>
-                            ({variation.toFixed(1)}%)
-                          </span>
-                        </div>
-                        {isNaive && (
-                          <p className="text-[10px] text-gray-600 mt-0.5">
-                            Investido: R$ {investedCapital}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between gap-4 bg-gray-800/50 p-1.5 rounded">
-                        <span className="text-[10px] text-gray-400 uppercase">Ação:</span>
-                        <span className={`font-bold ${isNaive ? 'text-white' : 'text-orange-400'}`}>
-                          {isNaive ? (ACTION_LABELS_PT[data.action_naive] ?? '—') : 'BLOQUEADO ⛔'}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              }}
+              content={<CustomStrategyTooltip isDark={isDark} mode={mode} />}
+              cursor={{ stroke: axisColor, strokeWidth: 1, strokeDasharray: '3 3' }}
             />
 
             <Line
@@ -433,11 +480,10 @@ const StrategySimulator = () => {
               dot={false}
               activeDot={false}
             />
-            {}
             <Line
               type="monotone"
               dataKey="price"
-              stroke={isNaive ? '#ef4444' : '#9ca3af'}
+              stroke={isNaive ? '#ef4444' : isDark ? '#9ca3af' : '#6b7280'}
               strokeWidth={3}
               dot={<CustomDot />}
             />
@@ -513,6 +559,7 @@ export default function WhereToInvest() {
       ) : (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {}
             <div className="lg:col-span-1 flex flex-col">
               <div
                 className={`flex-1 rounded-xl shadow-sm border p-6 relative overflow-hidden flex flex-col
@@ -605,6 +652,7 @@ export default function WhereToInvest() {
               </div>
             </div>
 
+            {}
             <div className="lg:col-span-2">
               <div className="h-full bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
                 <div className="flex items-center justify-between mb-8">
@@ -674,8 +722,10 @@ export default function WhereToInvest() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-6 pt-4">
+            {}
             <StrategySimulator />
 
+            {}
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col p-6">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
