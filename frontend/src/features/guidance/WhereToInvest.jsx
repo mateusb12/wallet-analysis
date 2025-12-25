@@ -7,8 +7,8 @@ import {
   CheckCircle2,
   BarChart2,
   ArrowRight,
+  X,
 } from 'lucide-react';
-import { useTheme } from '../theme/ThemeContext.jsx';
 import {
   StrategySimulator,
   DrawdownAnalysis,
@@ -54,7 +54,7 @@ export default function WhereToInvest() {
   const [analysis, setAnalysis] = useState([]);
   const [recommendation, setRecommendation] = useState(null);
 
-  const selectedAssetForEducation = 'Hipotético';
+  const [selectedTicker, setSelectedTicker] = useState(null);
 
   useEffect(() => {
     setTimeout(() => {
@@ -64,7 +64,9 @@ export default function WhereToInvest() {
         let status = momentum ? 'ELEGÍVEL' : 'BLOQUEADO';
         return { ...asset, momentum, distMM200, status };
       });
+
       const ranked = processed.sort((a, b) => b.cagr - a.cagr);
+
       let foundLeader = false;
       const finalRanked = ranked.map((asset) => {
         if (!asset.momentum) return { ...asset, status: 'BLOQUEADO' };
@@ -74,6 +76,7 @@ export default function WhereToInvest() {
         }
         return { ...asset, status: 'SECUNDÁRIO' };
       });
+
       setAnalysis(finalRanked);
       const leader = finalRanked.find((a) => a.status === 'LÍDER');
       setRecommendation(leader || { type: 'CASH' });
@@ -82,6 +85,16 @@ export default function WhereToInvest() {
   }, []);
 
   const maxCagr = useMemo(() => Math.max(...analysis.map((a) => a.cagr), 0), [analysis]);
+
+  const handleSelectAsset = (ticker) => setSelectedTicker(ticker);
+  const handleDeselectAsset = (e) => {
+    e.stopPropagation();
+    setSelectedTicker(null);
+  };
+
+  const selectedAssetData = useMemo(() => {
+    return analysis.find((a) => a.ticker === selectedTicker) || null;
+  }, [analysis, selectedTicker]);
 
   return (
     <div className="p-4 md:p-8 max-w-[90rem] mx-auto pb-20 space-y-8">
@@ -205,11 +218,22 @@ export default function WhereToInvest() {
                 <div className="space-y-6">
                   {analysis.map((asset, index) => {
                     const isLocked = asset.status === 'BLOQUEADO';
+                    const isSelected = selectedTicker === asset.ticker;
                     const widthPercentage = (asset.cagr / maxCagr) * 100;
+
                     return (
                       <div
                         key={asset.ticker}
-                        className={`relative group ${isLocked ? 'opacity-50 grayscale-[0.8]' : ''}`}
+                        onClick={() => handleSelectAsset(asset.ticker)}
+                        className={`
+                          relative group rounded-lg p-2 transition-all cursor-pointer border
+                          ${
+                            isSelected
+                              ? 'bg-indigo-50 border-indigo-500 dark:bg-indigo-900/20 dark:border-indigo-500'
+                              : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-700/30'
+                          }
+                          ${isLocked ? 'opacity-60 grayscale-[0.8]' : ''}
+                        `}
                       >
                         <div className="flex items-center gap-4 text-sm mb-2">
                           <div className="w-6 text-gray-400 font-mono text-sm font-bold">
@@ -247,6 +271,15 @@ export default function WhereToInvest() {
                               />
                             </div>
                           </div>
+                          {isSelected && (
+                            <button
+                              onClick={handleDeselectAsset}
+                              className="absolute right-2 top-2 p-1 rounded-full bg-white dark:bg-gray-800 text-gray-500 hover:text-red-500 hover:bg-red-50 shadow-sm border border-gray-200 dark:border-gray-600 transition-colors"
+                              title="Remover seleção"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -258,8 +291,8 @@ export default function WhereToInvest() {
 
           {}
           <div className="grid md:grid-cols-2 gap-6 pt-4">
-            <StrategySimulator assetName={selectedAssetForEducation} />
-            <CagrSimulator assetName={selectedAssetForEducation} />
+            <StrategySimulator asset={selectedAssetData} />
+            <CagrSimulator asset={selectedAssetData} />
             <DrawdownAnalysis />
             <VolatilityImpact />
           </div>
