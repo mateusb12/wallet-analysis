@@ -26,6 +26,7 @@ import {
   Database,
   Rocket,
   Ban,
+  Scale,
 } from 'lucide-react';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -867,6 +868,80 @@ export const VolatilityImpact = () => {
         <p className="font-bold text-purple-600 dark:text-purple-400">
           O "CAGR Real" (Roxo) revela que a volatilidade está comendo seu capital.
         </p>
+      </div>
+    </div>
+  );
+};
+
+export const AsymmetryExplanation = () => {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 h-full flex flex-col relative overflow-hidden">
+      {}
+      <div className="absolute -right-6 -top-6 opacity-[0.03] pointer-events-none">
+        <ShieldCheck size={200} />
+      </div>
+
+      <div className="flex items-center gap-2 mb-6 z-10">
+        <div className="p-2 bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-lg">
+          <Scale size={20} /> {}
+        </div>
+        <div>
+          <h4 className="font-bold text-gray-900 dark:text-white leading-tight">
+            Por que usar a MM200?
+          </h4>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            O custo da prudência vs. O custo da teimosia
+          </p>
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col md:flex-row gap-8 items-end justify-center z-10 pb-4">
+        {}
+        <div className="flex-1 w-full group cursor-default">
+          <div className="flex justify-between text-xs mb-2 font-medium text-gray-500 dark:text-gray-400">
+            <span>Entrar "Atrasado"</span>
+            <span className="text-orange-500 font-bold">+15% Custo</span>
+          </div>
+          <div className="h-32 bg-gray-100 dark:bg-gray-700 rounded-t-lg relative w-full overflow-hidden">
+            {}
+            <div className="absolute bottom-0 w-full bg-orange-400/80 h-[25%] transition-all duration-500 group-hover:bg-orange-500 flex items-center justify-center text-white text-xs font-bold">
+              Proteção
+            </div>
+            {}
+            <div className="absolute bottom-[25%] w-full border-t-2 border-dashed border-gray-400/50 text-[9px] text-gray-400 text-right px-1">
+              MM200
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-gray-600 dark:text-gray-300 leading-relaxed bg-orange-50 dark:bg-orange-900/10 p-2 rounded border border-orange-100 dark:border-orange-900/20">
+            Você espera a tendência confirmar. Paga um pouco mais caro, mas evita o crash.
+          </p>
+        </div>
+
+        {}
+        <div className="text-gray-300 font-bold text-xl italic pb-12 self-center">VS</div>
+
+        {}
+        <div className="flex-1 w-full group cursor-default">
+          <div className="flex justify-between text-xs mb-2 font-medium text-gray-500 dark:text-gray-400">
+            <span>Segurar na Queda</span>
+            <span className="text-red-600 dark:text-red-400 font-bold">+60% Custo</span>
+          </div>
+          <div className="h-32 bg-gray-100 dark:bg-gray-700 rounded-t-lg relative w-full overflow-hidden">
+            {}
+            <div className="absolute bottom-0 w-full bg-red-500 h-[85%] transition-all duration-500 group-hover:bg-red-600 flex items-center justify-center text-white text-xs font-bold shadow-[0_0_15px_rgba(239,68,68,0.4)]">
+              Recuperação
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-gray-600 dark:text-gray-300 leading-relaxed bg-red-50 dark:bg-red-900/10 p-2 rounded border border-red-100 dark:border-red-900/20">
+            Se cair 40%, você precisa subir 66% só para empatar.{' '}
+            <span className="font-bold text-red-600">
+              Quedas grandes quebram os juros compostos.
+            </span>
+          </p>
+        </div>
       </div>
     </div>
   );

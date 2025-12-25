@@ -14,6 +14,7 @@ import {
   DrawdownAnalysis,
   CagrSimulator,
   VolatilityImpact,
+  AsymmetryExplanation,
 } from './FinancialEducationCharts';
 import RiskDisclaimer from './RiskDisclaimer.jsx';
 
@@ -296,6 +297,7 @@ export default function WhereToInvest() {
             <CagrSimulator asset={selectedAssetData} />
             <DrawdownAnalysis />
             <VolatilityImpact />
+            <AsymmetryExplanation />
           </div>
 
           <RiskDisclaimer />
