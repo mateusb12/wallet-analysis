@@ -13,28 +13,66 @@ import {
 import { formatChartDate } from '../utils/dateUtils.js';
 import { fetchB3Prices } from '../services/b3service.js';
 
-// ... (keep getTimeElapsed helper exactly as is)
-const getTimeElapsed = (dateString) => {
-  if (!dateString) return '-';
+const getDetailedTimeElapsed = (dateString) => {
+  if (!dateString) return { short: '-', long: '-' };
+
   const start = new Date(dateString);
   const end = new Date();
-  const diffTime = Math.abs(end - start);
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  if (diffDays < 30) return `${diffDays} dias`;
-  const years = end.getFullYear() - start.getFullYear();
+
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+
+  let years = end.getFullYear() - start.getFullYear();
   let months = end.getMonth() - start.getMonth();
-  if (months < 0 || (months === 0 && end.getDate() < start.getDate())) {
-    months += 12;
-    if (end.getMonth() < start.getMonth()) {
-    }
+  let days = end.getDate() - start.getDate();
+
+  if (days < 0) {
+    months--;
+
+    const prevMonth = new Date(end.getFullYear(), end.getMonth(), 0);
+    days += prevMonth.getDate();
   }
-  const totalMonths =
-    (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-  if (totalMonths < 12) return `${totalMonths} meses`;
-  const displayYears = Math.floor(totalMonths / 12);
-  const displayMonths = totalMonths % 12;
-  if (displayMonths === 0) return `${displayYears} anos`;
-  return `${displayYears} a, ${displayMonths} m`;
+
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+
+  const partsShort = [];
+  const partsLong = [];
+
+  if (years > 0) {
+    partsShort.push(`${years}a`);
+    partsLong.push(`${years} ano${years > 1 ? 's' : ''}`);
+  }
+
+  if (months > 0) {
+    partsShort.push(`${months}m`);
+    partsLong.push(`${months} mês${months !== 1 ? 'es' : ''}`);
+  }
+
+  if (days > 0 && years === 0) {
+    partsShort.push(`${days}d`);
+    partsLong.push(`${days} dia${days > 1 ? 's' : ''}`);
+  } else if (days > 0 && years > 0 && months === 0) {
+    partsShort.push(`${days}d`);
+    partsLong.push(`${days} dia${days > 1 ? 's' : ''}`);
+  }
+
+  if (partsShort.length === 0) return { short: 'Hoje', long: 'Menos de 24h' };
+
+  let longString = '';
+  if (partsLong.length > 1) {
+    const last = partsLong.pop();
+    longString = partsLong.join(', ') + ' e ' + last;
+  } else {
+    longString = partsLong[0];
+  }
+
+  return {
+    short: partsShort.join(' '),
+    long: longString,
+  };
 };
 
 export default function Contributions() {
@@ -44,8 +82,7 @@ export default function Contributions() {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 
-  // New state for toggling visualization mode
-  const [performanceMode, setPerformanceMode] = useState('relative'); // 'absolute' | 'relative'
+  const [performanceMode, setPerformanceMode] = useState('relative');
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -135,7 +172,6 @@ export default function Contributions() {
     }
   };
 
-  // --- AGGREGATION LOGIC UPDATED ---
   const assetPerformance = useMemo(() => {
     if (!purchases.length) return [];
 
@@ -149,6 +185,7 @@ export default function Contributions() {
           totalInvested: 0,
           totalProfit: 0,
           hasData: false,
+          firstTradeDate: item.trade_date,
         };
       }
 
@@ -159,18 +196,22 @@ export default function Contributions() {
         aggregation[item.ticker].totalProfit += item.profitValue;
         aggregation[item.ticker].hasData = true;
       }
+
+      const currentItemDate = new Date(item.trade_date);
+      const storedDate = new Date(aggregation[item.ticker].firstTradeDate);
+      if (currentItemDate < storedDate) {
+        aggregation[item.ticker].firstTradeDate = item.trade_date;
+      }
     });
 
     return Object.values(aggregation)
       .filter((a) => a.hasData)
       .map((item) => ({
         ...item,
-        // Calculate Yield: (Total Profit / Total Invested) * 100
         totalYieldPercent:
           item.totalInvested > 0 ? (item.totalProfit / item.totalInvested) * 100 : 0,
       }))
       .sort((a, b) => {
-        // Sort based on the selected mode
         if (performanceMode === 'relative') {
           return b.totalYieldPercent - a.totalYieldPercent;
         }
@@ -178,7 +219,6 @@ export default function Contributions() {
       });
   }, [purchases, performanceMode]);
 
-  // Determine the max value for the progress bar scale based on mode
   const maxValue = useMemo(() => {
     if (!assetPerformance.length) return 0;
     if (performanceMode === 'relative') {
@@ -189,7 +229,7 @@ export default function Contributions() {
 
   return (
     <div className="p-4 md:p-8 max-w-[90rem] mx-auto pb-20">
-      {/* Header */}
+      {}
       <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
@@ -202,7 +242,7 @@ export default function Contributions() {
         </div>
 
         <div className="flex gap-2">
-          {/* ... Search and Type Filter Inputs (unchanged) ... */}
+          {}
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -213,6 +253,7 @@ export default function Contributions() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          {}
           <select
             className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-green-500 outline-none dark:text-white"
             value={typeFilter}
@@ -226,9 +267,8 @@ export default function Contributions() {
         </div>
       </div>
 
-      {/* Table (unchanged) */}
+      {}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-8">
-        {/* ... (Table content remains exactly the same as previous step) ... */}
         {loading ? (
           <div className="p-8 text-center text-gray-500">Calculando rentabilidade histórica...</div>
         ) : (
@@ -261,6 +301,8 @@ export default function Contributions() {
                     const bgClass = isProfit
                       ? 'bg-green-50 dark:bg-green-900/20'
                       : 'bg-red-50 dark:bg-red-900/20';
+
+                    const timeData = getDetailedTimeElapsed(item.trade_date);
 
                     return (
                       <tr
@@ -295,9 +337,15 @@ export default function Contributions() {
                             currency: 'BRL',
                           })}
                         </td>
-                        <td className="px-6 py-4 text-center text-gray-500 dark:text-gray-400 border-l border-gray-100 dark:border-gray-700 font-medium text-xs">
-                          {getTimeElapsed(item.trade_date)}
+
+                        {}
+                        <td
+                          className="px-6 py-4 text-center text-gray-500 dark:text-gray-400 border-l border-gray-100 dark:border-gray-700 font-medium text-xs cursor-help"
+                          title={timeData.long}
+                        >
+                          {timeData.short}
                         </td>
+
                         <td className={`px-6 py-4 text-right font-bold ${colorClass}`}>
                           {item.hasPriceData ? (
                             item.profitValue.toLocaleString('pt-BR', {
@@ -343,7 +391,7 @@ export default function Contributions() {
         )}
       </div>
 
-      {/* Asset Performance Visualization */}
+      {}
       {assetPerformance.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -354,7 +402,7 @@ export default function Contributions() {
               </h3>
             </div>
 
-            {/* Toggle Switch */}
+            {}
             <div className="flex items-center p-1 bg-gray-100 dark:bg-gray-700 rounded-lg">
               <button
                 onClick={() => setPerformanceMode('relative')}
@@ -394,12 +442,14 @@ export default function Contributions() {
                   ? displayValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                   : `${displayValue > 0 ? '+' : ''}${displayValue.toFixed(2)}%`;
 
+              const timeData = getDetailedTimeElapsed(asset.firstTradeDate);
+
               return (
                 <div key={asset.ticker} className="flex items-center gap-4 text-sm group">
-                  {/* Rank */}
+                  {}
                   <div className="w-6 text-gray-400 font-mono text-xs">#{index + 1}</div>
 
-                  {/* Ticker & Type */}
+                  {}
                   <div className="w-24 flex-shrink-0">
                     <div className="font-bold text-gray-800 dark:text-gray-200">{asset.ticker}</div>
                     <div
@@ -409,7 +459,18 @@ export default function Contributions() {
                     </div>
                   </div>
 
-                  {/* Bar Visualization */}
+                  {}
+                  <div className="w-20 text-right flex flex-col items-end justify-center">
+                    <div
+                      className="flex items-center text-xs text-gray-500 dark:text-gray-400 gap-1 cursor-help"
+                      title={`Investido há: ${timeData.long}`}
+                    >
+                      <Clock className="w-3 h-3" />
+                      <span className="whitespace-nowrap">{timeData.short}</span>
+                    </div>
+                  </div>
+
+                  {}
                   <div className="flex-1 h-8 bg-gray-50 dark:bg-gray-700/50 rounded-lg relative overflow-hidden flex items-center">
                     <div
                       className={`h-full transition-all duration-500 ease-out rounded-r-lg ${isProfit ? 'bg-green-500/20 border-r-4 border-green-500' : 'bg-red-500/20 border-r-4 border-red-500'}`}
