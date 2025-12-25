@@ -257,8 +257,8 @@ export default function WhereToInvest() {
           {}
           <div className="grid md:grid-cols-2 gap-6 pt-4">
             <StrategySimulator />
-            <DrawdownAnalysis />
             <CagrSimulator />
+            <DrawdownAnalysis />
             <VolatilityImpact />
           </div>
         </>
