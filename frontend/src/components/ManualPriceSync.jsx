@@ -8,29 +8,36 @@ import {
   Landmark,
   LineChart,
   Layers,
+  AlertTriangle,
+  XCircle,
 } from 'lucide-react';
 import { syncService } from '../services/api.js';
 import { syncIpcaHistory } from '../services/ipcaService.js';
 import { cdiService } from '../services/cdiService.js';
-
 import { fetchWalletPositions } from '../services/walletDataService.js';
 
 export default function ManualPriceSync() {
   const [ticker, setTicker] = useState('');
   const [loading, setLoading] = useState(false);
+
   const [status, setStatus] = useState(null);
   const [msg, setMsg] = useState('');
 
+  const [syncReport, setSyncReport] = useState(null);
   const [batchProgress, setBatchProgress] = useState(null);
+
+  const resetStates = () => {
+    setStatus(null);
+    setMsg('');
+    setSyncReport(null);
+  };
 
   const executeSync = async (syncFunction) => {
     setLoading(true);
-    setStatus(null);
-    setMsg('');
+    resetStates();
 
     try {
       const result = await syncFunction();
-
       if (result.success) {
         setStatus('success');
         const countMsg = result.count !== undefined ? `${result.count} registros` : 'Dados';
@@ -56,13 +63,20 @@ export default function ManualPriceSync() {
 
   const handleSyncAll = async () => {
     setLoading(true);
-    setStatus(null);
-    setMsg('');
-    setBatchProgress({ current: 0, total: 0, ticker: 'Iniciando...' });
+    resetStates();
+    setBatchProgress({ current: 0, total: 0, ticker: 'Verificando carteira...' });
 
     try {
       const positions = await fetchWalletPositions(true);
-      const uniqueTickers = [...new Set(positions.map((p) => p.ticker))];
+
+      const today = new Date().toISOString().split('T')[0];
+      const uniqueTickers = [
+        ...new Set(
+          positions
+            .filter((p) => !p.last_update || p.last_update.split('T')[0] !== today)
+            .map((p) => p.ticker)
+        ),
+      ];
 
       const indicesToSync = [
         { id: 'IBOV', label: 'Índice IBOVESPA', action: () => syncService.syncIbov() },
@@ -82,13 +96,17 @@ export default function ManualPriceSync() {
       const totalTasks = uniqueTickers.length + indicesToSync.length;
 
       if (totalTasks === 0) {
-        throw new Error('Nada para atualizar.');
+        setLoading(false);
+        setStatus('success');
+        setMsg('Tudo já está atualizado. Nenhuma ação necessária.');
+        setBatchProgress(null);
+        return;
       }
 
       setBatchProgress({ current: 0, total: totalTasks, ticker: '' });
 
       let successCount = 0;
-      let errors = [];
+      let errorDetails = [];
       let currentStep = 0;
 
       for (const currentTicker of uniqueTickers) {
@@ -104,7 +122,7 @@ export default function ManualPriceSync() {
           successCount++;
         } catch (err) {
           console.error(`Falha ao atualizar ${currentTicker}`, err);
-          errors.push(currentTicker);
+          errorDetails.push(`${currentTicker}: ${err.message || 'Erro desconhecido'}`);
         }
       }
 
@@ -121,19 +139,15 @@ export default function ManualPriceSync() {
           successCount++;
         } catch (err) {
           console.error(`Falha ao atualizar ${indexObj.id}`, err);
-          errors.push(indexObj.id);
+          errorDetails.push(`${indexObj.id}: ${err.message || 'Erro desconhecido'}`);
         }
       }
 
-      if (errors.length === 0) {
-        setStatus('success');
-        setMsg(
-          `Sucesso! ${uniqueTickers.length} ativos e ${indicesToSync.length} índices atualizados.`
-        );
-      } else {
-        setStatus('error');
-        setMsg(`Concluído com falhas em: ${errors.join(', ')}`);
-      }
+      setSyncReport({
+        success: successCount,
+        errorCount: errorDetails.length,
+        errors: errorDetails,
+      });
     } catch (error) {
       setStatus('error');
       setMsg(error.message || 'Erro ao iniciar sincronização em lote.');
@@ -144,11 +158,8 @@ export default function ManualPriceSync() {
   };
 
   const handleIbovSync = () => executeSync(() => syncService.syncIbov());
-
-  const handleIfixSync = () => {
-    const tickerToUse = ticker || '^IFIX';
-    executeSync(() => syncService.syncIfix(tickerToUse));
-  };
+  const handleIfixSync = () => executeSync(() => syncService.syncIfix(ticker || '^IFIX'));
+  const handleCdiSync = () => executeSync(() => cdiService.syncCdi());
 
   const handleIpcaSync = () => {
     executeSync(async () => {
@@ -164,8 +175,6 @@ export default function ManualPriceSync() {
     });
   };
 
-  const handleCdiSync = () => executeSync(() => cdiService.syncCdi());
-
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
       <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
@@ -179,12 +188,11 @@ export default function ManualPriceSync() {
           </p>
         </div>
 
-        {}
         {!batchProgress && (
           <button
             onClick={handleSyncAll}
             disabled={loading}
-            className="hidden sm:flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="hidden sm:flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
           >
             <Layers className="w-4 h-4" />
             Sincronizar Carteira Completa
@@ -226,8 +234,8 @@ export default function ManualPriceSync() {
           </button>
         )}
 
+        {}
         <div className="flex flex-col gap-4">
-          {}
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -260,7 +268,6 @@ export default function ManualPriceSync() {
             </div>
           </div>
 
-          {}
           <div>
             <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">
               Índices de Mercado
@@ -269,69 +276,103 @@ export default function ManualPriceSync() {
               <button
                 onClick={handleIbovSync}
                 disabled={loading}
-                className="px-3 py-2.5 rounded-lg font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800 transition-colors flex items-center justify-center gap-2 text-sm"
+                className="idx-btn bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800 px-3 py-2.5 rounded-lg border text-sm font-medium flex items-center justify-center gap-2 hover:opacity-80 transition-opacity"
               >
-                {loading && !ticker && !batchProgress ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <LineChart className="w-4 h-4" />
-                )}
-                Sync IBOV
+                <LineChart className="w-4 h-4" /> Sync IBOV
               </button>
-
               <button
                 onClick={handleIfixSync}
                 disabled={loading}
-                className="px-3 py-2.5 rounded-lg font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 transition-colors flex items-center justify-center gap-2 text-sm"
+                className="idx-btn bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800 px-3 py-2.5 rounded-lg border text-sm font-medium flex items-center justify-center gap-2 hover:opacity-80 transition-opacity"
               >
-                {loading && !ticker && !batchProgress ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <TrendingUp className="w-4 h-4" />
-                )}
-                Sync IFIX
+                <TrendingUp className="w-4 h-4" /> Sync IFIX
               </button>
-
               <button
                 onClick={handleIpcaSync}
                 disabled={loading}
-                className="px-3 py-2.5 rounded-lg font-medium text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/30 hover:bg-orange-100 dark:hover:bg-orange-900/50 border border-orange-200 dark:border-orange-800 transition-colors flex items-center justify-center gap-2 text-sm"
+                className="idx-btn bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800 px-3 py-2.5 rounded-lg border text-sm font-medium flex items-center justify-center gap-2 hover:opacity-80 transition-opacity"
               >
-                {loading && !ticker && !batchProgress ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <BarChart3 className="w-4 h-4" />
-                )}
-                Sync IPCA
+                <BarChart3 className="w-4 h-4" /> Sync IPCA
               </button>
-
               <button
                 onClick={handleCdiSync}
                 disabled={loading}
-                className="px-3 py-2.5 rounded-lg font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center justify-center gap-2 text-sm"
+                className="idx-btn bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800 px-3 py-2.5 rounded-lg border text-sm font-medium flex items-center justify-center gap-2 hover:opacity-80 transition-opacity"
               >
-                {loading && !ticker && !batchProgress ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Landmark className="w-4 h-4" />
-                )}
-                Sync CDI
+                <Landmark className="w-4 h-4" /> Sync CDI
               </button>
             </div>
           </div>
         </div>
 
-        {status === 'success' && (
+        {}
+
+        {}
+        {status === 'success' && !syncReport && (
           <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-lg flex items-center gap-2 text-sm">
-            <CheckCircle className="w-4 h-4" />
-            {msg}
+            <CheckCircle className="w-4 h-4" /> {msg}
+          </div>
+        )}
+        {status === 'error' && !syncReport && (
+          <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg flex items-center gap-2 text-sm break-all">
+            <AlertCircle className="w-4 h-4 shrink-0" /> {msg}
           </div>
         )}
 
-        {status === 'error' && (
-          <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg flex items-center gap-2 text-sm break-all">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{msg}</span>
+        {}
+        {syncReport && (
+          <div
+            className={`mt-6 rounded-lg border ${
+              syncReport.errorCount > 0
+                ? 'border-orange-200 bg-orange-50 dark:bg-orange-900/10 dark:border-orange-800'
+                : 'border-green-200 bg-green-50 dark:bg-green-900/10 dark:border-green-800'
+            }`}
+          >
+            <div className="p-4">
+              <h4
+                className={`font-bold flex items-center gap-2 ${
+                  syncReport.errorCount > 0
+                    ? 'text-orange-800 dark:text-orange-300'
+                    : 'text-green-800 dark:text-green-300'
+                }`}
+              >
+                {syncReport.errorCount > 0 ? (
+                  <AlertTriangle className="w-5 h-5" />
+                ) : (
+                  <CheckCircle className="w-5 h-5" />
+                )}
+                Relatório de Sincronização
+              </h4>
+
+              <div className="flex gap-4 mt-2 text-sm">
+                <span className="flex items-center gap-1 text-green-700 dark:text-green-400 font-medium">
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  {syncReport.success} Sucessos
+                </span>
+                <span className="flex items-center gap-1 text-red-700 dark:text-red-400 font-medium">
+                  <XCircle className="w-3.5 h-3.5" />
+                  {syncReport.errorCount} Falhas
+                </span>
+              </div>
+
+              {syncReport.errorCount > 0 && (
+                <div className="mt-3 pt-3 border-t border-orange-200 dark:border-orange-800/50">
+                  <p className="text-xs font-bold text-orange-800 dark:text-orange-300 mb-2 uppercase opacity-80">
+                    Detalhes das falhas:
+                  </p>
+                  <ul className="space-y-1">
+                    {syncReport.errors.map((err, idx) => (
+                      <li
+                        key={idx}
+                        className="text-xs text-orange-900 dark:text-orange-200 flex items-start gap-2 font-mono bg-white/50 dark:bg-black/20 p-1.5 rounded"
+                      >
+                        <span className="text-red-500">•</span> {err}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
