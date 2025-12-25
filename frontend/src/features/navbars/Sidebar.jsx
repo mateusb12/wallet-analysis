@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 
-import FiiHistoricalChecker from '../fiiHistoricData/FiiHistoricalChecker.jsx';
 import FiiSimulator from '../../pages/FiiSimulator.jsx';
 import IpcaCalculator from '../../pages/IpcaCalculator.jsx';
 import PricePositionCalculator from '../stockHistoricData/PricePositionCalculator.jsx';
@@ -10,6 +9,7 @@ import Settings from '../../pages/Settings.jsx';
 import Contributions from '../../pages/Contributions.jsx';
 
 import { Settings as SettingsIcon, LogOut } from 'lucide-react';
+import WhereToInvest from '../guidance/WhereToInvest.jsx';
 
 const menuItems = [
   {
@@ -25,10 +25,10 @@ const menuItems = [
     component: Contributions,
   },
   {
-    id: 'fii-historical-checker',
-    label: 'Histórico de FIIs (HG Brasil)',
+    id: 'where-to-invest',
+    label: 'Onde aportar?',
     icon: '🏠',
-    component: FiiHistoricalChecker,
+    component: WhereToInvest,
   },
   {
     id: 'price-analyzer',
