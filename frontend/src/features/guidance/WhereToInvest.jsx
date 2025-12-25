@@ -258,6 +258,10 @@ export default function WhereToInvest() {
     return analysis.find((a) => a.ticker === selectedTicker) || null;
   }, [analysis, selectedTicker]);
 
+  const displayedAsset = selectedAssetData || recommendation;
+
+  const cardTitle = selectedAssetData ? 'Análise do Selecionado' : 'Ação Recomendada';
+
   return (
     <div className="p-4 md:p-8 max-w-[90rem] mx-auto pb-20 space-y-8">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -282,7 +286,12 @@ export default function WhereToInvest() {
             {}
             <div className="lg:col-span-1 flex flex-col">
               <div
-                className={`flex-1 rounded-xl shadow-sm border p-6 relative overflow-hidden flex flex-col ${recommendation.type === 'CASH' ? 'bg-red-50 border-red-200 dark:bg-red-900/10 dark:border-red-900/30' : 'bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-700'}`}
+                className={`flex-1 rounded-xl shadow-sm border p-6 relative overflow-hidden flex flex-col 
+                  ${
+                    displayedAsset.type === 'CASH'
+                      ? 'bg-red-50 border-red-200 dark:bg-red-900/10 dark:border-red-900/30'
+                      : 'bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-700'
+                  }`}
               >
                 <div className="absolute top-0 right-0 p-6 opacity-[0.03] pointer-events-none">
                   <Target size={180} />
@@ -290,19 +299,25 @@ export default function WhereToInvest() {
                 <div>
                   <div className="flex items-center gap-2 mb-6">
                     <div
-                      className={`p-2 rounded-lg ${recommendation.type === 'CASH' ? 'bg-red-100 text-red-600' : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400'}`}
+                      className={`p-2 rounded-lg 
+                        ${
+                          displayedAsset.type === 'CASH' || !displayedAsset.momentum
+                            ? 'bg-red-100 text-red-600'
+                            : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400'
+                        }`}
                     >
-                      {recommendation.type === 'CASH' ? (
+                      {displayedAsset.type === 'CASH' || !displayedAsset.momentum ? (
                         <AlertTriangle size={24} />
                       ) : (
                         <CheckCircle2 size={24} />
                       )}
                     </div>
                     <span className="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                      Ação Recomendada
+                      {cardTitle}
                     </span>
                   </div>
-                  {recommendation.type === 'CASH' ? (
+
+                  {displayedAsset.type === 'CASH' ? (
                     <div>
                       <h3 className="text-3xl font-bold text-red-700 dark:text-red-400 mb-2">
                         SEGURAR CAIXA
@@ -315,45 +330,74 @@ export default function WhereToInvest() {
                     <div>
                       <div className="flex items-baseline gap-3 mb-1">
                         <h3 className="text-5xl font-bold text-gray-900 dark:text-white tracking-tight">
-                          {recommendation.ticker}
+                          {displayedAsset.ticker}
                         </h3>
                         <span
-                          className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${getTypeColor(recommendation.type)}`}
+                          className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${getTypeColor(displayedAsset.type)}`}
                         >
-                          {recommendation.type}
+                          {displayedAsset.type}
                         </span>
                       </div>
-                      <p className="text-green-600 dark:text-green-400 font-medium text-sm mb-8 flex items-center gap-1">
-                        <TrendingUp size={16} /> Tendência de Alta Confirmada
-                      </p>
+
+                      {}
+                      {displayedAsset.momentum ? (
+                        <p className="text-green-600 dark:text-green-400 font-medium text-sm mb-8 flex items-center gap-1">
+                          <TrendingUp size={16} /> Tendência de Alta Confirmada
+                        </p>
+                      ) : (
+                        <p className="text-red-500 dark:text-red-400 font-medium text-sm mb-8 flex items-center gap-1">
+                          <Lock size={16} /> Tendência de Baixa (Abaixo MM200)
+                        </p>
+                      )}
+
                       <div className="space-y-5">
                         <div className="flex justify-between items-center border-b border-gray-100 dark:border-gray-700/50 pb-3">
                           <span className="text-sm text-gray-500 dark:text-gray-400">
                             Potencial (CAGR)
                           </span>
                           <span className="text-xl font-bold text-gray-900 dark:text-white">
-                            {recommendation.cagr}%
+                            {displayedAsset.cagr}%
                           </span>
                         </div>
                         <div className="flex justify-between items-center border-b border-gray-100 dark:border-gray-700/50 pb-3">
                           <span className="text-sm text-gray-500 dark:text-gray-400">
                             Distância MM200
                           </span>
-                          <span className="text-xl font-bold text-green-600">
-                            +{recommendation.distMM200.toFixed(2)}%
+                          <span
+                            className={`text-xl font-bold ${displayedAsset.distMM200 >= 0 ? 'text-green-600' : 'text-red-500'}`}
+                          >
+                            {displayedAsset.distMM200 > 0 ? '+' : ''}
+                            {displayedAsset.distMM200.toFixed(2)}%
                           </span>
                         </div>
                         <div className="flex justify-between items-center border-b border-gray-100 dark:border-gray-700/50 pb-3">
                           <SharpeLegend />
-                          <SharpeTooltip value={recommendation.sharpe} />
+                          <SharpeTooltip value={displayedAsset.sharpe} />
                         </div>
                       </div>
                     </div>
                   )}
                 </div>
+
                 <div className="mt-auto pt-8">
-                  <button className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 active:scale-[0.98]">
-                    Registrar Aporte <ArrowRight size={18} />
+                  <button
+                    disabled={!displayedAsset.momentum && displayedAsset.type !== 'CASH'}
+                    className={`w-full py-3 font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 active:scale-[0.98]
+                      ${
+                        !displayedAsset.momentum && displayedAsset.type !== 'CASH'
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none dark:bg-gray-700 dark:text-gray-400'
+                          : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/20'
+                      }`}
+                  >
+                    {!displayedAsset.momentum && displayedAsset.type !== 'CASH' ? (
+                      <>
+                        <Lock size={18} /> Aporte Bloqueado
+                      </>
+                    ) : (
+                      <>
+                        Registrar Aporte <ArrowRight size={18} />
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -447,7 +491,6 @@ export default function WhereToInvest() {
             </div>
           </div>
 
-          {}
           <div className="grid md:grid-cols-2 gap-6 pt-4">
             <StrategySimulator asset={selectedAssetData} />
             <CagrSimulator asset={selectedAssetData} />
@@ -456,8 +499,8 @@ export default function WhereToInvest() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-6 pt-4">
-            <AsymmetryExplanation /> {}
-            <CagrExplanation /> {}
+            <AsymmetryExplanation />
+            <CagrExplanation />
           </div>
 
           <RiskDisclaimer />
