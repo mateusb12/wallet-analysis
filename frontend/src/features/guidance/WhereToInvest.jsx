@@ -15,6 +15,7 @@ import {
   CagrSimulator,
   VolatilityImpact,
 } from './FinancialEducationCharts';
+import RiskDisclaimer from './RiskDisclaimer.jsx';
 
 const MOCK_MARKET_DATA = [
   { ticker: 'QQQQ11', type: 'ETF', price: 112.46, mm200: 98.2, cagr: 21.5, sharpe: 1.2 },
@@ -296,6 +297,8 @@ export default function WhereToInvest() {
             <DrawdownAnalysis />
             <VolatilityImpact />
           </div>
+
+          <RiskDisclaimer />
         </>
       )}
     </div>
