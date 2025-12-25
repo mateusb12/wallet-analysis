@@ -381,7 +381,7 @@ export const StrategySimulator = ({ asset }) => {
         messageTitle: isNaive ? 'O Problema:' : 'A Solução:',
         message: isNaive
           ? '"Tô achando barato!" Você compra a 100, 90, 80... seu capital investido aumenta enquanto o ativo cai.'
-          : 'Abaixo da MM200, o sistema BLOQUEIA novos aportes. Você preserva caixa para comprar na virada.',
+          : 'Abaixo da MM200, o sistema desaconselha novas compras. Você preserva dinheiro para comprar na virada',
         color: isNaive ? 'red' : 'green',
       };
     } else {
