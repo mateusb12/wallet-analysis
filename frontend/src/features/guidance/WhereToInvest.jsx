@@ -304,6 +304,20 @@ export default function WhereToInvest() {
     return analysis.slice(start, start + ITEMS_PER_PAGE);
   }, [analysis, currentPage]);
 
+  const getProgressBarColor = (value) => {
+    if (value < 0) return 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.4)]';
+    if (value < 8) return 'bg-slate-500 dark:bg-slate-600';
+    if (value < 15) return 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]';
+    return 'bg-violet-500 shadow-[0_0_15px_rgba(139,92,246,0.5)]';
+  };
+
+  const getMM200Color = (value) => {
+    if (value < 0) return 'text-red-500 dark:text-red-400';
+    if (value < 5) return 'text-emerald-500 dark:text-emerald-400 font-bold';
+    if (value < 15) return 'text-sky-500 dark:text-sky-400 font-bold';
+    return 'text-violet-500 dark:text-violet-400 font-bold';
+  };
+
   return (
     <div className="p-4 md:p-8 max-w-[90rem] mx-auto pb-20 space-y-8">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -541,16 +555,18 @@ export default function WhereToInvest() {
                                 <span className="font-medium text-gray-500 dark:text-gray-400">
                                   CAGR {asset.cagr}%
                                 </span>
-                                <span
-                                  className={`${asset.distMM200 >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'} font-medium`}
-                                >
+                                <span className={`${getMM200Color(asset.distMM200)} font-bold`}>
                                   MM200 {asset.distMM200 > 0 ? '+' : ''}
                                   {asset.distMM200.toFixed(1)}%
                                 </span>
                               </div>
                               <div className="h-3 bg-gray-100 dark:bg-gray-700/50 rounded-full overflow-hidden">
                                 <div
-                                  className={`h-full rounded-full transition-all duration-1000 ${isLocked || isDataError ? 'bg-gray-400' : 'bg-indigo-500'}`}
+                                  className={`h-full rounded-full transition-all duration-1000 ${
+                                    isLocked || isDataError
+                                      ? 'bg-gray-300 dark:bg-gray-600'
+                                      : getProgressBarColor(asset.cagr)
+                                  }`}
                                   style={{ width: `${widthPercentage}%` }}
                                 />
                               </div>
