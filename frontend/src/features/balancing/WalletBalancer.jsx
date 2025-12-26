@@ -7,7 +7,12 @@ import {
   Activity,
   TrendingUp,
   Target,
+  RefreshCw,
+  AlertTriangle,
+  Copy,
+  Check,
 } from 'lucide-react';
+import { fetchWalletPositions } from '../../services/walletDataService.js';
 
 const FormatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -17,7 +22,32 @@ const FormatPercent = (value) =>
     value / 100
   );
 
+async function classifyAsset(ticker) {
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  try {
+    const response = await fetch(`${API_URL}/sync/classify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker }),
+    });
+
+    if (!response.ok) throw new Error('Falha na requisição');
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error(`Erro ao classificar ${ticker}:`, error);
+    return {
+      ticker,
+      detected_type: 'Indefinido',
+      reasoning: 'Erro de conexão ou ativo não encontrado',
+    };
+  }
+}
+
 const findPriorityPath = (tree, targets) => {
+  if (!targets || !targets.macro) return null;
+
   const macroCandidates = Object.entries(tree).map(([key, data]) => {
     const target = targets.macro[key] || 0;
     const current = data.percentOfTotal;
@@ -57,7 +87,6 @@ const findPriorityPath = (tree, targets) => {
 
 const DriftIndicator = ({ label, currentPct, targetPct, amount, compact = false }) => {
   const diff = currentPct - targetPct;
-
   const isUnderweight = diff < -1;
   const isOverweight = diff > 1;
 
@@ -78,6 +107,8 @@ const DriftIndicator = ({ label, currentPct, targetPct, amount, compact = false 
     statusText = 'Acima';
     bgBadge = 'bg-rose-100 dark:bg-rose-500/10 border-rose-200 dark:border-rose-500/20';
   }
+
+  if (targetPct === 0 && currentPct === 0) return null;
 
   return (
     <div className="w-full">
@@ -124,9 +155,15 @@ const DriftIndicator = ({ label, currentPct, targetPct, amount, compact = false 
   );
 };
 
-const AssetListTable = ({ assets, totalValue }) => {
+const AssetListTable = ({ assets, totalValue, isUnclassified }) => {
   return (
     <div className="mt-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300 shadow-inner">
+      {isUnclassified && (
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 text-xs font-bold border-b border-red-100 dark:border-red-900/30 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4" />
+          não foi possível classificar esse ativo
+        </div>
+      )}
       <table className="w-full text-xs text-left">
         <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 font-semibold border-b border-gray-100 dark:border-gray-700">
           <tr>
@@ -186,80 +223,119 @@ const AssetListTable = ({ assets, totalValue }) => {
   );
 };
 
-const SAMPLE_DATA = {
-  tree: {
-    fii: {
-      totalValue: 15000,
-      percentOfTotal: 42.5,
-      subTypes: {
-        Tijolo: {
-          value: 9000,
-          assets: [
-            { ticker: 'HGLG11', sector: 'Logística', qty: 20, price: 160 },
-            { ticker: 'VISC11', sector: 'Shopping', qty: 30, price: 120 },
-          ],
-        },
-        Papel: {
-          value: 6000,
-          assets: [{ ticker: 'KNCR11', sector: 'Recebíveis', qty: 40, price: 100 }],
-        },
-      },
-    },
-    acoes: {
-      totalValue: 12000,
-      percentOfTotal: 34.0,
-      subTypes: {
-        Dividendos: {
-          value: 7000,
-          assets: [{ ticker: 'BBAS3', sector: 'Bancos', qty: 100, price: 28 }],
-        },
-        Crescimento: {
-          value: 5000,
-          assets: [{ ticker: 'WEGE3', sector: 'Industrial', qty: 100, price: 40 }],
-        },
-      },
-    },
-    etf: {
-      totalValue: 8250,
-      percentOfTotal: 23.5,
-      subTypes: {
-        Internacional: {
-          value: 5000,
-          assets: [{ ticker: 'IVVB11', sector: 'S&P 500', qty: 15, price: 280 }],
-        },
-        Cripto: {
-          value: 3250,
-          assets: [{ ticker: 'HASH11', sector: 'Cesta Cripto', qty: 100, price: 32.5 }],
-        },
-      },
-    },
-  },
-  targets: {
-    macro: {
-      fii: 40,
-      acoes: 35,
-      etf: 25,
-    },
-    micro: {
-      fii: { Tijolo: 70, Papel: 30 },
-      acoes: { Dividendos: 60, Crescimento: 40 },
-      etf: { Internacional: 80, Cripto: 20 },
-    },
+const DEFAULT_TARGETS = {
+  macro: { fii: 40, acoes: 40, etf: 20, outros: 0 },
+  micro: {
+    fii: { Tijolo: 60, Papel: 40 },
+    acoes: { Financeiro: 30, Energia: 20, 'Utilidade Pública': 20, Geral: 30 },
+    etf: { Internacional: 70, Brasil: 30 },
+    outros: { Indefinido: 0 },
   },
 };
 
-const WalletBalancer = ({ portfolioTree = SAMPLE_DATA.tree, targets = SAMPLE_DATA.targets }) => {
+const WalletBalancer = ({ targets = DEFAULT_TARGETS }) => {
+  const [portfolioTree, setPortfolioTree] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState({ fii: true, acoes: false, etf: false, outros: true });
+  const [expandedSub, setExpandedSub] = useState({});
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    loadAndClassifyWallet();
+  }, []);
+
+  const loadAndClassifyWallet = async () => {
+    setLoading(true);
+    try {
+      const positions = await fetchWalletPositions();
+
+      const aggregated = {};
+      positions.forEach((p) => {
+        if (!aggregated[p.ticker]) {
+          aggregated[p.ticker] = {
+            ticker: p.ticker,
+            qty: 0,
+            price: p.current_price || p.purchase_price,
+            totalVal: 0,
+          };
+        }
+        aggregated[p.ticker].qty += p.qty;
+      });
+
+      Object.values(aggregated).forEach((item) => {
+        item.totalVal = item.qty * item.price;
+      });
+
+      const uniqueTickers = Object.values(aggregated);
+      const totalPortfolioValue = uniqueTickers.reduce((acc, curr) => acc + curr.totalVal, 0);
+
+      const classifications = await Promise.all(
+        uniqueTickers.map(async (asset) => {
+          const cls = await classifyAsset(asset.ticker);
+          return { ...asset, classification: cls };
+        })
+      );
+
+      const newTree = {
+        fii: { totalValue: 0, percentOfTotal: 0, subTypes: {} },
+        acoes: { totalValue: 0, percentOfTotal: 0, subTypes: {} },
+        etf: { totalValue: 0, percentOfTotal: 0, subTypes: {} },
+        outros: { totalValue: 0, percentOfTotal: 0, subTypes: {} },
+      };
+
+      classifications.forEach((item) => {
+        const typeStr = item.classification.detected_type || 'Indefinido';
+
+        let macro = 'outros';
+        let subType = 'Indefinido';
+
+        if (typeStr.startsWith('FII')) macro = 'fii';
+        else if (typeStr.startsWith('ETF')) macro = 'etf';
+        else if (typeStr.startsWith('Ação')) macro = 'acoes';
+
+        const separator = ' - ';
+        if (typeStr.includes(separator)) {
+          const splitIndex = typeStr.indexOf(separator);
+          if (splitIndex !== -1) {
+            subType = typeStr.substring(splitIndex + separator.length);
+          }
+        }
+
+        if (!newTree[macro]) newTree[macro] = { totalValue: 0, percentOfTotal: 0, subTypes: {} };
+
+        newTree[macro].totalValue += item.totalVal;
+
+        if (!newTree[macro].subTypes[subType]) {
+          newTree[macro].subTypes[subType] = { value: 0, assets: [] };
+        }
+
+        newTree[macro].subTypes[subType].value += item.totalVal;
+        newTree[macro].subTypes[subType].assets.push({
+          ticker: item.ticker,
+          sector: item.classification.sector || subType,
+          qty: item.qty,
+          price: item.price,
+        });
+      });
+
+      Object.keys(newTree).forEach((key) => {
+        if (totalPortfolioValue > 0) {
+          newTree[key].percentOfTotal = (newTree[key].totalValue / totalPortfolioValue) * 100;
+        }
+      });
+
+      setPortfolioTree(newTree);
+    } catch (error) {
+      console.error('Critical error building wallet tree:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const priorityPath = useMemo(
-    () => findPriorityPath(portfolioTree, targets),
+    () => (portfolioTree ? findPriorityPath(portfolioTree, targets) : null),
     [portfolioTree, targets]
   );
-
-  const [expanded, setExpanded] = useState(() => {
-    if (priorityPath) return { [priorityPath.macro]: true };
-    return { fii: true, acoes: false, etf: false };
-  });
-
-  const [expandedSub, setExpandedSub] = useState({});
 
   useEffect(() => {
     if (priorityPath) {
@@ -276,7 +352,26 @@ const WalletBalancer = ({ portfolioTree = SAMPLE_DATA.tree, targets = SAMPLE_DAT
     setExpandedSub((prev) => ({ ...prev, [uniqueKey]: !prev[uniqueKey] }));
   };
 
-  const safeTargets = targets || { macro: {}, micro: {} };
+  const handleCopyTree = () => {
+    if (!portfolioTree) return;
+    const jsonString = JSON.stringify(portfolioTree, null, 2);
+    navigator.clipboard.writeText(jsonString).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white dark:bg-gray-800 p-12 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 max-w-2xl mx-auto flex flex-col items-center justify-center text-center">
+        <RefreshCw className="w-10 h-10 text-blue-500 animate-spin mb-4" />
+        <h3 className="text-lg font-bold text-gray-800 dark:text-white">Analisando Carteira...</h3>
+        <p className="text-sm text-gray-500">Classificando seus ativos em tempo real</p>
+      </div>
+    );
+  }
+
+  if (!portfolioTree) return null;
 
   return (
     <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 max-w-2xl mx-auto">
@@ -289,19 +384,35 @@ const WalletBalancer = ({ portfolioTree = SAMPLE_DATA.tree, targets = SAMPLE_DAT
             Inteligência de Aporte
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Otimização automática baseada nas suas metas
+            Baseado nos seus ativos reais (Classificação Automática)
           </p>
+        </div>
+        <div className="ml-auto flex gap-2">
+          <button
+            onClick={handleCopyTree}
+            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+            title="Copiar JSON da árvore"
+          >
+            {copied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
+          </button>
+          <button
+            onClick={loadAndClassifyWallet}
+            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            title="Recarregar"
+          >
+            <RefreshCw className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
       <div className="space-y-6">
         {Object.entries(portfolioTree).map(([assetClass, data]) => {
-          const target = safeTargets.macro?.[assetClass] || 0;
+          if (data.totalValue === 0 && (!targets.macro || !targets.macro[assetClass])) return null;
+
+          const target = targets.macro?.[assetClass] || 0;
           const currentPct = data.percentOfTotal;
           const isExpanded = expanded[assetClass];
-
           const isPriority = priorityPath?.macro === assetClass;
-
           const isDimmed = priorityPath && !isPriority;
 
           return (
@@ -318,7 +429,6 @@ const WalletBalancer = ({ portfolioTree = SAMPLE_DATA.tree, targets = SAMPLE_DAT
                 }
               `}
             >
-              {}
               {isPriority && (
                 <div className="absolute -top-3 left-6 bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg z-20 flex items-center gap-1.5 uppercase tracking-wide animate-in fade-in zoom-in duration-300">
                   <TrendingUp className="w-3 h-3" /> Recomendação do Mês
@@ -337,11 +447,12 @@ const WalletBalancer = ({ portfolioTree = SAMPLE_DATA.tree, targets = SAMPLE_DAT
                       {assetClass === 'fii' && <Layers className="w-5 h-5" />}
                       {assetClass === 'acoes' && <Activity className="w-5 h-5" />}
                       {assetClass === 'etf' && <PieChart className="w-5 h-5" />}
+                      {assetClass === 'outros' && <AlertTriangle className="w-5 h-5" />}
                     </div>
 
                     <div>
                       <h4 className="text-lg font-bold text-gray-800 dark:text-gray-100 uppercase tracking-tight">
-                        {assetClass}
+                        {assetClass === 'acoes' ? 'Ações' : assetClass}
                       </h4>
                       {!isExpanded && !isPriority && (
                         <span className="text-xs text-gray-400 animate-in fade-in">
@@ -373,12 +484,12 @@ const WalletBalancer = ({ portfolioTree = SAMPLE_DATA.tree, targets = SAMPLE_DAT
                   {Object.entries(data.subTypes).map(([subType, subData]) => {
                     const uniqueKey = `${assetClass}-${subType}`;
                     const isSubExpanded = expandedSub[uniqueKey];
-                    const subTarget = safeTargets.micro?.[assetClass]?.[subType] || 0;
+                    const subTarget = targets.micro?.[assetClass]?.[subType] || 0;
 
                     const relativePercent =
                       data.totalValue > 0 ? (subData.value / data.totalValue) * 100 : 0;
-
                     const isSubPriority = isPriority && priorityPath?.micro === subType;
+                    const isUnclassified = subType === 'Indefinido' || assetClass === 'outros';
 
                     return (
                       <div
@@ -416,7 +527,6 @@ const WalletBalancer = ({ portfolioTree = SAMPLE_DATA.tree, targets = SAMPLE_DAT
                                 {subType}
                               </span>
 
-                              {}
                               {isSubPriority && (
                                 <span className="ml-2 inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
                                   Foco
@@ -442,7 +552,11 @@ const WalletBalancer = ({ portfolioTree = SAMPLE_DATA.tree, targets = SAMPLE_DAT
 
                         {isSubExpanded && subData.assets && (
                           <div className="px-4 pb-4 bg-gray-50/50 dark:bg-gray-900/20 border-t border-gray-100 dark:border-gray-700 pt-2 animate-in slide-in-from-top-2">
-                            <AssetListTable assets={subData.assets} totalValue={subData.value} />
+                            <AssetListTable
+                              assets={subData.assets}
+                              totalValue={subData.value}
+                              isUnclassified={isUnclassified}
+                            />
                           </div>
                         )}
                       </div>

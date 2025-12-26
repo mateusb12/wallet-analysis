@@ -1,603 +1,458 @@
+# backend/source/features/market_data/market_data_router.py
+
 import base64
 import io
 import json
-import os
+import re
+import unicodedata
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
+import pandas as pd
 import requests
 import yfinance as yf
-import pandas as pd
 from fastapi import APIRouter, HTTPException
-from supabase import Client, create_client
 
-# Corrected absolute import
 from backend.source.core.db import get_supabase
 from backend.source.features.market_data.market_data_schemas import TickerSync
 
 market_data_bp = APIRouter(prefix="/sync", tags=["Market Data"])
 
+# ... (MANTENHA AS FUNÇÕES DE SYNC: normalize_yahoo, sync_ticker, sync_ifix, sync_cdi, sync_ibov IGUAIS) ...
+# Vou replicar apenas da parte de CLASSIFICATION para baixo onde ocorreram as mudanças.
 
-def normalize_yahoo(df):
-    """Helper to normalize Yahoo Finance DataFrame columns."""
-    df = df.copy()
-    df.reset_index(inplace=True)
-    df.columns = [str(col).lower().strip().replace(" ", "") for col in df.columns]
+# -----------------------------------------------------------------------------
+# Classification: robust scoring + regex + caching
+# -----------------------------------------------------------------------------
 
-    rename_map = {}
-    for col in list(df.columns):
-        col_str = str(col).lower()
-        if "adj" in col_str: continue
-        if "open" in col_str: rename_map[col] = "open"
-        if "high" in col_str: rename_map[col] = "high"
-        if "low" in col_str: rename_map[col] = "low"
-        if "close" in col_str: rename_map[col] = "close"
-        if "volume" in col_str: rename_map[col] = "volume"
-        if "date" in col_str: rename_map[col] = "date"
+# Cache configuration
+CLASSIFICATION_CACHE_TABLE = "asset_classification_cache"
+CLASSIFICATION_CACHE_TTL_DAYS = 30
 
-    df = df.rename(columns=lambda c: rename_map.get(c, c))
+# UPDATED: Overrides now include explicitly defined 'sector'
+CLASSIFICATION_OVERRIDES: Dict[str, Dict[str, str]] = {
+    "KNCR11": {
+        "detected_type": "FII - Papel (CRI / Recebíveis)",
+        "sector": "Real Estate",
+        "reasoning": "Override: fundo conhecido de CRI/recebíveis."
+    },
+    "KNHF11": {
+        "detected_type": "FII - Híbrido / Multiestratégia",
+        "sector": "Real Estate",
+        "reasoning": "Override: fundo conhecido multiestratégia/híbrido."
+    },
+    "BTLG11": {
+        "detected_type": "FII - Tijolo (Logística)",
+        "sector": "Real Estate",
+        "reasoning": "Override: fundo conhecido do segmento logística."
+    },
+    "XPCM11": {
+        "detected_type": "FII - Tijolo (Lajes Corporativas)",
+        "sector": "Real Estate",
+        "reasoning": "Override: fundo conhecido do segmento lajes corporativas."
+    },
+    "IVVB11": {
+        "detected_type": "ETF - Internacional (EUA - S&P 500)",
+        "sector": "ETF",
+        "reasoning": "Override: ETF conhecido S&P 500."
+    },
+    "QQQQ11": {
+        "detected_type": "ETF - Internacional (EUA - Nasdaq-100 High Beta)",
+        "sector": "ETF",
+        "reasoning": "Override: ETF conhecido Nasdaq-100 High Beta."
+    },
+}
 
-    if "date" not in df.columns and "index" in df.columns:
-        df.rename(columns={'index': 'date'}, inplace=True)
 
-    # Handle multi-index columns if yahoo returns them
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
+def _norm(s: str) -> str:
+    """Lowercase + remove accents + keep alnum/space only."""
+    if not s:
+        return ""
+    s = str(s).lower()
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    s = re.sub(r"[^a-z0-9\s]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
 
-    df = df.loc[:, ~df.columns.duplicated()]
 
+def _score(text: str, patterns: List[re.Pattern]) -> int:
+    return sum(1 for p in patterns if p.search(text))
+
+
+def _safe_parse_iso(dt_str: str) -> Optional[datetime]:
+    if not dt_str:
+        return None
     try:
-        df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+        # Supabase can return "Z"
+        s = dt_str.replace("Z", "+00:00")
+        return datetime.fromisoformat(s)
     except Exception:
-        raise ValueError("Could not parse 'date' column.")
-
-    required = {"date", "open", "high", "low", "close", "volume"}
-    for req in required:
-        if req not in df.columns:
-            if req == 'volume':
-                df['volume'] = 0
-            else:
-                raise ValueError(f"Missing column: {req}")
-
-    return df[list(required)]
+        return None
 
 
-@market_data_bp.post("/")
-def sync_ticker(payload: TickerSync):
-    ticker = payload.ticker
-    if not ticker:
-        raise HTTPException(status_code=400, detail="Ticker is required")
+def _looks_like_etf(text: str, quote_type: str) -> bool:
+    if quote_type == "etf":
+        return True
+    # Common ETF descriptors
+    if re.search(r"\b(etf|fundo\s+de\s+indice|exchange\s+traded\s+fund)\b", text):
+        return True
+    return False
 
-    end_date = datetime.now() + timedelta(days=1)
-    start_date = end_date - timedelta(days=400)
-    yf_ticker = f"{ticker.upper()}.SA"
 
-    print(f"📡 Downloading {yf_ticker}...", flush=True)
+def _looks_like_fii(ticker_up: str, text: str, quote_type: str) -> bool:
+    # If it clearly looks like ETF, do NOT call it FII
+    if _looks_like_etf(text, quote_type):
+        return False
 
+    # Strong textual markers
+    if re.search(r"\b(fii|fundo\s+de\s+investimento\s+imobiliario|fdo\s+inv\s+imob)\b", text):
+        return True
+
+    # REIT sometimes appears
+    if "reit" in quote_type:
+        return True
+
+    # Heuristic fallback: ticker ending with 11 often FII/ETF; we already excluded ETF above
+    if ticker_up.endswith("11"):
+        return True
+
+    return False
+
+
+# FII patterns
+P_CRI = [
+    re.compile(r"\bcri\b"),
+    re.compile(r"\bcr[i|s]\b"),  # minimal noise coverage
+    re.compile(r"certificad(?:o|os)\s+de\s+recebiveis"),
+    re.compile(r"\brecebiveis?\s+imobiliarios?\b"),
+    re.compile(r"\btitulos?\s+de\s+credito\b"),
+]
+P_FOF = [
+    re.compile(r"\bfundo\s+de\s+fundos\b"),
+    re.compile(r"\bfof\b"),
+    re.compile(r"\bcotas?\s+de\s+(outros\s+)?fundos?\b"),
+]
+P_MULTI = [
+    re.compile(r"\bmultiestrategi\w*\b"),
+    re.compile(r"\bmultistrateg\w*\b"),
+    re.compile(r"\bdiversificad\w*\b"),
+    re.compile(r"\bgestao\s+ativa\b"),
+]
+P_LOG = [
+    re.compile(r"\blogistic\w*\b"),
+    re.compile(r"\bgalpa\w*\b"),
+    re.compile(r"\barmaz\w*\b"),
+    re.compile(r"\bwarehouse\b"),
+    re.compile(r"\bdistribution\s+center\b"),
+]
+P_SHOP = [
+    re.compile(r"\bshopping\b"),
+    re.compile(r"\bmall\w*\b"),
+    re.compile(r"\bvarej\w*\b"),
+    re.compile(r"\bretail\b"),
+]
+P_OFFICE = [
+    re.compile(r"\blajes?\b"),
+    re.compile(r"\bescritor\w*\b"),
+    re.compile(r"\bcorporativ\w*\b"),
+    re.compile(r"\boffice\b"),
+    re.compile(r"\bcorporate\b"),
+]
+P_FIAGRO = [
+    re.compile(r"\bfiagro\b"),
+    re.compile(r"\bcra\b"),
+    re.compile(r"\bagronegoc\w*\b"),
+    re.compile(r"\bfarmland\b"),
+]
+
+
+def _confidence_from_scores(is_fii: bool, is_etf: bool, quote_type: str, scores: Dict[str, int],
+                            matched_override: bool) -> int:
+    if matched_override:
+        return 95
+
+    base = 35
+    if is_fii:
+        base += 20
+    if is_etf:
+        base += 20
+    if quote_type in ("etf", "equity"):
+        base += 10
+
+    # Add points for strong, unique signals
+    base += min(20, scores.get("cri", 0) * 10)
+    base += min(15, scores.get("fof", 0) * 8)
+    base += min(15, scores.get("multi", 0) * 7)
+    base += min(15, scores.get("tijolo", 0) * 6)
+
+    return max(5, min(99, base))
+
+
+def _get_cache(supabase, ticker_up: str) -> Optional[Dict[str, Any]]:
     try:
-        df_raw = yf.download(
-            yf_ticker,
-            start=start_date.strftime("%Y-%m-%d"),
-            end=end_date.strftime("%Y-%m-%d"),
-            auto_adjust=False,
-            progress=False
-        )
+        resp = supabase.table(CLASSIFICATION_CACHE_TABLE).select("*").eq("ticker", ticker_up).limit(1).execute()
+        if not resp.data:
+            return None
+        row = resp.data[0]
 
-        if df_raw.empty:
-            raise HTTPException(status_code=404, detail="Yahoo returned no data")
+        updated_at = _safe_parse_iso(row.get("updated_at") or row.get("inserted_at") or "")
+        if not updated_at:
+            return None
 
-        df_norm = normalize_yahoo(df_raw)
+        if updated_at < (datetime.now(updated_at.tzinfo) - timedelta(days=CLASSIFICATION_CACHE_TTL_DAYS)):
+            return None
 
-        # Use the standard get_supabase helper
-        supabase = get_supabase()
+        # Must have detected_type to be useful
+        if not row.get("detected_type"):
+            return None
 
-        records = []
-        current_time = datetime.now().isoformat()
-
-        for _, row in df_norm.iterrows():
-            records.append({
-                "ticker": ticker.upper(),
-                "trade_date": row["date"],
-                "open": float(row["open"]),
-                "high": float(row["high"]),
-                "low": float(row["low"]),
-                "close": float(row["close"]),
-                "volume": float(row["volume"]),
-                "inserted_at": current_time
-            })
-
-        response = supabase.table("b3_prices").upsert(
-            records,
-            on_conflict="ticker,trade_date"
-        ).execute()
-
-        return {
-            "success": True,
-            "count": len(records),
-            "message": f"Successfully synced {len(records)} records for {ticker}"
-        }
-
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return row
+    except Exception:
+        return None
 
 
-@market_data_bp.post("/ifix")
-def sync_ifix():
-    """
-    Syncs IFIX directly from B3 website (Official Source).
-    Mimics the curl logic: Base64 Decode -> Unpivot Matrix -> Parse Dates.
-    """
-    print("📡 Downloading IFIX data directly from B3 (Official Source)...", flush=True)
-
+def _upsert_cache(supabase, row: Dict[str, Any]) -> None:
     try:
-        # 1. Construct the B3 Dynamic URL (Yearly payload)
-        current_year = str(datetime.now().year)
-
-        # This matches the JSON payload exactly: {"index":"IFIX","language":"pt-br","year":"2025"}
-        payload_data = {
-            "index": "IFIX",
-            "language": "pt-br",
-            "year": current_year
-        }
-
-        # Create base64 string for the URL
-        json_str = json.dumps(payload_data, separators=(',', ':'))
-        b64_payload = base64.b64encode(json_str.encode()).decode()
-
-        url = f"https://sistemaswebb3-listados.b3.com.br/indexStatisticsProxy/IndexCall/GetDownloadPortfolioDay/{b64_payload}"
-
-        # --- THE FIX IS HERE ---
-        # B3/Cloudflare blocks "python-requests". We must spoof a browser User-Agent.
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-
-        # 2. Fetch Raw Data with Headers
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-
-        # B3 returns a raw base64 string, we must decode it to get the CSV content
-        csv_content = base64.b64decode(response.content).decode("iso-8859-1")
-
-        # 3. Parse CSV with Pandas
-        df = pd.read_csv(io.StringIO(csv_content), sep=";", skiprows=1)
-
-        # Remove "MÍNIMO" / "MÁXIMO" summary rows
-        df = df[pd.to_numeric(df['Dia'], errors='coerce').notnull()]
-
-        # 4. Unpivot/Melt
-        month_cols = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
-        available_months = [m for m in month_cols if m in df.columns]
-
-        df_melted = df.melt(id_vars=["Dia"], value_vars=available_months, var_name="Month", value_name="Value")
-
-        # Filter out empty values
-        df_melted = df_melted.dropna(subset=["Value"])
-        df_melted = df_melted[df_melted["Value"] != ""]
-
-        # 5. Clean Data & Format Dates
-        month_map = {
-            "Jan": "01", "Fev": "02", "Mar": "03", "Abr": "04", "Mai": "05", "Jun": "06",
-            "Jul": "07", "Ago": "08", "Set": "09", "Out": "10", "Nov": "11", "Dez": "12"
-        }
-
-        records = []
-        for _, row in df_melted.iterrows():
-            day = str(row["Dia"]).zfill(2)
-            month_num = month_map.get(row["Month"])
-            trade_date = f"{current_year}-{month_num}-{day}"
-
-            # Clean Number: "3.311,48" -> 3311.48
-            raw_val = str(row["Value"])
-            clean_val = raw_val.replace(".", "").replace(",", ".")
-            final_val = float(clean_val)
-
-            records.append({
-                "trade_date": trade_date,
-                "close_value": final_val
-            })
-
-        records.sort(key=lambda x: x['trade_date'])
-
-        if not records:
-            raise HTTPException(status_code=404, detail="B3 returned data, but no valid records were parsed.")
-
-        # 6. SAFETY BLOCK
-        supabase = get_supabase()
-
-        last_record_resp = supabase.table("ifix_history") \
-            .select("close_value") \
-            .order("trade_date", desc=True) \
-            .limit(1) \
-            .execute()
-
-        if last_record_resp.data:
-            last_db_value = float(last_record_resp.data[0]['close_value'])
-            new_val_sample = records[-1]['close_value']
-
-            if last_db_value > 0:
-                ratio = new_val_sample / last_db_value
-                if ratio < 0.5 or ratio > 1.5:
-                    msg = (
-                        f"SAFETY BLOCK: Major discrepancy detected! "
-                        f"Existing DB Value: {last_db_value}, New B3 Value: {new_val_sample}. "
-                        "Sync aborted."
-                    )
-                    print(f"❌ {msg}")
-                    raise HTTPException(status_code=422, detail=msg)
-
-        # 7. Insert
-        response = supabase.table("ifix_history").upsert(
-            records,
-            on_conflict="trade_date"
-        ).execute()
-
-        return {
-            "success": True,
-            "count": len(records),
-            "message": f"Successfully synced {len(records)} IFIX records directly from B3."
-        }
-
-    except HTTPException as he:
-        raise he
+        # Expected table fields (recommended):
+        # ticker (pk), detected_type, reasoning, sector, quote_type, confidence, raw_info_sample, updated_at
+        row["updated_at"] = datetime.now().isoformat()
+        supabase.table(CLASSIFICATION_CACHE_TABLE).upsert(row, on_conflict="ticker").execute()
     except Exception as e:
-        print(f"❌ Error syncing IFIX: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@market_data_bp.post("/cdi")
-def sync_cdi():
-    """
-    Syncs CDI history using BCB Series 11 (Daily Selic).
-    Smart Sync: Resumes from the last database date to avoid BCB 10-year limit errors.
-    """
-    # Base URL (without parameters)
-    BCB_BASE_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados"
-
-    print("📡 Downloading CDI (Selic) data from BCB...", flush=True)
-
-    try:
-        supabase = get_supabase()
-
-        # 1. Determine Start Date
-        # Check DB for the most recent date we already have
-        last_row = supabase.table("cdi_history") \
-            .select("trade_date") \
-            .order("trade_date", desc=True) \
-            .limit(1) \
-            .execute()
-
-        today = datetime.now()
-
-        if last_row.data:
-            # We have data, resume from the next day
-            last_date_str = last_row.data[0]['trade_date']
-            last_date_obj = datetime.strptime(last_date_str, "%Y-%m-%d")
-            start_date_obj = last_date_obj + timedelta(days=1)
-        else:
-            # No data (first sync), default to 10 years ago (API limit)
-            start_date_obj = today - timedelta(days=365 * 10)
-
-        # 2. Prepare Parameters (dd/mm/yyyy)
-        data_inicial = start_date_obj.strftime("%d/%m/%Y")
-        data_final = today.strftime("%d/%m/%Y")
-
-        # If start date is in the future (already up to date), stop here
-        if start_date_obj > today:
-            return {"success": True, "count": 0, "message": "CDI already up to date."}
-
-        params = {
-            "formato": "json",
-            "dataInicial": data_inicial,
-            "dataFinal": data_final
-        }
-
-        # 3. Fetch Data with Headers and Date Range
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        }
-
-        print(f"   ↳ Requesting range: {data_inicial} to {data_final}")
-        response = requests.get(BCB_BASE_URL, headers=headers, params=params)
-        response.raise_for_status()
-
-        data = response.json()
-
-        # Guard: Check if API returned an error object instead of a list
-        if isinstance(data, dict) and "error" in data:
-            print(f"⚠️ BCB API Error: {data['error']}")
-            raise HTTPException(status_code=400, detail=f"BCB API Error: {data['error']}")
-
-        # 4. Process Records
-        records = []
-        for entry in data:
-            # Safe access
-            if 'data' not in entry or 'valor' not in entry:
-                continue
-
-            # BCB format "dd/mm/yyyy" -> ISO "yyyy-mm-dd"
-            day, month, year = entry['data'].split('/')
-            iso_date = f"{year}-{month}-{day}"
-
-            # BCB value "0,042321" -> float
-            val_str = entry['valor'].replace(',', '.')
-            val_float = float(val_str)
-
-            records.append({
-                "trade_date": iso_date,
-                "value": val_float
-            })
-
-        if not records:
-            return {"success": True, "count": 0, "message": "No new data found."}
-
-        # 5. Batch Insert (Chunking)
-        BATCH_SIZE = 1000
-        total_inserted = 0
-
-        for i in range(0, len(records), BATCH_SIZE):
-            batch = records[i:i + BATCH_SIZE]
-            supabase.table("cdi_history").upsert(batch, on_conflict="trade_date").execute()
-            total_inserted += len(batch)
-
-        return {
-            "success": True,
-            "count": total_inserted,
-            "message": f"Synced {total_inserted} records from {data_inicial}."
-        }
-
-    except Exception as e:
-        print(f"❌ Error syncing CDI: {e}")
-        # import traceback; traceback.print_exc() # Uncomment for deep debugging
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@market_data_bp.post("/ibov")
-def sync_ibov():
-    """
-    Syncs IBOVESPA directly from B3 website (Official Source).
-    Mimics the curl logic: Base64 Decode -> Unpivot Matrix -> Parse Dates.
-    """
-    print("📡 Downloading IBOVESPA data directly from B3 (Official Source)...", flush=True)
-
-    try:
-        # 1. Construct the B3 Dynamic URL (Yearly payload)
-        current_year = str(datetime.now().year)
-
-        # Payload specific for IBOV
-        payload_data = {
-            "index": "IBOVESPA",
-            "language": "pt-br",
-            "year": current_year
-        }
-
-        # Create base64 string for the URL
-        json_str = json.dumps(payload_data, separators=(',', ':'))
-        b64_payload = base64.b64encode(json_str.encode()).decode()
-
-        url = f"https://sistemaswebb3-listados.b3.com.br/indexStatisticsProxy/IndexCall/GetDownloadPortfolioDay/{b64_payload}"
-
-        # Browser spoofing headers
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-
-        # 2. Fetch Raw Data
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-
-        # Decode Base64 response to get CSV content
-        csv_content = base64.b64decode(response.content).decode("iso-8859-1")
-
-        # 3. Parse CSV
-        df = pd.read_csv(io.StringIO(csv_content), sep=";", skiprows=1)
-
-        # Remove "MÍNIMO" / "MÁXIMO" summary rows
-        df = df[pd.to_numeric(df['Dia'], errors='coerce').notnull()]
-
-        # 4. Unpivot/Melt
-        month_cols = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
-        available_months = [m for m in month_cols if m in df.columns]
-
-        df_melted = df.melt(id_vars=["Dia"], value_vars=available_months, var_name="Month", value_name="Value")
-
-        # Filter out empty values
-        df_melted = df_melted.dropna(subset=["Value"])
-        df_melted = df_melted[df_melted["Value"] != ""]
-
-        # 5. Clean Data & Format Dates
-        month_map = {
-            "Jan": "01", "Fev": "02", "Mar": "03", "Abr": "04", "Mai": "05", "Jun": "06",
-            "Jul": "07", "Ago": "08", "Set": "09", "Out": "10", "Nov": "11", "Dez": "12"
-        }
-
-        records = []
-        for _, row in df_melted.iterrows():
-            day = str(row["Dia"]).zfill(2)
-            month_num = month_map.get(row["Month"])
-            trade_date = f"{current_year}-{month_num}-{day}"
-
-            # Clean Number: "125.311,48" -> 125311.48
-            raw_val = str(row["Value"])
-            clean_val = raw_val.replace(".", "").replace(",", ".")
-            final_val = float(clean_val)
-
-            records.append({
-                "trade_date": trade_date,
-                "close_value": final_val
-            })
-
-        records.sort(key=lambda x: x['trade_date'])
-
-        if not records:
-            raise HTTPException(status_code=404, detail="B3 returned data, but no valid records were parsed.")
-
-        # 6. SAFETY BLOCK
-        supabase = get_supabase()
-
-        # Check against 'ibov_history' table
-        last_record_resp = supabase.table("ibov_history") \
-            .select("close_value") \
-            .order("trade_date", desc=True) \
-            .limit(1) \
-            .execute()
-
-        if last_record_resp.data:
-            last_db_value = float(last_record_resp.data[0]['close_value'])
-            new_val_sample = records[-1]['close_value']
-
-            if last_db_value > 0:
-                ratio = new_val_sample / last_db_value
-                # 50% drop or 50% gain is highly unlikely for IBOV in one day; prevents bad parsing
-                if ratio < 0.5 or ratio > 1.5:
-                    msg = (
-                        f"SAFETY BLOCK: Major discrepancy detected! "
-                        f"Existing DB Value: {last_db_value}, New B3 Value: {new_val_sample}. "
-                        "Sync aborted."
-                    )
-                    print(f"❌ {msg}")
-                    raise HTTPException(status_code=422, detail=msg)
-
-        # 7. Insert into ibov_history
-        response = supabase.table("ibov_history").upsert(
-            records,
-            on_conflict="trade_date"
-        ).execute()
-
-        return {
-            "success": True,
-            "count": len(records),
-            "message": f"Successfully synced {len(records)} IBOV records directly from B3."
-        }
-
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"❌ Error syncing IBOV: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Cache failure should never kill the endpoint
+        print(f"⚠️ Cache upsert failed: {e}")
 
 
 @market_data_bp.post("/classify")
 def classify_ticker(payload: TickerSync):
     """
-    Tries to classify an asset (FII or ETF) based on Yahoo Finance description.
-    Uses Bilingual keywords and smarter heuristic for ETFs vs Units.
+    Classify an asset (FII, ETF or Stock) using:
+    - normalization + regex patterns + scoring
+    - cache (Supabase)
+    - hard overrides
     """
     ticker = payload.ticker
     if not ticker:
         raise HTTPException(status_code=400, detail="Ticker is required")
 
-    # Normalize ticker
-    full_ticker = f"{ticker.upper()}.SA" if not ticker.endswith('.SA') else ticker.upper()
+    ticker_up = ticker.upper().replace(".SA", "")
+    yf_ticker = f"{ticker_up}.SA"
+    print(f"📡 Classifying {yf_ticker}...", flush=True)
 
-    print(f"📡 Classifying {full_ticker} via Yahoo Finance...", flush=True)
+    # Base result scaffold
+    base_result: Dict[str, Any] = {
+        "ticker": ticker_up,
+        "detected_type": "Indefinido",
+        "reasoning": "Não foi possível identificar padrões claros",
+        "sector": "Outros",
+        "quote_type": "unknown",
+        "confidence": 10,
+        "raw_info_sample": "Sem descrição",
+        "source": "heuristic+yahoo",
+        "updated_at": datetime.now().isoformat(),
+    }
 
     try:
-        asset = yf.Ticker(full_ticker)
-        info = asset.info
+        supabase = get_supabase()
 
-        # Helper to safely get lowercase string
-        def get_field(key):
-            val = info.get(key, '')
-            return str(val).lower() if val else ''
+        # 0) Overrides first (fast and stable)
+        if ticker_up in CLASSIFICATION_OVERRIDES:
+            ov = CLASSIFICATION_OVERRIDES[ticker_up]
+            base_result["detected_type"] = ov["detected_type"]
+            base_result["reasoning"] = ov["reasoning"]
+            # Force sector from override if present, else keep default
+            base_result["sector"] = ov.get("sector", base_result["sector"])
+            base_result["confidence"] = _confidence_from_scores(False, False, "unknown", {}, matched_override=True)
+            base_result["source"] = "override"
+            _upsert_cache(supabase, base_result)
+            return base_result
 
-        summary = get_field('longBusinessSummary')
-        short_name = get_field('shortName')
-        long_name = get_field('longName')
-        sector = get_field('sector')
-        quote_type = get_field('quoteType')
-        category = get_field('category')
+        # 1) Cache
+        cached = _get_cache(supabase, ticker_up)
+        if cached:
+            return {
+                "ticker": cached.get("ticker", ticker_up),
+                "detected_type": cached.get("detected_type", "Indefinido"),
+                "reasoning": cached.get("reasoning", "cache"),
+                "sector": cached.get("sector", "Outros"),
+                "quote_type": cached.get("quote_type", "unknown"),
+                "confidence": cached.get("confidence", 50),
+                "raw_info_sample": cached.get("raw_info_sample", "Sem descrição"),
+                "source": cached.get("source", "cache"),
+                "updated_at": cached.get("updated_at"),
+            }
 
-        # Combine names for search
-        full_text_search = f"{summary} {short_name} {long_name} {category}"
+        # 2) Yahoo fetch
+        asset = yf.Ticker(yf_ticker)
+        info = asset.info or {}
 
-        result = {
-            "ticker": ticker.upper(),
-            "detected_type": "Indefinido",
-            "reasoning": "Não foi possível identificar padrões claros",
-            "raw_info_sample": summary[:100] + "..." if summary else "Sem descrição"
+        summary = str(info.get("longBusinessSummary") or "")
+        short_name = str(info.get("shortName") or "")
+        long_name = str(info.get("longName") or "")
+        sector = str(info.get("sector") or "")
+        quote_type = str(info.get("quoteType") or "")
+        category = str(info.get("category") or "")
+
+        base_result["sector"] = sector or "Outros"
+        base_result["quote_type"] = quote_type or "unknown"
+        base_result["raw_info_sample"] = (summary[:100] + "...") if summary else "Sem descrição"
+
+        # Normalize text
+        text = _norm(f"{summary} {short_name} {long_name} {category}")
+        qtype_n = _norm(quote_type)
+        sector_n = _norm(sector)
+
+        # 3) Determine broad type
+        looks_etf = _looks_like_etf(text, qtype_n)
+        # Check FII first (Brazil specific)
+        looks_fii = _looks_like_fii(ticker_up, text, qtype_n)
+
+        # Scores for FIIs
+        s_cri = _score(text, P_CRI)
+        s_fof = _score(text, P_FOF)
+        s_multi = _score(text, P_MULTI)
+        s_log = _score(text, P_LOG)
+        s_shop = _score(text, P_SHOP)
+        s_off = _score(text, P_OFFICE)
+        s_fiagro = _score(text, P_FIAGRO)
+
+        scores = {
+            "cri": s_cri,
+            "fof": s_fof,
+            "multi": s_multi,
+            "tijolo": (s_log + s_shop + s_off),
+            "fiagro": s_fiagro,
         }
 
-        # --- KEYWORDS (Bilingual) ---
-        k_papel = [
-            'recebíveis', 'cri ', 'cris ', 'certificados de recebíveis', 'títulos de crédito', 'financeiros', 'papel',
-            'receivables', 'credit rights', 'paper', 'debt', 'fixed income'
-        ]
-        k_logistica = [
-            'logística', 'logístico', 'galpões', 'armazéns', 'industrial',
-            'logistics', 'warehouse', 'distribution center'
-        ]
-        k_shopping = [
-            'shopping', 'varejo', 'lojas', 'comercial',
-            'malls', 'retail', 'commercial'
-        ]
-        k_lajes = [
-            'lajes', 'escritórios', 'corporativo', 'salas comerciais',
-            'corporate', 'office', 'buildings', 'towers'
-        ]
-        k_fiagro = ['agronegócio', 'rural', 'terras', 'cra ', 'fiagro', 'farmland', 'agro']
-        k_fof = ['fundo de fundos', 'fund of funds', 'fof ', 'cotas de outros fundos']
+        # 4) Classification logic
 
-        # --- 1. DETECT IF IT IS A FII (Real Estate) ---
-        # FIIs usually have sector 'Real Estate' OR 'FII' in the name
-        is_fii = (
-                'real estate' in sector or
-                'imob' in short_name or 'fii' in short_name or 'fundo de investimento imobiliário' in long_name or
-                'reit' in quote_type.lower()
-        )
+        # === FII LOGIC ===
+        if looks_fii:
+            # FIX: Force sector to 'Real Estate' instead of whatever Yahoo sent
+            base_result["sector"] = "Real Estate"
 
-        if is_fii:
-            if any(k in full_text_search for k in k_fiagro):
-                result["detected_type"] = "FII - Fiagro"
-            elif any(k in full_text_search for k in k_fof):
-                result["detected_type"] = "FII - Fundo de Fundos (FoF)"
-            elif any(k in full_text_search for k in k_papel):
-                # Check for "Recebíveis" keywords
-                result["detected_type"] = "FII - Papel (Recebíveis)"
-            elif any(k in full_text_search for k in k_logistica):
-                result["detected_type"] = "FII - Tijolo (Logística)"
-            elif any(k in full_text_search for k in k_shopping):
-                result["detected_type"] = "FII - Tijolo (Shopping)"
-            elif any(k in full_text_search for k in k_lajes):
-                result["detected_type"] = "FII - Tijolo (Lajes Corporativas)"
+            if s_fiagro >= 1:
+                base_result["detected_type"] = "FII - Fiagro"
+                base_result["reasoning"] = f"FII com sinais de Fiagro (score_fiagro={s_fiagro})."
             else:
-                # If sector is Real Estate but no specific keyword found, it's likely Brick or Hybrid
-                result["detected_type"] = "FII - Tijolo/Misto (Genérico)"
+                mixed_groups = 0
+                mixed_groups += 1 if s_cri > 0 else 0
+                mixed_groups += 1 if s_fof > 0 else 0
+                mixed_groups += 1 if (s_log + s_shop + s_off) > 0 else 0
+                mixed_groups += 1 if s_multi > 0 else 0
 
-            result["reasoning"] = f"Identificado como FII. Setor: {sector}."
+                if s_cri >= 1 and (s_log + s_shop + s_off) == 0 and s_fof == 0 and s_multi == 0:
+                    base_result["detected_type"] = "FII - Papel (CRI / Recebíveis)"
+                    base_result["reasoning"] = f"FII com sinais fortes de CRI/recebíveis (score_cri={s_cri})."
+                elif mixed_groups >= 2:
+                    base_result["detected_type"] = "FII - Híbrido / Multiestratégia"
+                    base_result["reasoning"] = (
+                        "FII com sinais mistos ("
+                        f"cri={s_cri}, fof={s_fof}, tijolo={s_log + s_shop + s_off}, multi={s_multi})."
+                    )
+                else:
+                    if s_log >= 1:
+                        base_result["detected_type"] = "FII - Tijolo (Logística)"
+                    elif s_shop >= 1:
+                        base_result["detected_type"] = "FII - Tijolo (Shopping)"
+                    elif s_off >= 1:
+                        base_result["detected_type"] = "FII - Tijolo (Lajes Corporativas)"
+                    elif s_cri >= 1:
+                        base_result["detected_type"] = "FII - Papel (CRI / Recebíveis)"
+                    elif s_fof >= 1:
+                        base_result["detected_type"] = "FII - Fundo de Fundos (FoF)"
+                    else:
+                        base_result["detected_type"] = "FII - Indefinido (sem sinais suficientes)"
 
-        # --- 2. DETECT IF IT IS AN ETF ---
-        # Checks for 'ETF' type OR keywords in name like 'Index', 'S&P', 'Ibovespa'
-        # Also handles IVVB11 specifically if keywords fail
-        elif (
-                quote_type == 'etf' or
-                'etf' in short_name or
-                'index' in short_name or 'índice' in short_name or
-                'ishares' in short_name or 'investo' in short_name or
-                's&p' in full_text_search or 'nasdaq' in full_text_search
-        ):
-            if 'ivvb' in short_name or 'ivvb' in ticker.lower() or 's&p 500' in full_text_search or 'sp500' in full_text_search:
-                result["detected_type"] = "ETF - Internacional (EUA)"
-            elif 'nasdaq' in full_text_search or 'qqq' in full_text_search or 'tech' in full_text_search:
-                result["detected_type"] = "ETF - Internacional (Tech)"
-            elif 'ibovespa' in full_text_search or 'ibov' in full_text_search or 'bova' in short_name:
-                result["detected_type"] = "ETF - Brasil (Ibovespa)"
-            elif 'small' in full_text_search or 'smal' in short_name:
-                result["detected_type"] = "ETF - Brasil (Small Caps)"
-            elif 'crypto' in full_text_search or 'bitcoin' in full_text_search or 'hash' in short_name:
-                result["detected_type"] = "ETF - Cripto"
-            elif 'fixed income' in full_text_search or 'renda fixa' in full_text_search:
-                result["detected_type"] = "ETF - Renda Fixa"
+                    base_result["reasoning"] = (
+                        "FII detectado por heurística. "
+                        f"Scores: cri={s_cri}, log={s_log}, shop={s_shop}, office={s_off}, fof={s_fof}, multi={s_multi}."
+                    )
+
+            base_result["confidence"] = _confidence_from_scores(True, False, qtype_n, scores, matched_override=False)
+            base_result["source"] = "heuristic+yahoo"
+            _upsert_cache(supabase, base_result)
+            return base_result
+
+        # === ETF LOGIC ===
+        if looks_etf:
+            # FIX: Force sector to 'ETF' (or broad variants)
+            # Default to ETF, can be refined below if 'Internacional' logic exists
+            base_result["sector"] = "ETF"
+
+            if ("sp 500" in text) or ("s p 500" in text) or ("s&p 500" in text) or (ticker_up.lower() == "ivvb11"):
+                base_result["detected_type"] = "ETF - Internacional (EUA - S&P 500)"
+                base_result["reasoning"] = "Identificado como ETF ligado ao S&P 500."
+            elif ("nasdaq" in text) or (ticker_up.lower() in ("qqqq11", "qbtc11")):
+                if ticker_up.lower() == "qqqq11" or "high beta" in text:
+                    base_result["detected_type"] = "ETF - Internacional (EUA - Nasdaq-100 High Beta)"
+                else:
+                    base_result["detected_type"] = "ETF - Internacional (EUA - Nasdaq)"
+                base_result["reasoning"] = "Identificado como ETF ligado ao Nasdaq."
+            elif ("ibovespa" in text) or ("ibov" in text) or ("bova" in text):
+                base_result["detected_type"] = "ETF - Brasil (Ibovespa)"
+                base_result["reasoning"] = "Identificado como ETF ligado ao Ibovespa."
+            elif ("small" in text) or ("smal" in text):
+                base_result["detected_type"] = "ETF - Brasil (Small Caps)"
+                base_result["reasoning"] = "Identificado como ETF de small caps."
+            elif ("crypto" in text) or ("bitcoin" in text) or ("hash" in text):
+                base_result["detected_type"] = "ETF - Cripto"
+                base_result["reasoning"] = "Identificado como ETF cripto."
+            elif ("fixed income" in text) or ("renda fixa" in text):
+                base_result["detected_type"] = "ETF - Renda Fixa"
+                base_result["reasoning"] = "Identificado como ETF de renda fixa."
             else:
-                result["detected_type"] = "ETF - Outros"
+                base_result["detected_type"] = "ETF - Outros"
+                base_result[
+                    "reasoning"] = "Identificado como ETF, mas não foi possível inferir o índice/região com precisão."
 
-            result["reasoning"] = f"Identificado como ETF. Nome: {short_name}"
+            base_result["confidence"] = _confidence_from_scores(False, True, qtype_n, scores, matched_override=False)
+            base_result["source"] = "heuristic+yahoo"
+            _upsert_cache(supabase, base_result)
+            return base_result
 
-        else:
-            result["reasoning"] = f"Não classificado. Type: {quote_type}, Sector: {sector}"
+        # === STOCKS (AÇÕES) ===
+        if qtype_n == "equity" or ("equity" in qtype_n):
+            sector_map = {
+                "financial services": "Financeiro",
+                "basic materials": "Materiais Básicos",
+                "utilities": "Utilidade Pública",
+                "energy": "Energia",
+                "consumer defensive": "Consumo Não-Cíclico",
+                "consumer cyclical": "Consumo Cíclico",
+                "industrials": "Industrial",
+                "technology": "Tecnologia",
+                "healthcare": "Saúde",
+                "real estate": "Imobiliário",
+            }
+            mapped_sector = sector_map.get(sector_n, (sector.capitalize() if sector else "Geral"))
 
-        return result
+            # Stock sector is valid, but we translate it
+            base_result["sector"] = mapped_sector
+            base_result["detected_type"] = f"Ação - {mapped_sector}"
+            base_result["reasoning"] = f"Identificado como Ação. Setor Original: {sector or 'desconhecido'}"
+            base_result["confidence"] = _confidence_from_scores(False, False, qtype_n, scores, matched_override=False)
+            base_result["source"] = "heuristic+yahoo"
+            _upsert_cache(supabase, base_result)
+            return base_result
+
+        # Fallback
+        base_result["reasoning"] = f"Não classificado com segurança. quoteType='{quote_type}', sector='{sector}'."
+        base_result["confidence"] = 15
+        base_result["source"] = "heuristic+yahoo"
+        _upsert_cache(supabase, base_result)
+        return base_result
 
     except Exception as e:
         print(f"❌ Error classifying: {e}")
-        raise HTTPException(status_code=500, detail=f"Classification failed: {str(e)}")
+        return {
+            "ticker": ticker_up,
+            "detected_type": "Indefinido",
+            "reasoning": f"Erro na classificação: {str(e)}",
+            "sector": "Desconhecido",
+            "quote_type": "unknown",
+            "confidence": 0,
+            "raw_info_sample": "Sem descrição",
+            "source": "error",
+            "updated_at": datetime.now().isoformat(),
+        }
