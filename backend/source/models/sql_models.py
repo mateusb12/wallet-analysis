@@ -1,8 +1,15 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, UniqueConstraint, Date, Boolean, Numeric, Text, \
-    BigInteger, Identity
+    BigInteger, Identity, UUID, ForeignKey, Table
 from sqlalchemy.sql import func
 from backend.source.core.database import Base
 
+auth_users_table = Table(
+    "users",
+    Base.metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    schema="auth",
+    extend_existing=True
+)
 
 class B3Price(Base):
     __tablename__ = "b3_prices"
@@ -92,3 +99,34 @@ class AssetPurchase(Base):
 
     # Audit fields
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class User(Base):
+    __tablename__ = "users"
+    # O schema padrão geralmente é 'public', mas se precisar ser explícito:
+    # __table_args__ = {"schema": "public"}
+
+    # O ID deve ser PK e FK ao mesmo tempo, apontando para a tabela de auth do Supabase
+    id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("auth.users.id", ondelete="CASCADE"),
+        primary_key=True
+    )
+
+    email = Column(String, nullable=True)
+    full_name = Column(String, nullable=True)
+    avatar_url = Column(String, nullable=True)
+
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+
+    # Opcional: Se quiser converter para dict facilmente
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "email": self.email,
+            "full_name": self.full_name,
+            "avatar_url": self.avatar_url,
+        }
