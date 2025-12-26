@@ -3,27 +3,27 @@ import * as XLSX from 'xlsx';
 import { useTheme } from '../theme/ThemeContext.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useDataConsistency } from '../../hooks/useDataConsistency.js';
+import { userService } from '../../services/userService.js';
+
 import DataConsistencyAlert from '../../components/DataConsistencyAlert.jsx';
 import ManualPriceSync from '../../components/ManualPriceSync.jsx';
-import {
-  AlertTriangle,
-  CheckCircle,
-  Database,
-  UploadCloud,
-  X,
-  RefreshCw,
-  AlertCircle,
-  FileText,
-} from 'lucide-react';
 import ContributionsManager from './ContributionsManager.jsx';
+
+import { AlertTriangle, CheckCircle, UploadCloud, X, RefreshCw } from 'lucide-react';
 
 export default function Settings() {
   const { theme, toggleTheme } = useTheme();
   const { user } = useAuth();
-  const fileInputRef = useRef(null);
   const { warnings } = useDataConsistency();
 
+  const fileInputRef = useRef(null);
+  const avatarInputRef = useRef(null);
+
   const [apiKey, setApiKey] = useState('hg_29384...8s7d');
+
+  const [avatarUrl, setAvatarUrl] = useState(null);
+  const [dbName, setDbName] = useState('');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   const [importPreview, setImportPreview] = useState([]);
   const [isPreviewOpen, setIsPreviewOpen] = useState(true);
@@ -34,14 +34,62 @@ export default function Settings() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const userEmail = user?.email || 'usuario@exemplo.com';
-  const userName = userEmail.split('@')[0];
+
+  const displayName = dbName || userEmail.split('@')[0];
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
   useEffect(() => {
     if (user?.id) {
       fetchExistingPurchases();
+      loadUserProfile();
     }
   }, [user]);
+
+  const loadUserProfile = async () => {
+    try {
+      const profile = await userService.getProfile();
+      if (profile) {
+        setAvatarUrl(profile.avatar_url);
+        setDbName(profile.full_name || '');
+      }
+    } catch (error) {
+      console.error('Erro ao carregar perfil:', error);
+    }
+  };
+
+  const handleAvatarClick = () => {
+    if (avatarInputRef.current) {
+      avatarInputRef.current.click();
+    }
+  };
+
+  const handleAvatarChange = async (event) => {
+    if (!event.target.files || event.target.files.length === 0) return;
+
+    try {
+      setIsUploadingAvatar(true);
+      const file = event.target.files[0];
+
+      const publicUrl = await userService.uploadAvatar(file, user.id);
+
+      const updatedProfile = await userService.updateProfile({ avatar_url: publicUrl });
+
+      setAvatarUrl(updatedProfile.avatar_url);
+    } catch (error) {
+      console.error('Erro no upload do avatar:', error);
+      alert('Erro ao atualizar avatar: ' + error.message);
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  const handleNameBlur = async () => {
+    try {
+      await userService.updateProfile({ full_name: dbName });
+    } catch (error) {
+      console.error('Erro ao salvar nome:', error);
+    }
+  };
 
   const fetchExistingPurchases = async () => {
     setIsLoadingHistory(true);
@@ -60,7 +108,6 @@ export default function Settings() {
 
   const toStandardDate = (dateInput) => {
     if (!dateInput) return '';
-
     if (
       typeof dateInput === 'object' ||
       (typeof dateInput === 'string' && dateInput.includes('T'))
@@ -69,18 +116,15 @@ export default function Settings() {
       if (isNaN(d.getTime())) return '';
       return d.toISOString().split('T')[0];
     }
-
     if (typeof dateInput === 'string' && dateInput.includes('/')) {
       const parts = dateInput.split('/');
       if (parts.length === 3) {
         return `${parts[2]}-${parts[1]}-${parts[0]}`;
       }
     }
-
     if (typeof dateInput === 'string' && dateInput.match(/^\d{4}-\d{2}-\d{2}$/)) {
       return dateInput;
     }
-
     return dateInput;
   };
 
@@ -101,12 +145,10 @@ export default function Settings() {
       if (!samePrice) return false;
 
       const dbDateString = toStandardDate(dbItem.trade_date);
-
       if (dbDateString === rowDateString) return true;
 
       const d1 = new Date(dbDateString);
       const d2 = new Date(rowDateString);
-
       const diffTime = Math.abs(d2 - d1);
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -114,13 +156,10 @@ export default function Settings() {
     });
 
     if (match) return 'duplicate';
-
     const tickerExists = existingPurchases.some(
       (dbItem) => dbItem.ticker.trim().toUpperCase() === rowTicker
     );
-
     if (tickerExists) return 'exists';
-
     return 'new';
   };
 
@@ -140,7 +179,6 @@ export default function Settings() {
     reader.onload = (evt) => {
       const bstr = evt.target.result;
       const workbook = XLSX.read(bstr, { type: 'binary' });
-
       let allData = [];
 
       workbook.SheetNames.forEach((sheetName) => {
@@ -152,7 +190,6 @@ export default function Settings() {
           if (row['Movimentação'] !== undefined) return { ...row, _source: 'MOVIMENTACAO' };
           return { ...row, _source: 'POSICAO' };
         });
-
         allData = [...allData, ...taggedData];
       });
 
@@ -169,30 +206,23 @@ export default function Settings() {
             let rawTicker = row['Código de Negociação'] || '';
             if (rawTicker.endsWith('F')) rawTicker = rawTicker.slice(0, -1);
             ticker = rawTicker.trim();
-
             name = row['Instituição'] || ticker;
             qty = Number(row['Quantidade'] || 0);
             price = Number(row['Preço'] || 0);
-
             let rawDate = row['Data do Negócio'];
             if (rawDate instanceof Date) purchaseDate = rawDate.toLocaleDateString('pt-BR');
             else if (rawDate) purchaseDate = String(rawDate).trim();
           } else if (row._source === 'MOVIMENTACAO') {
             const movType = row['Movimentação'] || '';
-            if (!movType.includes('Liquidação') && !movType.includes('Compra')) {
-              return null;
-            }
-
+            if (!movType.includes('Liquidação') && !movType.includes('Compra')) return null;
             let rawProduct = row['Produto'] || '';
             if (rawProduct) {
               const parts = rawProduct.split(' - ');
               ticker = parts[0].trim();
               name = parts.length > 1 ? parts.slice(1).join(' - ').trim() : ticker;
             }
-
             qty = Number(row['Quantidade'] || 0);
             price = Number(row['Preço unitário'] || 0);
-
             let rawDate = row['Data'];
             if (rawDate instanceof Date) purchaseDate = rawDate.toLocaleDateString('pt-BR');
             else if (rawDate) purchaseDate = String(rawDate).trim();
@@ -203,11 +233,8 @@ export default function Settings() {
               ticker = parts[0].trim();
               name = parts.length > 1 ? parts.slice(1).join(' - ').trim() : ticker;
             }
-
             qty = Number(row['Quantidade'] || row['quantidade'] || 0);
-
             let rawPrice = row['Preço de Fechamento'] || row['Preço unitário'] || row['Valor'] || 0;
-
             if (typeof rawPrice === 'string') {
               price =
                 parseFloat(
@@ -216,7 +243,6 @@ export default function Settings() {
             } else {
               price = rawPrice;
             }
-
             if (price === 0 && qty > 0) {
               const totalValRaw = row['Valor Atualizado'] || 0;
               let totalVal =
@@ -231,20 +257,11 @@ export default function Settings() {
 
           if (ticker.endsWith('11')) type = 'fii';
           if (ticker.endsWith('33') || ticker.endsWith('34')) type = 'bdr';
-          if (['IVVB11', 'BOVA11', 'SMAL11', 'QQQQ11', 'XINA11', 'HASH11'].includes(ticker)) {
+          if (['IVVB11', 'BOVA11', 'SMAL11', 'QQQQ11', 'XINA11', 'HASH11'].includes(ticker))
             type = 'etf';
-          }
-
           if (ticker === 'UNKNOWN' || ticker === '' || qty === 0) return null;
 
-          return {
-            ticker,
-            name,
-            qty,
-            type,
-            price,
-            date: purchaseDate,
-          };
+          return { ticker, name, qty, type, price, date: purchaseDate };
         })
         .filter((item) => item !== null);
 
@@ -265,19 +282,16 @@ export default function Settings() {
       alert('Erro: Usuário não autenticado.');
       return;
     }
-
     const newItems = importPreview.filter((row) => {
       const status = getDuplicateStatus(row);
       return status !== 'duplicate' && status !== 'potential';
     });
-
     if (newItems.length === 0) {
       alert('Todos os itens já foram importados ou são duplicatas.');
       return;
     }
 
     setIsProcessing(true);
-
     try {
       const payload = {
         user_id: user.id,
@@ -293,14 +307,10 @@ export default function Settings() {
 
       const response = await fetch(`${API_URL}/wallet/import`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-
       const data = await response.json();
-
       if (!response.ok) throw new Error(data.detail || 'Falha na importação');
 
       const skippedCount = importPreview.length - newItems.length;
@@ -325,7 +335,6 @@ export default function Settings() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto pb-20">
-      {}
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Configurações</h2>
         <p className="text-gray-600 dark:text-gray-400 mt-1">
@@ -333,6 +342,7 @@ export default function Settings() {
         </p>
       </div>
 
+      {}
       <DataConsistencyAlert warnings={warnings} className="mb-8" />
 
       <div className="space-y-6">
@@ -343,6 +353,8 @@ export default function Settings() {
           onRefresh={fetchExistingPurchases}
           userId={user?.id}
         />
+
+        {}
         <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
@@ -365,15 +377,38 @@ export default function Settings() {
           </div>
           <div className="p-6 space-y-6">
             <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-bold">
-                {userEmail.charAt(0).toUpperCase()}
+              {}
+              <div className="relative h-16 w-16 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center border border-gray-200 dark:border-gray-600 shadow-sm">
+                {isUploadingAvatar ? (
+                  <RefreshCw className="w-6 h-6 text-white animate-spin" />
+                ) : avatarUrl ? (
+                  <img src={avatarUrl} alt="Avatar" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-white text-2xl font-bold">
+                    {userEmail.charAt(0).toUpperCase()}
+                  </span>
+                )}
               </div>
+
               <div>
-                <button className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
-                  Alterar Avatar
+                {}
+                <input
+                  type="file"
+                  ref={avatarInputRef}
+                  onChange={handleAvatarChange}
+                  accept="image/*"
+                  className="hidden"
+                />
+                <button
+                  onClick={handleAvatarClick}
+                  disabled={isUploadingAvatar}
+                  className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 transition-colors"
+                >
+                  {isUploadingAvatar ? 'Enviando...' : 'Alterar Avatar'}
                 </button>
               </div>
             </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -381,8 +416,11 @@ export default function Settings() {
                 </label>
                 <input
                   type="text"
-                  defaultValue={userName}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={dbName}
+                  onChange={(e) => setDbName(e.target.value)}
+                  onBlur={handleNameBlur}
+                  placeholder={displayName}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 />
               </div>
               <div>
@@ -692,16 +730,10 @@ export default function Settings() {
               </div>
               <div className="flex items-center gap-2">
                 <span
-                  className={`w-2.5 h-2.5 rounded-full ${
-                    warnings.length > 0 ? 'bg-red-500' : 'bg-green-500'
-                  }`}
+                  className={`w-2.5 h-2.5 rounded-full ${warnings.length > 0 ? 'bg-red-500' : 'bg-green-500'}`}
                 ></span>
                 <span
-                  className={`text-sm font-medium ${
-                    warnings.length > 0
-                      ? 'text-red-600 dark:text-red-400'
-                      : 'text-green-600 dark:text-green-400'
-                  }`}
+                  className={`text-sm font-medium ${warnings.length > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}
                 >
                   {warnings.length > 0 ? 'Atenção Requerida' : 'Sistemas Operacionais'}
                 </span>
