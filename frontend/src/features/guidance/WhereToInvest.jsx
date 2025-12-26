@@ -24,6 +24,11 @@ import Pagination from '../../components/Pagination';
 import { analysisService } from '../../services/api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 
+import iconStocks from '../../assets/stocks.png';
+import iconEtf from '../../assets/etf.png';
+import iconFiis from '../../assets/fiis.png';
+import iconTotal from '../../assets/all.png';
+
 const SHARPE_RANGES = [
   {
     min: -999,
@@ -163,6 +168,20 @@ const SharpeTooltip = ({ value }) => {
   );
 };
 
+const getAssetIcon = (type) => {
+  if (!type) return iconTotal;
+  switch (type.toUpperCase()) {
+    case 'STOCK':
+      return iconStocks;
+    case 'FII':
+      return iconFiis;
+    case 'ETF':
+      return iconEtf;
+    default:
+      return iconTotal;
+  }
+};
+
 const getTypeColor = (type) => {
   switch (type) {
     case 'STOCK':
@@ -219,16 +238,22 @@ export default function WhereToInvest() {
               status: 'DADOS INSUFICIENTES',
             };
           }
+
           const momentum = asset.price > asset.mm200;
           const distMM200 = ((asset.price - asset.mm200) / asset.mm200) * 100;
           let status = momentum ? 'ELEGÍVEL' : 'BLOQUEADO';
           return { ...asset, momentum, distMM200, status };
         });
 
-        const ranked = processed.sort((a, b) => b.cagr - a.cagr);
+        const ranked = processed.sort((a, b) => {
+          if (a.status === 'DADOS INSUFICIENTES') return 1;
+          if (b.status === 'DADOS INSUFICIENTES') return -1;
+          return b.cagr - a.cagr;
+        });
 
         let foundLeader = false;
         const finalRanked = ranked.map((asset) => {
+          if (asset.status === 'DADOS INSUFICIENTES') return asset;
           if (!asset.momentum) return { ...asset, status: 'BLOQUEADO' };
 
           if (!foundLeader) {
@@ -306,8 +331,8 @@ export default function WhereToInvest() {
             Dados Insuficientes
           </h3>
           <p className="text-gray-500 dark:text-gray-400 max-w-md mx-auto mb-6">
-            O banco de dados não encontrou histórico de preços suficiente (min 200 dias) para
-            calcular os indicadores dos seus ativos.
+            Não foi possível calcular recomendações. Verifique se você possui ativos cadastrados e
+            se a sincronização de preços foi realizada.
           </p>
           <div className="flex items-center justify-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 py-2 px-4 rounded-lg w-fit mx-auto">
             <RefreshCw size={16} />
@@ -361,16 +386,25 @@ export default function WhereToInvest() {
                     </div>
                   ) : (
                     <div>
-                      <div className="flex items-baseline gap-3 mb-1">
-                        <h3 className="text-5xl font-bold text-gray-900 dark:text-white tracking-tight">
-                          {displayedAsset.ticker}
-                        </h3>
-                        <span
-                          className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${getTypeColor(displayedAsset.type)}`}
-                        >
-                          {displayedAsset.type}
-                        </span>
+                      {}
+                      <div className="flex items-center gap-3 mb-2">
+                        <img
+                          src={getAssetIcon(displayedAsset.type)}
+                          alt={displayedAsset.type}
+                          className="w-14 h-14 object-contain p-1.5 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-100 dark:border-gray-600"
+                        />
+                        <div>
+                          <h3 className="text-4xl font-bold text-gray-900 dark:text-white tracking-tight leading-none">
+                            {displayedAsset.ticker}
+                          </h3>
+                          <span
+                            className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${getTypeColor(displayedAsset.type)}`}
+                          >
+                            {displayedAsset.type}
+                          </span>
+                        </div>
                       </div>
+                      {}
 
                       {displayedAsset.momentum ? (
                         <p className="text-green-600 dark:text-green-400 font-medium text-sm mb-8 flex items-center gap-1">
@@ -452,6 +486,7 @@ export default function WhereToInvest() {
                   <div className="space-y-6">
                     {currentData.map((asset, index) => {
                       const isLocked = asset.status === 'BLOQUEADO';
+                      const isDataError = asset.status === 'DADOS INSUFICIENTES';
                       const isSelected = selectedTicker === asset.ticker;
                       const widthPercentage = (asset.cagr / maxCagr) * 100;
                       const globalRank = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
@@ -467,22 +502,36 @@ export default function WhereToInvest() {
                               ? 'bg-indigo-50 border-indigo-500 dark:bg-indigo-900/20 dark:border-indigo-500'
                               : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-700/30'
                           }
-                          ${isLocked ? 'opacity-60 grayscale-[0.8]' : ''}
+                          ${isLocked || isDataError ? 'opacity-70' : ''}
                         `}
                         >
                           <div className="flex items-center gap-4 text-sm mb-2">
                             <div className="w-6 text-gray-400 font-mono text-sm font-bold">
                               #{globalRank}
                             </div>
-                            <div className="w-28 flex-shrink-0">
+
+                            {}
+                            <div className="flex-shrink-0">
+                              <img
+                                src={getAssetIcon(asset.type)}
+                                alt={asset.type}
+                                className="w-9 h-9 object-contain p-1 bg-gray-100 dark:bg-gray-700/50 rounded-lg"
+                              />
+                            </div>
+                            {}
+
+                            <div className="w-24 flex-shrink-0">
                               <div className="flex items-center gap-2 mb-1">
                                 <span className="font-bold text-lg text-gray-800 dark:text-gray-200">
                                   {asset.ticker}
                                 </span>
                                 {isLocked && <Lock size={12} className="text-red-400" />}
+                                {isDataError && (
+                                  <AlertTriangle size={12} className="text-orange-400" />
+                                )}
                               </div>
                               <div
-                                className={`text-[10px] uppercase font-bold w-fit px-1.5 py-0.5 rounded border ${getStatusColor(asset.status)}`}
+                                className={`text-[9px] uppercase font-bold w-fit px-1.5 py-0.5 rounded border truncate max-w-full ${getStatusColor(asset.status)}`}
                               >
                                 {asset.status}
                               </div>
@@ -501,7 +550,7 @@ export default function WhereToInvest() {
                               </div>
                               <div className="h-3 bg-gray-100 dark:bg-gray-700/50 rounded-full overflow-hidden">
                                 <div
-                                  className={`h-full rounded-full transition-all duration-1000 ${isLocked ? 'bg-gray-400' : 'bg-indigo-500'}`}
+                                  className={`h-full rounded-full transition-all duration-1000 ${isLocked || isDataError ? 'bg-gray-400' : 'bg-indigo-500'}`}
                                   style={{ width: `${widthPercentage}%` }}
                                 />
                               </div>
