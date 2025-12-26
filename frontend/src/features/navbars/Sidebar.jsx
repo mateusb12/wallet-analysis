@@ -10,6 +10,7 @@ import Contributions from '../../pages/Contributions.jsx';
 
 import { Settings as SettingsIcon, LogOut } from 'lucide-react';
 import WhereToInvest from '../guidance/WhereToInvest.jsx';
+import WalletBalancer from '../balancing/WalletBalancer.jsx';
 
 const menuItems = [
   {
@@ -27,8 +28,14 @@ const menuItems = [
   {
     id: 'where-to-invest',
     label: 'Onde aportar?',
-    icon: '🏠',
+    icon: '🧭',
     component: WhereToInvest,
+  },
+  {
+    id: 'wallet-balancer',
+    label: 'Balanceador Inteligente',
+    icon: '⚖️',
+    component: WalletBalancer,
   },
   {
     id: 'price-analyzer',
