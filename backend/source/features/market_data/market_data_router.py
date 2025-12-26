@@ -16,6 +16,7 @@ from backend.source.features.market_data.market_data_schemas import TickerSync
 
 market_data_bp = APIRouter(prefix="/sync", tags=["Market Data"])
 
+
 def normalize_yahoo(df):
     """Helper to normalize Yahoo Finance DataFrame columns."""
     df = df.copy()
@@ -52,10 +53,13 @@ def normalize_yahoo(df):
     required = {"date", "open", "high", "low", "close", "volume"}
     for req in required:
         if req not in df.columns:
-            if req == 'volume': df['volume'] = 0
-            else: raise ValueError(f"Missing column: {req}")
+            if req == 'volume':
+                df['volume'] = 0
+            else:
+                raise ValueError(f"Missing column: {req}")
 
     return df[list(required)]
+
 
 @market_data_bp.post("/")
 def sync_ticker(payload: TickerSync):
@@ -115,6 +119,7 @@ def sync_ticker(payload: TickerSync):
     except Exception as e:
         print(f"❌ Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @market_data_bp.post("/ifix")
 def sync_ifix():
@@ -346,6 +351,7 @@ def sync_cdi():
         # import traceback; traceback.print_exc() # Uncomment for deep debugging
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @market_data_bp.post("/ibov")
 def sync_ibov():
     """
@@ -469,3 +475,129 @@ def sync_ibov():
     except Exception as e:
         print(f"❌ Error syncing IBOV: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@market_data_bp.post("/classify")
+def classify_ticker(payload: TickerSync):
+    """
+    Tries to classify an asset (FII or ETF) based on Yahoo Finance description.
+    Uses Bilingual keywords and smarter heuristic for ETFs vs Units.
+    """
+    ticker = payload.ticker
+    if not ticker:
+        raise HTTPException(status_code=400, detail="Ticker is required")
+
+    # Normalize ticker
+    full_ticker = f"{ticker.upper()}.SA" if not ticker.endswith('.SA') else ticker.upper()
+
+    print(f"📡 Classifying {full_ticker} via Yahoo Finance...", flush=True)
+
+    try:
+        asset = yf.Ticker(full_ticker)
+        info = asset.info
+
+        # Helper to safely get lowercase string
+        def get_field(key):
+            val = info.get(key, '')
+            return str(val).lower() if val else ''
+
+        summary = get_field('longBusinessSummary')
+        short_name = get_field('shortName')
+        long_name = get_field('longName')
+        sector = get_field('sector')
+        quote_type = get_field('quoteType')
+        category = get_field('category')
+
+        # Combine names for search
+        full_text_search = f"{summary} {short_name} {long_name} {category}"
+
+        result = {
+            "ticker": ticker.upper(),
+            "detected_type": "Indefinido",
+            "reasoning": "Não foi possível identificar padrões claros",
+            "raw_info_sample": summary[:100] + "..." if summary else "Sem descrição"
+        }
+
+        # --- KEYWORDS (Bilingual) ---
+        k_papel = [
+            'recebíveis', 'cri ', 'cris ', 'certificados de recebíveis', 'títulos de crédito', 'financeiros', 'papel',
+            'receivables', 'credit rights', 'paper', 'debt', 'fixed income'
+        ]
+        k_logistica = [
+            'logística', 'logístico', 'galpões', 'armazéns', 'industrial',
+            'logistics', 'warehouse', 'distribution center'
+        ]
+        k_shopping = [
+            'shopping', 'varejo', 'lojas', 'comercial',
+            'malls', 'retail', 'commercial'
+        ]
+        k_lajes = [
+            'lajes', 'escritórios', 'corporativo', 'salas comerciais',
+            'corporate', 'office', 'buildings', 'towers'
+        ]
+        k_fiagro = ['agronegócio', 'rural', 'terras', 'cra ', 'fiagro', 'farmland', 'agro']
+        k_fof = ['fundo de fundos', 'fund of funds', 'fof ', 'cotas de outros fundos']
+
+        # --- 1. DETECT IF IT IS A FII (Real Estate) ---
+        # FIIs usually have sector 'Real Estate' OR 'FII' in the name
+        is_fii = (
+                'real estate' in sector or
+                'imob' in short_name or 'fii' in short_name or 'fundo de investimento imobiliário' in long_name or
+                'reit' in quote_type.lower()
+        )
+
+        if is_fii:
+            if any(k in full_text_search for k in k_fiagro):
+                result["detected_type"] = "FII - Fiagro"
+            elif any(k in full_text_search for k in k_fof):
+                result["detected_type"] = "FII - Fundo de Fundos (FoF)"
+            elif any(k in full_text_search for k in k_papel):
+                # Check for "Recebíveis" keywords
+                result["detected_type"] = "FII - Papel (Recebíveis)"
+            elif any(k in full_text_search for k in k_logistica):
+                result["detected_type"] = "FII - Tijolo (Logística)"
+            elif any(k in full_text_search for k in k_shopping):
+                result["detected_type"] = "FII - Tijolo (Shopping)"
+            elif any(k in full_text_search for k in k_lajes):
+                result["detected_type"] = "FII - Tijolo (Lajes Corporativas)"
+            else:
+                # If sector is Real Estate but no specific keyword found, it's likely Brick or Hybrid
+                result["detected_type"] = "FII - Tijolo/Misto (Genérico)"
+
+            result["reasoning"] = f"Identificado como FII. Setor: {sector}."
+
+        # --- 2. DETECT IF IT IS AN ETF ---
+        # Checks for 'ETF' type OR keywords in name like 'Index', 'S&P', 'Ibovespa'
+        # Also handles IVVB11 specifically if keywords fail
+        elif (
+                quote_type == 'etf' or
+                'etf' in short_name or
+                'index' in short_name or 'índice' in short_name or
+                'ishares' in short_name or 'investo' in short_name or
+                's&p' in full_text_search or 'nasdaq' in full_text_search
+        ):
+            if 'ivvb' in short_name or 'ivvb' in ticker.lower() or 's&p 500' in full_text_search or 'sp500' in full_text_search:
+                result["detected_type"] = "ETF - Internacional (EUA)"
+            elif 'nasdaq' in full_text_search or 'qqq' in full_text_search or 'tech' in full_text_search:
+                result["detected_type"] = "ETF - Internacional (Tech)"
+            elif 'ibovespa' in full_text_search or 'ibov' in full_text_search or 'bova' in short_name:
+                result["detected_type"] = "ETF - Brasil (Ibovespa)"
+            elif 'small' in full_text_search or 'smal' in short_name:
+                result["detected_type"] = "ETF - Brasil (Small Caps)"
+            elif 'crypto' in full_text_search or 'bitcoin' in full_text_search or 'hash' in short_name:
+                result["detected_type"] = "ETF - Cripto"
+            elif 'fixed income' in full_text_search or 'renda fixa' in full_text_search:
+                result["detected_type"] = "ETF - Renda Fixa"
+            else:
+                result["detected_type"] = "ETF - Outros"
+
+            result["reasoning"] = f"Identificado como ETF. Nome: {short_name}"
+
+        else:
+            result["reasoning"] = f"Não classificado. Type: {quote_type}, Sector: {sector}"
+
+        return result
+
+    except Exception as e:
+        print(f"❌ Error classifying: {e}")
+        raise HTTPException(status_code=500, detail=f"Classification failed: {str(e)}")
