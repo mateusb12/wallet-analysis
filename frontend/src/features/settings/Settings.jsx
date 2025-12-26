@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { useTheme } from '../features/theme/ThemeContext';
-import { useAuth } from '../features/auth/AuthContext';
-import { useDataConsistency } from '../hooks/useDataConsistency';
-import DataConsistencyAlert from '../components/DataConsistencyAlert';
-import ManualPriceSync from '../components/ManualPriceSync.jsx';
+import { useTheme } from '../theme/ThemeContext.jsx';
+import { useAuth } from '../auth/AuthContext.jsx';
+import { useDataConsistency } from '../../hooks/useDataConsistency.js';
+import DataConsistencyAlert from '../../components/DataConsistencyAlert.jsx';
+import ManualPriceSync from '../../components/ManualPriceSync.jsx';
 import {
   AlertTriangle,
   CheckCircle,
@@ -15,6 +15,7 @@ import {
   AlertCircle,
   FileText,
 } from 'lucide-react';
+import ContributionsManager from './ContributionsManager.jsx';
 
 export default function Settings() {
   const { theme, toggleTheme } = useTheme();
@@ -337,7 +338,11 @@ export default function Settings() {
       <div className="space-y-6">
         <ManualPriceSync />
 
-        {}
+        <ContributionsManager
+          purchases={existingPurchases}
+          onRefresh={fetchExistingPurchases}
+          userId={user?.id}
+        />
         <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
