@@ -1,5 +1,13 @@
-import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, Layers, ArrowRight, PieChart, Activity } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  ChevronDown,
+  ArrowRight,
+  Layers,
+  PieChart,
+  Activity,
+  TrendingUp,
+  Target,
+} from 'lucide-react';
 
 const FormatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -9,8 +17,47 @@ const FormatPercent = (value) =>
     value / 100
   );
 
+const findPriorityPath = (tree, targets) => {
+  const macroCandidates = Object.entries(tree).map(([key, data]) => {
+    const target = targets.macro[key] || 0;
+    const current = data.percentOfTotal;
+    const diff = current - target;
+    return { key, diff, data };
+  });
+
+  const macroUnderweight = macroCandidates
+    .filter((c) => c.diff < -0.5)
+    .sort((a, b) => a.diff - b.diff);
+
+  if (macroUnderweight.length === 0) return null;
+
+  const winnerMacro = macroUnderweight[0];
+
+  const subTypes = winnerMacro.data.subTypes || {};
+  const microCandidates = Object.entries(subTypes).map(([subKey, subData]) => {
+    const parentValue = winnerMacro.data.totalValue;
+    const relativeCurrent = parentValue > 0 ? (subData.value / parentValue) * 100 : 0;
+    const target = targets.micro[winnerMacro.key]?.[subKey] || 0;
+    const diff = relativeCurrent - target;
+
+    return { key: subKey, diff };
+  });
+
+  const microUnderweight = microCandidates
+    .filter((c) => c.diff < -1)
+    .sort((a, b) => a.diff - b.diff);
+
+  const winnerMicro = microUnderweight.length > 0 ? microUnderweight[0].key : null;
+
+  return {
+    macro: winnerMacro.key,
+    micro: winnerMicro,
+  };
+};
+
 const DriftIndicator = ({ label, currentPct, targetPct, amount, compact = false }) => {
   const diff = currentPct - targetPct;
+
   const isUnderweight = diff < -1;
   const isOverweight = diff > 1;
 
@@ -92,7 +139,7 @@ const AssetListTable = ({ assets, totalValue }) => {
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
           {assets.map((asset) => {
             const assetValue = asset.qty * asset.price;
-            const assetWeight = (assetValue / totalValue) * 100;
+            const assetWeight = totalValue > 0 ? (assetValue / totalValue) * 100 : 0;
             return (
               <tr
                 key={asset.ticker}
@@ -201,12 +248,24 @@ const SAMPLE_DATA = {
   },
 };
 
-const HierarchyDrillDown = ({
-  portfolioTree = SAMPLE_DATA.tree,
-  targets = SAMPLE_DATA.targets,
-}) => {
-  const [expanded, setExpanded] = useState({ fii: true, acoes: true, etf: true });
+const WalletBalancer = ({ portfolioTree = SAMPLE_DATA.tree, targets = SAMPLE_DATA.targets }) => {
+  const priorityPath = useMemo(
+    () => findPriorityPath(portfolioTree, targets),
+    [portfolioTree, targets]
+  );
+
+  const [expanded, setExpanded] = useState(() => {
+    if (priorityPath) return { [priorityPath.macro]: true };
+    return { fii: true, acoes: false, etf: false };
+  });
+
   const [expandedSub, setExpandedSub] = useState({});
+
+  useEffect(() => {
+    if (priorityPath) {
+      setExpanded((prev) => ({ ...prev, [priorityPath.macro]: true }));
+    }
+  }, [priorityPath]);
 
   const toggleExpand = (key) => {
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -217,28 +276,21 @@ const HierarchyDrillDown = ({
     setExpandedSub((prev) => ({ ...prev, [uniqueKey]: !prev[uniqueKey] }));
   };
 
-  const getIconForClass = (assetClass) => {
-    switch (assetClass) {
-      case 'acoes':
-        return <Activity className="w-6 h-6 text-purple-600 dark:text-purple-400" />;
-      case 'etf':
-        return <PieChart className="w-6 h-6 text-orange-600 dark:text-orange-400" />;
-      default:
-        return <Layers className="w-6 h-6 text-blue-600 dark:text-blue-400" />;
-    }
-  };
-
   const safeTargets = targets || { macro: {}, micro: {} };
 
   return (
-    <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700">
+    <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 max-w-2xl mx-auto">
       <div className="flex items-center gap-3 mb-8">
-        <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-xl shadow-inner">
-          <Layers className="w-6 h-6 text-gray-700 dark:text-gray-300" />
+        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl shadow-sm">
+          <Target className="w-6 h-6 text-blue-600 dark:text-blue-400" />
         </div>
         <div>
-          <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">Raio-X de Alocação</h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Ações, FIIs e ETFs detalhados</p>
+          <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">
+            Inteligência de Aporte
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Otimização automática baseada nas suas metas
+          </p>
         </div>
       </div>
 
@@ -248,50 +300,61 @@ const HierarchyDrillDown = ({
           const currentPct = data.percentOfTotal;
           const isExpanded = expanded[assetClass];
 
+          const isPriority = priorityPath?.macro === assetClass;
+
+          const isDimmed = priorityPath && !isPriority;
+
           return (
             <div
               key={assetClass}
               className={`
-                relative rounded-2xl transition-all duration-300 ease-out border
+                relative rounded-2xl transition-all duration-500 ease-out border group/card
                 ${
-                  isExpanded
-                    ? 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 shadow-lg ring-1 ring-gray-200 dark:ring-gray-700 scale-[1.01]'
-                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 hover:-translate-y-1 hover:shadow-md'
+                  isPriority
+                    ? 'bg-white dark:bg-gray-800 border-blue-400 dark:border-blue-500 shadow-xl ring-2 ring-blue-50 dark:ring-blue-900/30 scale-[1.02] z-10'
+                    : isDimmed
+                      ? 'bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-700 opacity-60 hover:opacity-100 scale-95 grayscale-[0.5] hover:grayscale-0'
+                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-blue-300'
                 }
               `}
             >
-              <div className="p-5 cursor-pointer group" onClick={() => toggleExpand(assetClass)}>
+              {}
+              {isPriority && (
+                <div className="absolute -top-3 left-6 bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg z-20 flex items-center gap-1.5 uppercase tracking-wide animate-in fade-in zoom-in duration-300">
+                  <TrendingUp className="w-3 h-3" /> Recomendação do Mês
+                </div>
+              )}
+
+              <div className="p-5 cursor-pointer" onClick={() => toggleExpand(assetClass)}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-4">
                     <div
                       className={`
                         w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-300
-                        ${isExpanded ? 'bg-gray-800 text-white shadow-md' : 'bg-gray-100 text-gray-500 group-hover:bg-blue-50 group-hover:text-blue-600'}
+                        ${isExpanded || isPriority ? 'bg-gray-800 text-white shadow-md' : 'bg-gray-100 text-gray-500 group-hover/card:bg-blue-50 group-hover/card:text-blue-600'}
                       `}
                     >
                       {assetClass === 'fii' && <Layers className="w-5 h-5" />}
                       {assetClass === 'acoes' && <Activity className="w-5 h-5" />}
                       {assetClass === 'etf' && <PieChart className="w-5 h-5" />}
-                      {}
-                      {!['fii', 'acoes', 'etf'].includes(assetClass) && (
-                        <Layers className="w-5 h-5" />
-                      )}
                     </div>
 
                     <div>
                       <h4 className="text-lg font-bold text-gray-800 dark:text-gray-100 uppercase tracking-tight">
                         {assetClass}
                       </h4>
-                      {!isExpanded && (
+                      {!isExpanded && !isPriority && (
                         <span className="text-xs text-gray-400 animate-in fade-in">
-                          Clique para ver detalhe
+                          Clique para detalhes
                         </span>
                       )}
                     </div>
                   </div>
 
                   <div className="text-right">
-                    <span className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+                    <span
+                      className={`text-3xl font-bold tracking-tight ${isPriority ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-white'}`}
+                    >
                       {FormatPercent(currentPct)}
                     </span>
                   </div>
@@ -310,40 +373,60 @@ const HierarchyDrillDown = ({
                   {Object.entries(data.subTypes).map(([subType, subData]) => {
                     const uniqueKey = `${assetClass}-${subType}`;
                     const isSubExpanded = expandedSub[uniqueKey];
-
                     const subTarget = safeTargets.micro?.[assetClass]?.[subType] || 0;
 
-                    const relativePercent = (subData.value / data.totalValue) * 100;
+                    const relativePercent =
+                      data.totalValue > 0 ? (subData.value / data.totalValue) * 100 : 0;
+
+                    const isSubPriority = isPriority && priorityPath?.micro === subType;
 
                     return (
                       <div
                         key={subType}
                         onClick={(e) => toggleSubExpand(e, uniqueKey)}
                         className={`
-                                group/sub relative bg-white dark:bg-gray-800 rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden
+                                group/sub relative bg-white dark:bg-gray-800 rounded-xl border transition-all duration-300 cursor-pointer overflow-hidden
                                 ${
-                                  isSubExpanded
-                                    ? 'border-blue-300 dark:border-blue-600 shadow-md'
-                                    : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-500 hover:shadow-sm'
+                                  isSubPriority
+                                    ? 'border-blue-400 dark:border-blue-500 ring-1 ring-blue-100 dark:ring-blue-900/30 shadow-md'
+                                    : isSubExpanded
+                                      ? 'border-gray-300 dark:border-gray-600'
+                                      : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'
                                 }
                             `}
                       >
                         <div
-                          className={`absolute left-0 top-0 bottom-0 w-1 transition-colors duration-200 ${isSubExpanded ? 'bg-blue-500' : 'bg-transparent group-hover/sub:bg-blue-300'}`}
+                          className={`absolute left-0 top-0 bottom-0 w-1 transition-colors duration-200 
+                            ${isSubPriority ? 'bg-blue-600' : isSubExpanded ? 'bg-gray-400' : 'bg-transparent group-hover/sub:bg-blue-200'}
+                          `}
                         ></div>
 
                         <div className="p-4 pl-5 transition-all duration-200 group-hover/sub:pl-6">
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
                               <span
-                                className={`font-bold text-base transition-colors ${isSubExpanded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-200 group-hover/sub:text-blue-600'}`}
+                                className={`font-bold text-base transition-colors ${
+                                  isSubPriority
+                                    ? 'text-blue-700 dark:text-blue-400'
+                                    : isSubExpanded
+                                      ? 'text-gray-900 dark:text-gray-100'
+                                      : 'text-gray-600 dark:text-gray-300'
+                                }`}
                               >
                                 {subType}
                               </span>
+
+                              {}
+                              {isSubPriority && (
+                                <span className="ml-2 inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                                  Foco
+                                </span>
+                              )}
+
                               {isSubExpanded ? (
-                                <ChevronDown className="w-4 h-4 text-blue-500" />
+                                <ChevronDown className="w-4 h-4 text-gray-400 ml-auto" />
                               ) : (
-                                <ArrowRight className="w-4 h-4 text-gray-300 group-hover/sub:text-blue-400 group-hover/sub:translate-x-1 transition-all" />
+                                <ArrowRight className="w-4 h-4 text-gray-300 group-hover/sub:text-blue-400 group-hover/sub:translate-x-1 transition-all ml-auto" />
                               )}
                             </div>
                           </div>
@@ -375,4 +458,4 @@ const HierarchyDrillDown = ({
   );
 };
 
-export default HierarchyDrillDown;
+export default WalletBalancer;
