@@ -197,7 +197,7 @@ export default function WhereToInvest() {
   const { user } = useAuth();
 
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
 
     const initData = async () => {
       try {
@@ -242,7 +242,7 @@ export default function WhereToInvest() {
     };
 
     initData();
-  }, [user]);
+  }, [user?.id]);
 
   const maxCagr = useMemo(() => Math.max(...analysis.map((a) => a.cagr), 0), [analysis]);
 
