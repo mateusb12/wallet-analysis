@@ -61,14 +61,11 @@ export const defaultCalculator = menuItems[0];
 
 function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
   const [activeItem, setActiveItem] = useState(defaultCalculator.id);
-  
-  const { user, profile, signOut } = useAuth();
 
-  if (user) 
+  const { user, profile, signOut } = useAuth();
 
   const userInitial = user?.email ? user.email.charAt(0).toUpperCase() : 'U';
 
-  
   const userName =
     profile?.full_name ||
     user?.user_metadata?.full_name ||
@@ -77,8 +74,6 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
 
   const userEmail = user?.email || '';
 
-  
-  
   const userAvatarUrl =
     profile?.avatar_url || user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
 
@@ -185,7 +180,6 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
 
   return (
     <>
-      {}
       <div
         className={`fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-40 transition-opacity md:hidden ${
           isMobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
@@ -193,7 +187,6 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
         onClick={onClose}
       />
 
-      {}
       <div
         className={`fixed top-0 left-0 h-full w-72 bg-white dark:bg-gray-800 flex flex-col z-50 transform transition-transform shadow-2xl md:hidden border-r border-gray-300 dark:border-gray-700 ${
           isMobileOpen ? 'translate-x-0' : '-translate-x-full'
@@ -202,7 +195,6 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
         {sidebarContent}
       </div>
 
-      {}
       <div className="hidden md:flex md:flex-col md:w-72 bg-white dark:bg-gray-800 h-screen shadow-xl border-r border-gray-300 dark:border-gray-700 z-20 transition-colors duration-200">
         {sidebarContent}
       </div>
