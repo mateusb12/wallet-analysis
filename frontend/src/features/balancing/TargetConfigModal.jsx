@@ -188,22 +188,33 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
   const isMacroValid = totalMacro === 100;
 
   const renderTotalStatus = (total) => {
+    const baseClasses =
+      'flex items-center gap-1.5 text-sm font-bold px-3 py-1 rounded-full border transition-colors';
+
     if (total === 100) {
       return (
-        <span className="flex items-center gap-1.5 text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
+        <span
+          className={`${baseClasses} text-emerald-600 bg-emerald-50 border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20`}
+        >
           <CheckCircle2 className="w-4 h-4" /> 100%
         </span>
       );
     }
+
     if (total > 100) {
       return (
-        <span className="flex items-center gap-1.5 text-sm font-bold text-red-600 bg-red-50 px-3 py-1 rounded-full border border-red-100 animate-pulse">
+        <span
+          className={`${baseClasses} text-red-600 bg-red-50 border-red-100 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20 animate-pulse`}
+        >
           <AlertCircle className="w-4 h-4" /> {total}% (Excedido)
         </span>
       );
     }
+
     return (
-      <span className="flex items-center gap-1.5 text-sm font-bold text-amber-600 bg-amber-50 px-3 py-1 rounded-full border border-amber-100">
+      <span
+        className={`${baseClasses} text-amber-600 bg-amber-50 border-amber-100 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20`}
+      >
         <AlertCircle className="w-4 h-4" /> {total}% (Falta {100 - total}%)
       </span>
     );
@@ -283,7 +294,14 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
                         {macroKey}
                       </h4>
                       <span
-                        className={`text-xs font-mono px-2 py-0.5 rounded ${isValid ? 'text-gray-400 bg-gray-100' : 'text-red-500 bg-red-50 font-bold'}`}
+                        className={`
+    text-xs font-mono px-2 py-0.5 rounded transition-colors
+    ${
+      isValid
+        ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+        : 'bg-red-50 text-red-600 font-bold dark:bg-red-500/10 dark:text-red-400 animate-pulse'
+    }
+  `}
                       >
                         Total: {subTotal}%
                       </span>
