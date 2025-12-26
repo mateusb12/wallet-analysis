@@ -20,6 +20,7 @@ import {
   CagrExplanation,
 } from './FinancialEducationCharts';
 import RiskDisclaimer from './RiskDisclaimer.jsx';
+import Pagination from '../../components/Pagination';
 import { analysisService } from '../../services/api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 
@@ -183,6 +184,8 @@ const getStatusColor = (status) => {
       return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800';
     case 'BLOQUEADO':
       return 'bg-gray-100 text-gray-500 dark:bg-gray-700/30 dark:text-gray-400 border-gray-200 dark:border-gray-700';
+    case 'DADOS INSUFICIENTES':
+      return 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400';
     default:
       return 'bg-gray-100 text-gray-800';
   }
@@ -193,6 +196,8 @@ export default function WhereToInvest() {
   const [analysis, setAnalysis] = useState([]);
   const [recommendation, setRecommendation] = useState(null);
   const [selectedTicker, setSelectedTicker] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   const { user } = useAuth();
 
@@ -206,6 +211,14 @@ export default function WhereToInvest() {
         const rawData = await analysisService.getOpportunities();
 
         const processed = rawData.map((asset) => {
+          if (asset.tag === 'INCOMPLETE') {
+            return {
+              ...asset,
+              momentum: false,
+              distMM200: 0,
+              status: 'DADOS INSUFICIENTES',
+            };
+          }
           const momentum = asset.price > asset.mm200;
           const distMM200 = ((asset.price - asset.mm200) / asset.mm200) * 100;
           let status = momentum ? 'ELEGÍVEL' : 'BLOQUEADO';
@@ -259,6 +272,13 @@ export default function WhereToInvest() {
   const displayedAsset = selectedAssetData || recommendation;
   const cardTitle = selectedAssetData ? 'Análise do Selecionado' : 'Ação Recomendada';
 
+  const totalPages = Math.ceil(analysis.length / ITEMS_PER_PAGE);
+
+  const currentData = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return analysis.slice(start, start + ITEMS_PER_PAGE);
+  }, [analysis, currentPage]);
+
   return (
     <div className="p-4 md:p-8 max-w-[90rem] mx-auto pb-20 space-y-8">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -297,7 +317,6 @@ export default function WhereToInvest() {
       ) : (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {}
             <div className="lg:col-span-1 flex flex-col">
               <div
                 className={`flex-1 rounded-xl shadow-sm border p-6 relative overflow-hidden flex flex-col 
@@ -353,7 +372,6 @@ export default function WhereToInvest() {
                         </span>
                       </div>
 
-                      {}
                       {displayedAsset.momentum ? (
                         <p className="text-green-600 dark:text-green-400 font-medium text-sm mb-8 flex items-center gap-1">
                           <TrendingUp size={16} /> Tendência de Alta Confirmada
@@ -417,31 +435,32 @@ export default function WhereToInvest() {
               </div>
             </div>
 
-            {}
             <div className="lg:col-span-2">
-              <div className="h-full bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-                <div className="flex items-center justify-between mb-8">
-                  <div className="flex items-center gap-2">
-                    <BarChart2 className="w-5 h-5 text-indigo-500" />
-                    <h3 className="text-lg font-bold text-gray-800 dark:text-white">
-                      Ranking de Elegibilidade
-                    </h3>
+              <div className="h-full bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="flex items-center gap-2">
+                      <BarChart2 className="w-5 h-5 text-indigo-500" />
+                      <h3 className="text-lg font-bold text-gray-800 dark:text-white">
+                        Ranking de Elegibilidade
+                      </h3>
+                    </div>
+                    <div className="text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600">
+                      SORT: CAGR (DESC)
+                    </div>
                   </div>
-                  <div className="text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600">
-                    SORT: CAGR (DESC)
-                  </div>
-                </div>
-                <div className="space-y-6">
-                  {analysis.map((asset, index) => {
-                    const isLocked = asset.status === 'BLOQUEADO';
-                    const isSelected = selectedTicker === asset.ticker;
-                    const widthPercentage = (asset.cagr / maxCagr) * 100;
+                  <div className="space-y-6">
+                    {currentData.map((asset, index) => {
+                      const isLocked = asset.status === 'BLOQUEADO';
+                      const isSelected = selectedTicker === asset.ticker;
+                      const widthPercentage = (asset.cagr / maxCagr) * 100;
+                      const globalRank = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
 
-                    return (
-                      <div
-                        key={asset.ticker}
-                        onClick={() => handleSelectAsset(asset.ticker)}
-                        className={`
+                      return (
+                        <div
+                          key={asset.ticker}
+                          onClick={() => handleSelectAsset(asset.ticker)}
+                          className={`
                           relative group rounded-lg p-2 transition-all cursor-pointer border
                           ${
                             isSelected
@@ -450,57 +469,68 @@ export default function WhereToInvest() {
                           }
                           ${isLocked ? 'opacity-60 grayscale-[0.8]' : ''}
                         `}
-                      >
-                        <div className="flex items-center gap-4 text-sm mb-2">
-                          <div className="w-6 text-gray-400 font-mono text-sm font-bold">
-                            #{index + 1}
-                          </div>
-                          <div className="w-28 flex-shrink-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-bold text-lg text-gray-800 dark:text-gray-200">
-                                {asset.ticker}
-                              </span>
-                              {isLocked && <Lock size={12} className="text-red-400" />}
+                        >
+                          <div className="flex items-center gap-4 text-sm mb-2">
+                            <div className="w-6 text-gray-400 font-mono text-sm font-bold">
+                              #{globalRank}
                             </div>
-                            <div
-                              className={`text-[10px] uppercase font-bold w-fit px-1.5 py-0.5 rounded border ${getStatusColor(asset.status)}`}
-                            >
-                              {asset.status}
-                            </div>
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex justify-between mb-1.5 text-xs">
-                              <span className="font-medium text-gray-500 dark:text-gray-400">
-                                CAGR {asset.cagr}%
-                              </span>
-                              <span
-                                className={`${asset.distMM200 >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'} font-medium`}
-                              >
-                                MM200 {asset.distMM200 > 0 ? '+' : ''}
-                                {asset.distMM200.toFixed(1)}%
-                              </span>
-                            </div>
-                            <div className="h-3 bg-gray-100 dark:bg-gray-700/50 rounded-full overflow-hidden">
+                            <div className="w-28 flex-shrink-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-bold text-lg text-gray-800 dark:text-gray-200">
+                                  {asset.ticker}
+                                </span>
+                                {isLocked && <Lock size={12} className="text-red-400" />}
+                              </div>
                               <div
-                                className={`h-full rounded-full transition-all duration-1000 ${isLocked ? 'bg-gray-400' : 'bg-indigo-500'}`}
-                                style={{ width: `${widthPercentage}%` }}
-                              />
+                                className={`text-[10px] uppercase font-bold w-fit px-1.5 py-0.5 rounded border ${getStatusColor(asset.status)}`}
+                              >
+                                {asset.status}
+                              </div>
                             </div>
+                            <div className="flex-1">
+                              <div className="flex justify-between mb-1.5 text-xs">
+                                <span className="font-medium text-gray-500 dark:text-gray-400">
+                                  CAGR {asset.cagr}%
+                                </span>
+                                <span
+                                  className={`${asset.distMM200 >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'} font-medium`}
+                                >
+                                  MM200 {asset.distMM200 > 0 ? '+' : ''}
+                                  {asset.distMM200.toFixed(1)}%
+                                </span>
+                              </div>
+                              <div className="h-3 bg-gray-100 dark:bg-gray-700/50 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-1000 ${isLocked ? 'bg-gray-400' : 'bg-indigo-500'}`}
+                                  style={{ width: `${widthPercentage}%` }}
+                                />
+                              </div>
+                            </div>
+                            {isSelected && (
+                              <button
+                                onClick={handleDeselectAsset}
+                                className="absolute right-2 top-2 p-1 rounded-full bg-white dark:bg-gray-800 text-gray-500 hover:text-red-500 hover:bg-red-50 shadow-sm border border-gray-200 dark:border-gray-600 transition-colors"
+                                title="Remover seleção"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
                           </div>
-                          {isSelected && (
-                            <button
-                              onClick={handleDeselectAsset}
-                              className="absolute right-2 top-2 p-1 rounded-full bg-white dark:bg-gray-800 text-gray-500 hover:text-red-500 hover:bg-red-50 shadow-sm border border-gray-200 dark:border-gray-600 transition-colors"
-                              title="Remover seleção"
-                            >
-                              <X size={14} />
-                            </button>
-                          )}
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
+
+                {analysis.length > ITEMS_PER_PAGE && (
+                  <div className="mt-8 pt-4 border-t border-gray-100 dark:border-gray-700">
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={setCurrentPage}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -309,9 +309,11 @@ def get_investment_opportunities(user_id: str = Depends(get_current_user)):
             break
 
     if not all_data:
+        # Retorna lista vazia se não houver dados de preço,
+        # mas idealmente poderia retornar os tickers com status de erro.
         return []
 
-    # 3. Process Metrics
+        # 3. Process Metrics
     try:
         df = pd.DataFrame(all_data)
         df['close'] = pd.to_numeric(df['close'])
@@ -322,31 +324,52 @@ def get_investment_opportunities(user_id: str = Depends(get_current_user)):
         for ticker, df_ticker in df.groupby('ticker'):
             df_ticker = df_ticker.sort_values('trade_date')
 
-            if len(df_ticker) < 200:
-                continue
+            # --- LÓGICA ALTERADA AQUI ---
 
             current_price = float(df_ticker.iloc[-1]['close'])
-            mm200 = df_ticker['close'].rolling(window=200).mean().iloc[-1]
+            data_points = len(df_ticker)
 
-            if pd.isna(mm200):
-                continue
-
-            # CAGR
-            lookback = 252 if len(df_ticker) >= 252 else len(df_ticker) - 1
-            price_1y_ago = float(df_ticker.iloc[-lookback]['close'])
-            cagr = ((current_price / price_1y_ago) - 1) * 100
-
-            # Sharpe
-            df_ticker['returns'] = df_ticker['close'].pct_change()
-            clean_returns = df_ticker['returns'].dropna()
-
+            # Valores padrão
+            mm200 = current_price  # Default neutro para não quebrar conta de %
+            cagr = 0.0
             sharpe = 0.0
-            if not clean_returns.empty:
-                daily_std = clean_returns.std()
-                if daily_std > 0:
-                    sharpe = (clean_returns.mean() / daily_std) * (252 ** 0.5)
+            tag = "OK"  # Tag padrão
 
-            # Asset Type
+            # Cenário 1: Dados Insuficientes (< 200 dias)
+            if data_points < 200:
+                tag = "INCOMPLETE"
+                # Calculamos um CAGR "curto" apenas para não ficar zerado se tiver pelo menos 1 mês
+                if data_points > 20:
+                    price_start = float(df_ticker.iloc[0]['close'])
+                    total_return = (current_price / price_start) - 1
+                    # Anualiza grosseiramente para ter uma noção
+                    years = data_points / 252
+                    cagr = ((1 + total_return) ** (1 / years) - 1) * 100
+
+            # Cenário 2: Dados Suficientes (Lógica Original)
+            else:
+                mm200_calc = df_ticker['close'].rolling(window=200).mean().iloc[-1]
+
+                if pd.isna(mm200_calc):
+                    tag = "INCOMPLETE"  # Falha no calculo da média
+                else:
+                    mm200 = float(mm200_calc)
+
+                    # CAGR
+                    lookback = 252 if len(df_ticker) >= 252 else len(df_ticker) - 1
+                    price_1y_ago = float(df_ticker.iloc[-lookback]['close'])
+                    cagr = ((current_price / price_1y_ago) - 1) * 100
+
+                    # Sharpe
+                    df_ticker['returns'] = df_ticker['close'].pct_change()
+                    clean_returns = df_ticker['returns'].dropna()
+
+                    if not clean_returns.empty:
+                        daily_std = clean_returns.std()
+                        if daily_std > 0:
+                            sharpe = (clean_returns.mean() / daily_std) * (252 ** 0.5)
+
+            # Asset Type Logic (Mantido igual)
             asset_type = "STOCK"
             t_upper = ticker.upper()
             if t_upper.endswith("11"):
@@ -363,10 +386,14 @@ def get_investment_opportunities(user_id: str = Depends(get_current_user)):
                 "price": round(current_price, 2),
                 "mm200": round(float(mm200), 2),
                 "cagr": round(cagr, 2),
-                "sharpe": round(sharpe, 2)
+                "sharpe": round(sharpe, 2),
+                "tag": tag,  # Nova propriedade enviada ao Frontend
+                "data_points": data_points  # Útil para mostrar "Dados: 45 dias" no front
             })
 
-        results.sort(key=lambda x: x['cagr'], reverse=True)
+        # Ordena: Primeiro os "OK" por CAGR, depois os "INCOMPLETE" no final
+        results.sort(key=lambda x: (x['tag'] == 'OK', x['cagr']), reverse=True)
+
         return results
 
     except Exception as e:
