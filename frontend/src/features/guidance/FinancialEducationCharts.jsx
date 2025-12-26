@@ -580,33 +580,111 @@ export const StrategySimulator = ({ asset }) => {
 };
 
 export const CagrSimulator = ({ asset }) => {
-  const [mode, setMode] = useState('illusion');
+  const [mode, setMode] = useState('real');
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const axisTextColor = isDark ? '#9ca3af' : '#6b7280';
 
   const isHypothetical = !asset;
-  const isIllusion = mode === 'illusion' && isHypothetical;
+  const isIllusion = isHypothetical && mode === 'illusion';
+
+  const activeDataKey = isHypothetical ? (isIllusion ? 'val_illusion' : 'val_real') : 'value';
+
+  const mainColor = isHypothetical && isIllusion ? '#3b82f6' : '#9333ea';
 
   const chartData = useMemo(() => {
-    if (!isHypothetical) {
-      const data = [];
-      let value = 10000;
-      const rate = asset.cagr / 100;
-      const currentYear = getCurrentYear(0);
-
-      for (let i = 0; i <= 5; i++) {
-        data.push({
-          year: currentYear + i,
-          val_real: value,
-          val_illusion: value,
-          pct: asset.cagr,
-        });
-        value = value * (1 + rate);
-      }
-      return data;
+    if (isHypothetical) {
+      return CAGR_SCENARIO_DATA.map((d) => ({ ...d, label: d.year.toString() }));
     }
-    return CAGR_SCENARIO_DATA;
+
+    const data = [];
+    const rate = asset.cagr / 100;
+    const currentYearNum = new Date().getFullYear();
+    const historyYears = 5;
+
+    let value = 10000;
+
+    for (let i = -historyYears; i <= 1; i++) {
+      let label;
+      let type;
+
+      if (i === 0) {
+        label = 'Hoje';
+        type = 'current';
+      } else if (i > 0) {
+        label = (currentYearNum + i).toString();
+        type = 'projection';
+      } else {
+        label = (currentYearNum + i).toString();
+        type = 'history';
+      }
+
+      const pctChange = i === -historyYears ? 0 : asset.cagr;
+
+      data.push({
+        label: label,
+        value: value,
+        pct: pctChange,
+        type: type,
+      });
+
+      value = value * (1 + rate);
+    }
+    return data;
   }, [asset, isHypothetical]);
+
+  const CustomCagrTooltip = ({ active, payload, isDark }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+
+      const displayValue = data[activeDataKey];
+
+      const isPositive = data.pct >= 0;
+      const bgClass = isDark
+        ? 'bg-gray-900 border-gray-700 text-gray-100'
+        : 'bg-white border-gray-200 text-gray-800 shadow-xl';
+
+      let headerText = data.label;
+      let subHeaderText = '';
+
+      if (data.type === 'history') subHeaderText = '(Histórico Simulado)';
+      if (data.type === 'current') subHeaderText = '(Referência Atual)';
+      if (data.type === 'projection') headerText = `Projeção ${data.label}`;
+
+      if (isHypothetical) {
+        headerText = `Ano ${data.year}`;
+        subHeaderText = isIllusion ? 'Projeção Linear' : 'Cenário Volátil';
+      }
+
+      return (
+        <div className={`${bgClass} border text-xs p-3 rounded-lg z-50 min-w-[180px]`}>
+          <div className="border-b border-gray-500/20 pb-2 mb-2">
+            <div className="flex justify-between items-center gap-4">
+              <span className="font-bold text-gray-500 uppercase">{headerText}</span>
+              {(!isHypothetical || data.pct !== 0) && (
+                <span className={`font-bold ${data.pct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {data.pct > 0 ? '+' : ''}
+                  {data.pct}% ano
+                </span>
+              )}
+            </div>
+            {subHeaderText && (
+              <span className="text-[10px] text-gray-400 italic">{subHeaderText}</span>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase text-gray-500">Patrimônio Acumulado</p>
+            <p className="text-xl font-bold font-mono" style={{ color: mainColor }}>
+              {}
+              R$ {(displayValue || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col h-full">
@@ -620,14 +698,14 @@ export const CagrSimulator = ({ asset }) => {
           <div>
             <h4 className="font-bold text-gray-900 dark:text-white text-base">
               {!isHypothetical
-                ? `Crescimento Composto: ${asset.ticker}`
+                ? `Trajetória de Crescimento: ${asset.ticker}`
                 : isIllusion
                   ? 'Média Aritmética (Ilusão)'
                   : 'CAGR Real (Verdade)'}
             </h4>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               {!isHypothetical
-                ? `Projeção baseada nos ${asset.cagr}% históricos`
+                ? `Como o CAGR de ${asset.cagr}% construiu patrimônio no tempo.`
                 : 'O impacto da volatilidade no longo prazo'}
             </p>
           </div>
@@ -667,9 +745,8 @@ export const CagrSimulator = ({ asset }) => {
       >
         {!isHypothetical ? (
           <p>
-            <strong>Poder dos Juros Compostos:</strong> Com um CAGR de{' '}
-            <strong>{asset.cagr}%</strong>, seu capital dobra aproximadamente a cada{' '}
-            {(72 / asset.cagr).toFixed(1)} anos.
+            <strong>Poder dos Juros Compostos:</strong> O gráfico mostra como R$ 10k teriam crescido
+            nos últimos 5 anos mantendo o CAGR atual de <strong>{asset.cagr}%</strong>.
           </p>
         ) : isIllusion ? (
           <p>
@@ -684,17 +761,13 @@ export const CagrSimulator = ({ asset }) => {
         )}
       </div>
 
-      <div className="w-full h-40 mt-auto">
+      <div className="w-full h-48 mt-auto">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
+          <AreaChart data={chartData} margin={{ top: 20, right: 10, bottom: 5, left: -10 }}>
             <defs>
-              <linearGradient id="colorIllusion" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="colorReal" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#9333ea" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#9333ea" stopOpacity={0} />
+              <linearGradient id="colorMain" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={mainColor} stopOpacity={0.3} />
+                <stop offset="95%" stopColor={mainColor} stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid
@@ -702,21 +775,55 @@ export const CagrSimulator = ({ asset }) => {
               vertical={false}
               stroke={isDark ? '#374151' : '#e5e7eb'}
             />
-            <XAxis dataKey="year" hide />
+
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 10, fill: axisTextColor }}
+              axisLine={false}
+              tickLine={false}
+              dy={10}
+            />
             <YAxis hide domain={['auto', 'auto']} />
-            <Tooltip content={<CustomCagrTooltip isDark={isDark} mode={mode} />} />
+            <Tooltip content={<CustomCagrTooltip isDark={isDark} />} />
+
+            {!isHypothetical && (
+              <ReferenceLine
+                x="Hoje"
+                stroke={mainColor}
+                strokeDasharray="3 3"
+                strokeOpacity={0.5}
+                label={{
+                  value: 'PASSADO | FUTURO',
+                  position: 'insideTop',
+                  fill: axisTextColor,
+                  fontSize: 9,
+                  fontWeight: 'bold',
+                }}
+              />
+            )}
+
             <Area
               type="monotone"
-              dataKey={isIllusion ? 'val_illusion' : 'val_real'}
-              stroke={isIllusion ? '#3b82f6' : '#9333ea'}
+              dataKey={activeDataKey}
+              stroke={mainColor}
               strokeWidth={3}
-              fill={isIllusion ? 'url(#colorIllusion)' : 'url(#colorReal)'}
-              animationDuration={1000}
-              dot={{
-                r: 4,
-                strokeWidth: 2,
-                fill: isIllusion ? '#3b82f6' : '#9333ea',
-                stroke: '#fff',
+              fill={'url(#colorMain)'}
+              animationDuration={1500}
+              dot={(props) => {
+                const { cx, cy, payload } = props;
+                const isToday = payload.label === 'Hoje';
+
+                const r = isToday && !isHypothetical ? 6 : 4;
+                return (
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={r}
+                    fill={mainColor}
+                    stroke={isDark ? '#1f2937' : 'white'}
+                    strokeWidth={2}
+                  />
+                );
               }}
             />
           </AreaChart>
@@ -726,7 +833,7 @@ export const CagrSimulator = ({ asset }) => {
       <div className="mt-auto pt-4 flex items-center justify-between border-t border-gray-100 dark:border-gray-700">
         <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
           {!isHypothetical
-            ? 'Retorno Projetado (5 anos)'
+            ? 'Crescimento Total no Período'
             : isIllusion
               ? 'Retorno Médio Esperado'
               : 'Dinheiro no Bolso'}
@@ -735,7 +842,7 @@ export const CagrSimulator = ({ asset }) => {
           className={`text-xl font-bold ${!isHypothetical || !isIllusion ? 'text-purple-600 dark:text-purple-400' : 'text-blue-600'}`}
         >
           {!isHypothetical
-            ? `+${(Math.pow(1 + asset.cagr / 100, 5) * 100 - 100).toFixed(0)}%`
+            ? `+${((chartData.find((d) => d.label === 'Hoje')?.value / chartData[0].value - 1) * 100).toFixed(0)}%`
             : isIllusion
               ? '+35% (Irreal)'
               : '-27% (Real)'}
