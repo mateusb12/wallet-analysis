@@ -583,24 +583,67 @@ export const StrategySimulator = ({ asset }) => {
 };
 
 export const CagrSimulator = ({ asset }) => {
+  const [mode, setMode] = useState('real');
+
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const axisTextColor = isDark ? '#9ca3af' : '#6b7280';
   const gridColor = isDark ? '#374151' : '#e5e7eb';
 
   const isHypothetical = !asset;
-  const mainColor = '#9333ea';
+  const isIllusion = mode === 'illusion';
+
+  const mainColor = isHypothetical && isIllusion ? '#3b82f6' : '#9333ea';
 
   const calcStart = asset?.calc_window?.start;
   const calcEnd = asset?.calc_window?.end;
   const daysCount = asset?.calc_window?.days || 252;
+
+  const config = useMemo(() => {
+    if (isHypothetical) {
+      if (isIllusion) {
+        return {
+          title: 'Expectativa (Média Simples)',
+          desc: 'O erro de somar % e dividir',
+          icon: <Activity className="text-blue-500" />,
+          messageTitle: 'A Ilusão da Planilha:',
+          message:
+            'Se você ganha 50% e depois perde 40%, a média aritmética diz que você ganhou 5%. Parece um crescimento suave e constante, mas é matematicamente falso.',
+          color: 'blue',
+        };
+      } else {
+        return {
+          title: 'Realidade (CAGR)',
+          desc: 'O impacto real da volatilidade',
+          icon: <Rocket className="text-purple-600 dark:text-purple-400" />,
+          messageTitle: 'O Custo da Volatilidade:',
+          message:
+            'Na vida real, ganhar 50% e perder 40% resulta em PREJUÍZO de -10% sobre o capital. O CAGR desconta esses solavancos e mostra o crescimento verdadeiro.',
+          color: 'purple',
+        };
+      }
+    } else {
+      const isGood = asset.cagr > 10;
+      return {
+        title: `Projeção (${asset.ticker})`,
+        desc: isGood ? 'Alta Aceleração Histórica' : 'Crescimento Moderado/Baixo',
+        icon: <Zap className={isGood ? 'text-purple-600' : 'text-gray-500'} />,
+        messageTitle: isGood ? 'Motor Potente:' : 'Desempenho:',
+        message: isGood
+          ? `Este ativo tem entregado ${asset.cagr}% ao ano. Se mantiver esse ritmo, o capital dobra a cada ${(72 / asset.cagr).toFixed(1)} anos.`
+          : `O crescimento atual é de ${asset.cagr}%. É positivo, mas exige paciência.`,
+        color: isGood ? 'purple' : 'gray',
+      };
+    }
+  }, [isHypothetical, asset, isIllusion]);
 
   const chartData = useMemo(() => {
     if (isHypothetical) {
       return CAGR_SCENARIO_DATA.map((d) => ({
         ...d,
         label: d.year.toString(),
-        historyValue: d.val_real,
+
+        displayValue: isIllusion ? d.val_illusion : d.val_real,
         isProjection: false,
       }));
     }
@@ -608,13 +651,12 @@ export const CagrSimulator = ({ asset }) => {
     const data = [];
     const currentPrice = asset.price || 100;
     const rate = asset.cagr / 100;
-
     const startPrice = currentPrice / (1 + rate);
 
     data.push({
       label: formatDateShort(calcStart),
       fullDate: `Início Cálculo (${formatDateShort(calcStart)})`,
-      value: startPrice,
+      displayValue: startPrice,
       isReal: true,
       annotation: 'Início Janela',
     });
@@ -622,7 +664,7 @@ export const CagrSimulator = ({ asset }) => {
     data.push({
       label: 'Hoje',
       fullDate: `Hoje (${formatDateShort(calcEnd)})`,
-      value: currentPrice,
+      displayValue: currentPrice,
       isReal: true,
       annotation: 'Preço Atual',
     });
@@ -631,70 +673,93 @@ export const CagrSimulator = ({ asset }) => {
     data.push({
       label: 'Projeção 1A',
       fullDate: 'Projeção (1 Ano)',
-      value: projectedPrice,
+      displayValue: projectedPrice,
       isReal: false,
       annotation: 'Se repetir CAGR',
     });
 
     return data;
-  }, [asset, isHypothetical, calcStart, calcEnd]);
+  }, [asset, isHypothetical, calcStart, calcEnd, isIllusion]);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col h-full relative overflow-hidden">
       {}
-      <div className="flex justify-between items-start mb-4 z-10">
-        <div className="flex gap-3">
-          <div className="p-2 rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-900/30">
-            <Rocket size={20} />
+      <div className="flex flex-col md:flex-row md:items-start justify-between mb-4 gap-2 z-10">
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-lg bg-${config.color}-100 dark:bg-${config.color}-900/30`}>
+            {config.icon}
           </div>
           <div>
-            <h4 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              {asset?.ticker || 'Simulação'}
-            </h4>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span
-                className={`text-xs font-bold px-1.5 py-0.5 rounded ${asset?.cagr >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
-              >
-                CAGR: {asset?.cagr}%
-              </span>
+            <h4 className="font-bold text-gray-900 dark:text-white text-base">{config.title}</h4>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400">{config.desc}</p>
               {!isHypothetical && (
-                <span className="text-[10px] text-gray-500 flex items-center gap-1">
-                  <Clock size={10} /> {daysCount} dias úteis
+                <span className="text-[10px] text-gray-500 flex items-center gap-1 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                  <Clock size={10} /> {daysCount}d
                 </span>
               )}
             </div>
           </div>
         </div>
-        {!isHypothetical && (
-          <div className="text-right">
-            <div className="text-xs text-gray-400 font-bold uppercase">Preço Hoje</div>
-            <div className="text-lg font-bold text-gray-900 dark:text-white">
-              R$ {asset.price?.toFixed(2)}
+
+        <div className="flex flex-col items-end gap-2">
+          <AssetBadge name={asset?.ticker} isHypothetical={isHypothetical} />
+
+          {}
+          {isHypothetical ? (
+            <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex text-xs font-bold w-fit">
+              <button
+                onClick={() => setMode('illusion')}
+                className={`px-3 py-1.5 rounded-md transition-all ${
+                  isIllusion
+                    ? 'bg-white text-blue-600 shadow-sm dark:bg-gray-600 dark:text-blue-300'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                }`}
+              >
+                Média Simples
+              </button>
+              <button
+                onClick={() => setMode('real')}
+                className={`px-3 py-1.5 rounded-md transition-all ${
+                  !isIllusion
+                    ? 'bg-white text-purple-600 shadow-sm dark:bg-gray-600 dark:text-purple-300'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                }`}
+              >
+                CAGR Real
+              </button>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="text-right pr-1">
+              <span
+                className={`text-xs font-bold px-2 py-1 rounded border ${
+                  asset?.cagr >= 0
+                    ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400'
+                    : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400'
+                }`}
+              >
+                CAGR: {asset?.cagr}%
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {}
-      {!isHypothetical && (
-        <div className="mb-4 p-3 rounded-lg text-xs bg-gray-50 border border-gray-200 text-gray-600 dark:bg-gray-900/50 dark:border-gray-700 dark:text-gray-300">
-          <p className="flex justify-between items-center mb-1">
-            <span>
-              📅 <strong>Data Inicial (Supabase):</strong>
-            </span>
-            <span className="font-mono">{formatDateShort(calcStart)}</span>
-          </p>
-          <p className="flex justify-between items-center border-t border-gray-200 dark:border-gray-700 pt-1">
-            <span>
-              📅 <strong>Data Final (Supabase):</strong>
-            </span>
-            <span className="font-mono">{formatDateShort(calcEnd)}</span>
-          </p>
-        </div>
-      )}
+      <div
+        className={`mb-4 p-3 rounded-lg text-sm border z-10 transition-colors duration-300
+        ${config.color === 'purple' ? 'bg-purple-50 border-purple-100 text-purple-900 dark:bg-purple-900/10 dark:border-purple-900/30 dark:text-purple-200' : ''}
+        ${config.color === 'blue' ? 'bg-blue-50 border-blue-100 text-blue-900 dark:bg-blue-900/10 dark:border-blue-900/30 dark:text-blue-200' : ''}
+        ${config.color === 'gray' ? 'bg-gray-50 border-gray-200 text-gray-800 dark:bg-gray-700/30 dark:border-gray-600 dark:text-gray-300' : ''}
+      `}
+      >
+        <p>
+          <strong>{config.messageTitle}</strong> {config.message}
+        </p>
+      </div>
 
       {}
-      <div className="w-full h-48 mt-auto">
+      <div className="w-full h-48 mt-auto z-10">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
             <defs>
@@ -714,17 +779,33 @@ export const CagrSimulator = ({ asset }) => {
               dy={10}
             />
             <YAxis hide domain={['auto', 'auto']} />
+
             <Tooltip
               content={({ active, payload }) => {
                 if (active && payload && payload.length) {
                   const d = payload[0].payload;
                   return (
-                    <div className="bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-600 rounded shadow-lg text-xs">
-                      <p className="font-bold mb-1">{d.fullDate}</p>
-                      <p className="font-mono text-purple-500 font-bold text-sm">
-                        R$ {d.value?.toFixed(2) || d.historyValue?.toFixed(2)}
+                    <div className="bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-600 rounded shadow-lg text-xs z-50">
+                      <p className="font-bold mb-1 border-b border-gray-100 dark:border-gray-700 pb-1">
+                        {isHypothetical ? `Ano ${d.year}` : d.fullDate}
                       </p>
-                      <p className="text-[10px] text-gray-400 mt-1">{d.annotation}</p>
+                      <div className="flex justify-between gap-4 mt-1">
+                        <span className="text-gray-500">Valor:</span>
+                        <span style={{ color: mainColor }} className="font-mono font-bold">
+                          R$ {d.displayValue?.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                      {isHypothetical && (
+                        <div className="text-[10px] text-gray-400 mt-1">
+                          Rentabilidade Anual:{' '}
+                          <span className={d.pct >= 0 ? 'text-green-500' : 'text-red-500'}>
+                            {d.pct}%
+                          </span>
+                        </div>
+                      )}
+                      {!isHypothetical && d.annotation && (
+                        <p className="text-[10px] text-gray-400 mt-1 italic">{d.annotation}</p>
+                      )}
                     </div>
                   );
                 }
@@ -732,7 +813,6 @@ export const CagrSimulator = ({ asset }) => {
               }}
             />
 
-            {}
             {!isHypothetical && chartData.length >= 2 && (
               <ReferenceArea
                 x1={chartData[0].label}
@@ -744,24 +824,28 @@ export const CagrSimulator = ({ asset }) => {
 
             <Area
               type="monotone"
-              dataKey={isHypothetical ? 'historyValue' : 'value'}
+              dataKey="displayValue"
               stroke={mainColor}
               strokeWidth={3}
               fill="url(#colorCagr)"
               dot={{ r: 4, fill: mainColor, strokeWidth: 2, stroke: isDark ? '#1f2937' : '#fff' }}
+              animationDuration={1000}
             />
           </AreaChart>
         </ResponsiveContainer>
       </div>
 
-      {!isHypothetical && (
-        <div className="text-[10px] text-center mt-2 text-gray-400 flex justify-center items-center gap-4">
-          <span className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-gray-300 dark:bg-gray-600 rounded-sm"></div> Janela Real
-          </span>
-          <span className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-purple-500 rounded-full"></div> Curva CAGR
-          </span>
+      {}
+      {isHypothetical && (
+        <div className="mt-4 pt-2 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center text-xs">
+          <span className="text-gray-500 uppercase font-bold">Resultado Final (Ano 6)</span>
+          <div className="flex gap-4">
+            {isIllusion ? (
+              <span className="font-bold text-blue-600">R$ 13.400 (Irreal)</span>
+            ) : (
+              <span className="font-bold text-purple-600">R$ 7.290 (Real)</span>
+            )}
+          </div>
         </div>
       )}
     </div>
