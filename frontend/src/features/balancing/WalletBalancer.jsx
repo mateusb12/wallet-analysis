@@ -11,8 +11,10 @@ import {
   AlertTriangle,
   Copy,
   Check,
+  Settings,
 } from 'lucide-react';
 import { fetchWalletPositions } from '../../services/walletDataService.js';
+import TargetConfigModal from './TargetConfigModal';
 
 const FormatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -233,7 +235,13 @@ const DEFAULT_TARGETS = {
   },
 };
 
-const WalletBalancer = ({ targets = DEFAULT_TARGETS }) => {
+const WalletBalancer = () => {
+  const [targets, setTargets] = useState(() => {
+    const saved = localStorage.getItem('wallet_balancer_targets');
+    return saved ? JSON.parse(saved) : DEFAULT_TARGETS;
+  });
+
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [portfolioTree, setPortfolioTree] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState({ fii: true, acoes: false, etf: false, outros: true });
@@ -243,6 +251,20 @@ const WalletBalancer = ({ targets = DEFAULT_TARGETS }) => {
   useEffect(() => {
     loadAndClassifyWallet();
   }, []);
+
+  const handleSaveTargets = (newTargets) => {
+    setTargets(newTargets);
+    localStorage.setItem('wallet_balancer_targets', JSON.stringify(newTargets));
+    setIsConfigOpen(false);
+  };
+
+  const handleResetTargets = () => {
+    if (window.confirm('Deseja restaurar as configurações padrão?')) {
+      setTargets(DEFAULT_TARGETS);
+      localStorage.setItem('wallet_balancer_targets', JSON.stringify(DEFAULT_TARGETS));
+      setIsConfigOpen(false);
+    }
+  };
 
   const loadAndClassifyWallet = async () => {
     setLoading(true);
@@ -374,201 +396,220 @@ const WalletBalancer = ({ targets = DEFAULT_TARGETS }) => {
   if (!portfolioTree) return null;
 
   return (
-    <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 max-w-2xl mx-auto">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl shadow-sm">
-          <Target className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-        </div>
-        <div>
-          <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">
-            Inteligência de Aporte
-          </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Baseado nos seus ativos reais (Classificação Automática)
-          </p>
-        </div>
-        <div className="ml-auto flex gap-2">
-          <button
-            onClick={handleCopyTree}
-            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-            title="Copiar JSON da árvore"
-          >
-            {copied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
-          </button>
-          <button
-            onClick={loadAndClassifyWallet}
-            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            title="Recarregar"
-          >
-            <RefreshCw className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
+    <>
+      <TargetConfigModal
+        isOpen={isConfigOpen}
+        onClose={() => setIsConfigOpen(false)}
+        currentTargets={targets}
+        onSave={handleSaveTargets}
+        onReset={handleResetTargets}
+      />
 
-      <div className="space-y-6">
-        {Object.entries(portfolioTree).map(([assetClass, data]) => {
-          if (data.totalValue === 0 && (!targets.macro || !targets.macro[assetClass])) return null;
-
-          const target = targets.macro?.[assetClass] || 0;
-          const currentPct = data.percentOfTotal;
-          const isExpanded = expanded[assetClass];
-          const isPriority = priorityPath?.macro === assetClass;
-          const isDimmed = priorityPath && !isPriority;
-
-          return (
-            <div
-              key={assetClass}
-              className={`
-                relative rounded-2xl transition-all duration-500 ease-out border group/card
-                ${
-                  isPriority
-                    ? 'bg-white dark:bg-gray-800 border-blue-400 dark:border-blue-500 shadow-xl ring-2 ring-blue-50 dark:ring-blue-900/30 scale-[1.02] z-10'
-                    : isDimmed
-                      ? 'bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-700 opacity-60 hover:opacity-100 scale-95 grayscale-[0.5] hover:grayscale-0'
-                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-blue-300'
-                }
-              `}
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 max-w-2xl mx-auto">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl shadow-sm">
+            <Target className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">
+              Inteligência de Aporte
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Baseado nos seus ativos reais (Classificação Automática)
+            </p>
+          </div>
+          <div className="ml-auto flex gap-2">
+            <button
+              onClick={() => setIsConfigOpen(true)}
+              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              title="Configurar Metas"
             >
-              {isPriority && (
-                <div className="absolute -top-3 left-6 bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg z-20 flex items-center gap-1.5 uppercase tracking-wide animate-in fade-in zoom-in duration-300">
-                  <TrendingUp className="w-3 h-3" /> Recomendação do Mês
-                </div>
-              )}
+              <Settings className="w-5 h-5" />
+            </button>
 
-              <div className="p-5 cursor-pointer" onClick={() => toggleExpand(assetClass)}>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-4">
-                    <div
-                      className={`
-                        w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-300
-                        ${isExpanded || isPriority ? 'bg-gray-800 text-white shadow-md' : 'bg-gray-100 text-gray-500 group-hover/card:bg-blue-50 group-hover/card:text-blue-600'}
-                      `}
-                    >
-                      {assetClass === 'fii' && <Layers className="w-5 h-5" />}
-                      {assetClass === 'acoes' && <Activity className="w-5 h-5" />}
-                      {assetClass === 'etf' && <PieChart className="w-5 h-5" />}
-                      {assetClass === 'outros' && <AlertTriangle className="w-5 h-5" />}
-                    </div>
+            <button
+              onClick={handleCopyTree}
+              className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+              title="Copiar JSON da árvore"
+            >
+              {copied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
+            </button>
+            <button
+              onClick={loadAndClassifyWallet}
+              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              title="Recarregar"
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
 
-                    <div>
-                      <h4 className="text-lg font-bold text-gray-800 dark:text-gray-100 uppercase tracking-tight">
-                        {assetClass === 'acoes' ? 'Ações' : assetClass}
-                      </h4>
-                      {!isExpanded && !isPriority && (
-                        <span className="text-xs text-gray-400 animate-in fade-in">
-                          Clique para detalhes
-                        </span>
-                      )}
-                    </div>
+        <div className="space-y-6">
+          {Object.entries(portfolioTree).map(([assetClass, data]) => {
+            if (data.totalValue === 0 && (!targets.macro || !targets.macro[assetClass]))
+              return null;
+
+            const target = targets.macro?.[assetClass] || 0;
+            const currentPct = data.percentOfTotal;
+            const isExpanded = expanded[assetClass];
+            const isPriority = priorityPath?.macro === assetClass;
+            const isDimmed = priorityPath && !isPriority;
+
+            return (
+              <div
+                key={assetClass}
+                className={`
+                  relative rounded-2xl transition-all duration-500 ease-out border group/card
+                  ${
+                    isPriority
+                      ? 'bg-white dark:bg-gray-800 border-blue-400 dark:border-blue-500 shadow-xl ring-2 ring-blue-50 dark:ring-blue-900/30 scale-[1.02] z-10'
+                      : isDimmed
+                        ? 'bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-700 opacity-60 hover:opacity-100 scale-95 grayscale-[0.5] hover:grayscale-0'
+                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-blue-300'
+                  }
+                `}
+              >
+                {isPriority && (
+                  <div className="absolute -top-3 left-6 bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg z-20 flex items-center gap-1.5 uppercase tracking-wide animate-in fade-in zoom-in duration-300">
+                    <TrendingUp className="w-3 h-3" /> Recomendação do Mês
                   </div>
+                )}
 
-                  <div className="text-right">
-                    <span
-                      className={`text-3xl font-bold tracking-tight ${isPriority ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-white'}`}
-                    >
-                      {FormatPercent(currentPct)}
-                    </span>
-                  </div>
-                </div>
-
-                <DriftIndicator
-                  label=""
-                  currentPct={currentPct}
-                  targetPct={target}
-                  amount={data.totalValue}
-                />
-              </div>
-
-              {isExpanded && data.subTypes && (
-                <div className="bg-gray-50/80 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700 p-4 sm:p-6 space-y-3 rounded-b-2xl">
-                  {Object.entries(data.subTypes).map(([subType, subData]) => {
-                    const uniqueKey = `${assetClass}-${subType}`;
-                    const isSubExpanded = expandedSub[uniqueKey];
-                    const subTarget = targets.micro?.[assetClass]?.[subType] || 0;
-
-                    const relativePercent =
-                      data.totalValue > 0 ? (subData.value / data.totalValue) * 100 : 0;
-                    const isSubPriority = isPriority && priorityPath?.micro === subType;
-                    const isUnclassified = subType === 'Indefinido' || assetClass === 'outros';
-
-                    return (
+                <div className="p-5 cursor-pointer" onClick={() => toggleExpand(assetClass)}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-4">
                       <div
-                        key={subType}
-                        onClick={(e) => toggleSubExpand(e, uniqueKey)}
                         className={`
-                                group/sub relative bg-white dark:bg-gray-800 rounded-xl border transition-all duration-300 cursor-pointer overflow-hidden
-                                ${
-                                  isSubPriority
-                                    ? 'border-blue-400 dark:border-blue-500 ring-1 ring-blue-100 dark:ring-blue-900/30 shadow-md'
-                                    : isSubExpanded
-                                      ? 'border-gray-300 dark:border-gray-600'
-                                      : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'
-                                }
-                            `}
+                          w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-300
+                          ${isExpanded || isPriority ? 'bg-gray-800 text-white shadow-md' : 'bg-gray-100 text-gray-500 group-hover/card:bg-blue-50 group-hover/card:text-blue-600'}
+                        `}
                       >
-                        <div
-                          className={`absolute left-0 top-0 bottom-0 w-1 transition-colors duration-200 
-                            ${isSubPriority ? 'bg-blue-600' : isSubExpanded ? 'bg-gray-400' : 'bg-transparent group-hover/sub:bg-blue-200'}
-                          `}
-                        ></div>
+                        {assetClass === 'fii' && <Layers className="w-5 h-5" />}
+                        {assetClass === 'acoes' && <Activity className="w-5 h-5" />}
+                        {assetClass === 'etf' && <PieChart className="w-5 h-5" />}
+                        {assetClass === 'outros' && <AlertTriangle className="w-5 h-5" />}
+                      </div>
 
-                        <div className="p-4 pl-5 transition-all duration-200 group-hover/sub:pl-6">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`font-bold text-base transition-colors ${
-                                  isSubPriority
-                                    ? 'text-blue-700 dark:text-blue-400'
-                                    : isSubExpanded
-                                      ? 'text-gray-900 dark:text-gray-100'
-                                      : 'text-gray-600 dark:text-gray-300'
-                                }`}
-                              >
-                                {subType}
-                              </span>
-
-                              {isSubPriority && (
-                                <span className="ml-2 inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
-                                  Foco
-                                </span>
-                              )}
-
-                              {isSubExpanded ? (
-                                <ChevronDown className="w-4 h-4 text-gray-400 ml-auto" />
-                              ) : (
-                                <ArrowRight className="w-4 h-4 text-gray-300 group-hover/sub:text-blue-400 group-hover/sub:translate-x-1 transition-all ml-auto" />
-                              )}
-                            </div>
-                          </div>
-
-                          <DriftIndicator
-                            label=""
-                            currentPct={relativePercent}
-                            targetPct={subTarget}
-                            amount={subData.value}
-                            compact={true}
-                          />
-                        </div>
-
-                        {isSubExpanded && subData.assets && (
-                          <div className="px-4 pb-4 bg-gray-50/50 dark:bg-gray-900/20 border-t border-gray-100 dark:border-gray-700 pt-2 animate-in slide-in-from-top-2">
-                            <AssetListTable
-                              assets={subData.assets}
-                              totalValue={subData.value}
-                              isUnclassified={isUnclassified}
-                            />
-                          </div>
+                      <div>
+                        <h4 className="text-lg font-bold text-gray-800 dark:text-gray-100 uppercase tracking-tight">
+                          {assetClass === 'acoes' ? 'Ações' : assetClass}
+                        </h4>
+                        {!isExpanded && !isPriority && (
+                          <span className="text-xs text-gray-400 animate-in fade-in">
+                            Clique para detalhes
+                          </span>
                         )}
                       </div>
-                    );
-                  })}
+                    </div>
+
+                    <div className="text-right">
+                      <span
+                        className={`text-3xl font-bold tracking-tight ${isPriority ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-white'}`}
+                      >
+                        {FormatPercent(currentPct)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <DriftIndicator
+                    label=""
+                    currentPct={currentPct}
+                    targetPct={target}
+                    amount={data.totalValue}
+                  />
                 </div>
-              )}
-            </div>
-          );
-        })}
+
+                {isExpanded && data.subTypes && (
+                  <div className="bg-gray-50/80 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700 p-4 sm:p-6 space-y-3 rounded-b-2xl">
+                    {Object.entries(data.subTypes).map(([subType, subData]) => {
+                      const uniqueKey = `${assetClass}-${subType}`;
+                      const isSubExpanded = expandedSub[uniqueKey];
+                      const subTarget = targets.micro?.[assetClass]?.[subType] || 0;
+
+                      const relativePercent =
+                        data.totalValue > 0 ? (subData.value / data.totalValue) * 100 : 0;
+                      const isSubPriority = isPriority && priorityPath?.micro === subType;
+                      const isUnclassified = subType === 'Indefinido' || assetClass === 'outros';
+
+                      return (
+                        <div
+                          key={subType}
+                          onClick={(e) => toggleSubExpand(e, uniqueKey)}
+                          className={`
+                                  group/sub relative bg-white dark:bg-gray-800 rounded-xl border transition-all duration-300 cursor-pointer overflow-hidden
+                                  ${
+                                    isSubPriority
+                                      ? 'border-blue-400 dark:border-blue-500 ring-1 ring-blue-100 dark:ring-blue-900/30 shadow-md'
+                                      : isSubExpanded
+                                        ? 'border-gray-300 dark:border-gray-600'
+                                        : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'
+                                  }
+                              `}
+                        >
+                          <div
+                            className={`absolute left-0 top-0 bottom-0 w-1 transition-colors duration-200 
+                              ${isSubPriority ? 'bg-blue-600' : isSubExpanded ? 'bg-gray-400' : 'bg-transparent group-hover/sub:bg-blue-200'}
+                            `}
+                          ></div>
+
+                          <div className="p-4 pl-5 transition-all duration-200 group-hover/sub:pl-6">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`font-bold text-base transition-colors ${
+                                    isSubPriority
+                                      ? 'text-blue-700 dark:text-blue-400'
+                                      : isSubExpanded
+                                        ? 'text-gray-900 dark:text-gray-100'
+                                        : 'text-gray-600 dark:text-gray-300'
+                                  }`}
+                                >
+                                  {subType}
+                                </span>
+
+                                {isSubPriority && (
+                                  <span className="ml-2 inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                                    Foco
+                                  </span>
+                                )}
+
+                                {isSubExpanded ? (
+                                  <ChevronDown className="w-4 h-4 text-gray-400 ml-auto" />
+                                ) : (
+                                  <ArrowRight className="w-4 h-4 text-gray-300 group-hover/sub:text-blue-400 group-hover/sub:translate-x-1 transition-all ml-auto" />
+                                )}
+                              </div>
+                            </div>
+
+                            <DriftIndicator
+                              label=""
+                              currentPct={relativePercent}
+                              targetPct={subTarget}
+                              amount={subData.value}
+                              compact={true}
+                            />
+                          </div>
+
+                          {isSubExpanded && subData.assets && (
+                            <div className="px-4 pb-4 bg-gray-50/50 dark:bg-gray-900/20 border-t border-gray-100 dark:border-gray-700 pt-2 animate-in slide-in-from-top-2">
+                              <AssetListTable
+                                assets={subData.assets}
+                                totalValue={subData.value}
+                                isUnclassified={isUnclassified}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
