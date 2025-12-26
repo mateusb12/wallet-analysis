@@ -584,101 +584,90 @@ export const CagrSimulator = ({ asset }) => {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const axisTextColor = isDark ? '#9ca3af' : '#6b7280';
+  const gridColor = isDark ? '#374151' : '#e5e7eb';
 
   const isHypothetical = !asset;
   const isIllusion = isHypothetical && mode === 'illusion';
-
-  const activeDataKey = isHypothetical ? (isIllusion ? 'val_illusion' : 'val_real') : 'value';
-
   const mainColor = isHypothetical && isIllusion ? '#3b82f6' : '#9333ea';
+
+  const historyYears = 5;
+  const currentYearNum = new Date().getFullYear();
+  const startYear = currentYearNum - historyYears;
 
   const chartData = useMemo(() => {
     if (isHypothetical) {
-      return CAGR_SCENARIO_DATA.map((d) => ({ ...d, label: d.year.toString() }));
+      return CAGR_SCENARIO_DATA.map((d) => ({
+        ...d,
+        label: d.year.toString(),
+        historyValue: isIllusion ? d.val_illusion : d.val_real,
+        projectionValue: null,
+      }));
     }
 
     const data = [];
     const rate = asset.cagr / 100;
-    const currentYearNum = new Date().getFullYear();
-    const historyYears = 5;
 
-    let value = 10000;
+    const currentRealPrice = asset.price || 100;
 
-    for (let i = -historyYears; i <= 1; i++) {
-      let label;
-      let type;
+    const startRealPrice = currentRealPrice / Math.pow(1 + rate, historyYears);
 
-      if (i === 0) {
-        label = 'Hoje';
-        type = 'current';
-      } else if (i > 0) {
-        label = (currentYearNum + i).toString();
-        type = 'projection';
-      } else {
-        label = (currentYearNum + i).toString();
-        type = 'history';
-      }
+    let priceIterator = startRealPrice;
 
-      const pctChange = i === -historyYears ? 0 : asset.cagr;
+    for (let i = 0; i <= historyYears; i++) {
+      const year = startYear + i;
+      const isToday = i === historyYears;
 
       data.push({
-        label: label,
-        value: value,
-        pct: pctChange,
-        type: type,
+        label: isToday ? 'Hoje' : year.toString(),
+        fullDate: isToday ? `Hoje (${year})` : year.toString(),
+
+        historyValue: parseFloat(priceIterator.toFixed(2)),
+
+        projectionValue: isToday ? parseFloat(priceIterator.toFixed(2)) : null,
+        isProjection: false,
       });
 
-      value = value * (1 + rate);
+      priceIterator = priceIterator * (1 + rate);
     }
-    return data;
-  }, [asset, isHypothetical]);
 
-  const CustomCagrTooltip = ({ active, payload, isDark }) => {
+    const nextYearPrice = currentRealPrice * (1 + rate);
+
+    data.push({
+      label: (currentYearNum + 1).toString(),
+      fullDate: `Projeção (${currentYearNum + 1})`,
+      historyValue: null,
+      projectionValue: parseFloat(nextYearPrice.toFixed(2)),
+      isProjection: true,
+    });
+
+    return data;
+  }, [asset, isHypothetical, mode, isIllusion, currentYearNum, startYear]);
+
+  const CustomCagrTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
+      const displayValue = data.historyValue || data.projectionValue;
+      const isProj = data.isProjection;
 
-      const displayValue = data[activeDataKey];
-
-      const isPositive = data.pct >= 0;
       const bgClass = isDark
         ? 'bg-gray-900 border-gray-700 text-gray-100'
         : 'bg-white border-gray-200 text-gray-800 shadow-xl';
 
-      let headerText = data.label;
-      let subHeaderText = '';
-
-      if (data.type === 'history') subHeaderText = '(Histórico Simulado)';
-      if (data.type === 'current') subHeaderText = '(Referência Atual)';
-      if (data.type === 'projection') headerText = `Projeção ${data.label}`;
-
-      if (isHypothetical) {
-        headerText = `Ano ${data.year}`;
-        subHeaderText = isIllusion ? 'Projeção Linear' : 'Cenário Volátil';
-      }
-
       return (
-        <div className={`${bgClass} border text-xs p-3 rounded-lg z-50 min-w-[180px]`}>
-          <div className="border-b border-gray-500/20 pb-2 mb-2">
-            <div className="flex justify-between items-center gap-4">
-              <span className="font-bold text-gray-500 uppercase">{headerText}</span>
-              {(!isHypothetical || data.pct !== 0) && (
-                <span className={`font-bold ${data.pct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                  {data.pct > 0 ? '+' : ''}
-                  {data.pct}% ano
-                </span>
-              )}
-            </div>
-            {subHeaderText && (
-              <span className="text-[10px] text-gray-400 italic">{subHeaderText}</span>
+        <div className={`${bgClass} border text-xs p-3 rounded-lg z-50 min-w-[150px]`}>
+          <div className="font-bold text-gray-500 mb-1 flex justify-between">
+            <span>{data.fullDate}</span>
+            {isProj && (
+              <span className="text-[10px] bg-indigo-100 text-indigo-800 px-1 rounded">FUTURO</span>
             )}
           </div>
-
-          <div className="space-y-1">
-            <p className="text-[10px] uppercase text-gray-500">Patrimônio Acumulado</p>
-            <p className="text-xl font-bold font-mono" style={{ color: mainColor }}>
-              {}
-              R$ {(displayValue || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-            </p>
+          <div className="text-lg font-bold font-mono" style={{ color: mainColor }}>
+            {}
+            {asset?.ticker?.includes('USD') || asset?.ticker?.includes('BTC') ? '$' : 'R$'}
+            {(displayValue || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
+          </div>
+          <div className="text-[10px] text-gray-400 mt-1">
+            {data.label === 'Hoje' ? 'Preço Atual' : 'Preço pela curva CAGR'}
           </div>
         </div>
       );
@@ -688,93 +677,59 @@ export const CagrSimulator = ({ asset }) => {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col h-full">
-      <div className="flex flex-col md:flex-row md:items-start justify-between mb-4 gap-2">
-        <div className="flex items-center gap-3">
+      {}
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex gap-3">
           <div
-            className={`p-2 rounded-lg ${!isHypothetical ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30' : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30'}`}
+            className={`p-2 rounded-lg ${!isHypothetical ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30' : 'bg-blue-100 text-blue-600'}`}
           >
             {!isHypothetical ? <Rocket size={20} /> : <Percent size={20} />}
           </div>
           <div>
-            <h4 className="font-bold text-gray-900 dark:text-white text-base">
-              {!isHypothetical
-                ? `Trajetória de Crescimento: ${asset.ticker}`
-                : isIllusion
-                  ? 'Média Aritmética (Ilusão)'
-                  : 'CAGR Real (Verdade)'}
+            <h4 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              {asset?.ticker || 'Cenário'}
+              {!isHypothetical && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 border border-gray-200 dark:border-gray-600">
+                  {startYear} - {currentYearNum}
+                </span>
+              )}
             </h4>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {!isHypothetical
-                ? `Como o CAGR de ${asset.cagr}% construiu patrimônio no tempo.`
-                : 'O impacto da volatilidade no longo prazo'}
-            </p>
+            <p className="text-xs text-gray-500">Curva de crescimento real ({asset?.cagr}% a.a.)</p>
           </div>
         </div>
 
-        <div className="flex flex-col items-end gap-2">
-          <AssetBadge name={asset?.ticker} isHypothetical={isHypothetical} />
-          {isHypothetical && (
-            <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex text-xs font-bold w-fit">
-              <button
-                onClick={() => setMode('illusion')}
-                className={`px-3 py-1.5 rounded-md transition-all ${isIllusion ? 'bg-white text-blue-600 shadow-sm dark:bg-gray-600 dark:text-blue-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-              >
-                Média
-              </button>
-              <button
-                onClick={() => setMode('real')}
-                className={`px-3 py-1.5 rounded-md transition-all ${!isIllusion ? 'bg-white text-purple-600 shadow-sm dark:bg-gray-600 dark:text-purple-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-              >
-                CAGR
-              </button>
+        {}
+        {!isHypothetical && (
+          <div className="text-right">
+            <div className="text-xs text-gray-400 uppercase font-bold">Hoje</div>
+            <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
+              {(asset.price || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </div>
-          )}
-        </div>
-      </div>
-
-      <div
-        className={`mb-4 p-3 rounded-lg text-sm border 
-          ${
-            !isHypothetical
-              ? 'bg-purple-50 border-purple-100 text-purple-800 dark:bg-purple-900/10 dark:border-purple-900/30 dark:text-purple-200'
-              : isIllusion
-                ? 'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-900/10 dark:border-blue-900/30 dark:text-blue-200'
-                : 'bg-purple-50 border-purple-100 text-purple-800 dark:bg-purple-900/10 dark:border-purple-900/30 dark:text-purple-200'
-          }
-        `}
-      >
-        {!isHypothetical ? (
-          <p>
-            <strong>Poder dos Juros Compostos:</strong> O gráfico mostra como R$ 10k teriam crescido
-            nos últimos 5 anos mantendo o CAGR atual de <strong>{asset.cagr}%</strong>.
-          </p>
-        ) : isIllusion ? (
-          <p>
-            <strong>O Conto da Média:</strong> Se você ganha +50% e depois perde -40%, a média é
-            +5%. O gráfico mostra essa linha bonita, te enganando.
-          </p>
-        ) : (
-          <p>
-            <strong>A Realidade Dura:</strong> Ganhar 50% e perder 40% destrói patrimônio. R$ 100
-            vira R$ 150, que vira R$ 90. <strong>CAGR Negativo</strong> mesmo com média positiva!
-          </p>
+          </div>
         )}
       </div>
 
+      {}
+      <div className="mb-4 p-3 rounded-lg text-sm bg-purple-50 border border-purple-100 text-purple-900 dark:bg-purple-900/20 dark:border-purple-800 dark:text-purple-100">
+        <p>
+          <strong>Cálculo Real:</strong> Esta curva mostra a trajetória matemática exata que conecta
+          o preço de <strong>{startYear}</strong> ao preço de <strong>Hoje</strong> para resultar
+          num CAGR de {asset?.cagr}%.
+        </p>
+      </div>
+
+      {}
       <div className="w-full h-48 mt-auto">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 20, right: 10, bottom: 5, left: -10 }}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
             <defs>
-              <linearGradient id="colorMain" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="colorHistory" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor={mainColor} stopOpacity={0.3} />
                 <stop offset="95%" stopColor={mainColor} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              vertical={false}
-              stroke={isDark ? '#374151' : '#e5e7eb'}
-            />
+
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
 
             <XAxis
               dataKey="label"
@@ -784,69 +739,35 @@ export const CagrSimulator = ({ asset }) => {
               dy={10}
             />
             <YAxis hide domain={['auto', 'auto']} />
-            <Tooltip content={<CustomCagrTooltip isDark={isDark} />} />
-
-            {!isHypothetical && (
-              <ReferenceLine
-                x="Hoje"
-                stroke={mainColor}
-                strokeDasharray="3 3"
-                strokeOpacity={0.5}
-                label={{
-                  value: 'PASSADO | FUTURO',
-                  position: 'insideTop',
-                  fill: axisTextColor,
-                  fontSize: 9,
-                  fontWeight: 'bold',
-                }}
-              />
-            )}
+            <Tooltip content={<CustomCagrTooltip />} />
 
             <Area
               type="monotone"
-              dataKey={activeDataKey}
+              dataKey="historyValue"
               stroke={mainColor}
               strokeWidth={3}
-              fill={'url(#colorMain)'}
-              animationDuration={1500}
-              dot={(props) => {
-                const { cx, cy, payload } = props;
-                const isToday = payload.label === 'Hoje';
+              fill="url(#colorHistory)"
+              dot={{ r: 4, fill: mainColor, strokeWidth: 2, stroke: isDark ? '#1f2937' : '#fff' }}
+            />
 
-                const r = isToday && !isHypothetical ? 6 : 4;
-                return (
-                  <circle
-                    cx={cx}
-                    cy={cy}
-                    r={r}
-                    fill={mainColor}
-                    stroke={isDark ? '#1f2937' : 'white'}
-                    strokeWidth={2}
-                  />
-                );
+            <Area
+              type="monotone"
+              dataKey="projectionValue"
+              stroke={mainColor}
+              strokeDasharray="5 5"
+              strokeWidth={2}
+              fill="transparent"
+              dot={{
+                r: 4,
+                fill: mainColor,
+                strokeWidth: 2,
+                stroke: isDark ? '#1f2937' : '#fff',
+                opacity: 0.6,
               }}
+              activeDot={{ r: 6 }}
             />
           </AreaChart>
         </ResponsiveContainer>
-      </div>
-
-      <div className="mt-auto pt-4 flex items-center justify-between border-t border-gray-100 dark:border-gray-700">
-        <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
-          {!isHypothetical
-            ? 'Crescimento Total no Período'
-            : isIllusion
-              ? 'Retorno Médio Esperado'
-              : 'Dinheiro no Bolso'}
-        </span>
-        <span
-          className={`text-xl font-bold ${!isHypothetical || !isIllusion ? 'text-purple-600 dark:text-purple-400' : 'text-blue-600'}`}
-        >
-          {!isHypothetical
-            ? `+${((chartData.find((d) => d.label === 'Hoje')?.value / chartData[0].value - 1) * 100).toFixed(0)}%`
-            : isIllusion
-              ? '+35% (Irreal)'
-              : '-27% (Real)'}
-        </span>
       </div>
     </div>
   );
