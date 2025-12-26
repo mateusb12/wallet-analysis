@@ -15,6 +15,7 @@ import {
   AreaChart,
   Area,
   ReferenceLine,
+  ReferenceArea,
 } from 'recharts';
 import {
   TrendingUp,
@@ -29,7 +30,6 @@ import {
   Scale,
   Zap,
   Clock,
-  TrendingUpIcon,
   Anchor,
 } from 'lucide-react';
 import { useTheme } from '../theme/ThemeContext';
@@ -37,8 +37,13 @@ import { useTheme } from '../theme/ThemeContext';
 const getFormattedDate = (daysOffset = 0) => {
   const date = new Date();
   date.setDate(date.getDate() + daysOffset);
-
   return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }).replace('.', '');
+};
+
+const formatDateShort = (dateStr) => {
+  if (!dateStr) return 'Início';
+  const [year, month, day] = dateStr.split('-');
+  return `${day}/${month}/${year.slice(2)}`;
 };
 
 const getCurrentYear = (yearOffset = 0) => {
@@ -505,7 +510,6 @@ export const StrategySimulator = ({ asset }) => {
           <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
 
-            {}
             <XAxis
               dataKey="day"
               hide={false}
@@ -516,7 +520,6 @@ export const StrategySimulator = ({ asset }) => {
               dy={5}
             />
 
-            {}
             <YAxis
               domain={['auto', 'auto']}
               hide={false}
@@ -580,150 +583,122 @@ export const StrategySimulator = ({ asset }) => {
 };
 
 export const CagrSimulator = ({ asset }) => {
-  const [mode, setMode] = useState('real');
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const axisTextColor = isDark ? '#9ca3af' : '#6b7280';
   const gridColor = isDark ? '#374151' : '#e5e7eb';
 
   const isHypothetical = !asset;
-  const isIllusion = isHypothetical && mode === 'illusion';
-  const mainColor = isHypothetical && isIllusion ? '#3b82f6' : '#9333ea';
+  const mainColor = '#9333ea';
 
-  const historyYears = 5;
-  const currentYearNum = new Date().getFullYear();
-  const startYear = currentYearNum - historyYears;
+  const calcStart = asset?.calc_window?.start;
+  const calcEnd = asset?.calc_window?.end;
+  const daysCount = asset?.calc_window?.days || 252;
 
   const chartData = useMemo(() => {
     if (isHypothetical) {
       return CAGR_SCENARIO_DATA.map((d) => ({
         ...d,
         label: d.year.toString(),
-        historyValue: isIllusion ? d.val_illusion : d.val_real,
-        projectionValue: null,
+        historyValue: d.val_real,
+        isProjection: false,
       }));
     }
 
     const data = [];
+    const currentPrice = asset.price || 100;
     const rate = asset.cagr / 100;
 
-    const currentRealPrice = asset.price || 100;
-
-    const startRealPrice = currentRealPrice / Math.pow(1 + rate, historyYears);
-
-    let priceIterator = startRealPrice;
-
-    for (let i = 0; i <= historyYears; i++) {
-      const year = startYear + i;
-      const isToday = i === historyYears;
-
-      data.push({
-        label: isToday ? 'Hoje' : year.toString(),
-        fullDate: isToday ? `Hoje (${year})` : year.toString(),
-
-        historyValue: parseFloat(priceIterator.toFixed(2)),
-
-        projectionValue: isToday ? parseFloat(priceIterator.toFixed(2)) : null,
-        isProjection: false,
-      });
-
-      priceIterator = priceIterator * (1 + rate);
-    }
-
-    const nextYearPrice = currentRealPrice * (1 + rate);
+    const startPrice = currentPrice / (1 + rate);
 
     data.push({
-      label: (currentYearNum + 1).toString(),
-      fullDate: `Projeção (${currentYearNum + 1})`,
-      historyValue: null,
-      projectionValue: parseFloat(nextYearPrice.toFixed(2)),
-      isProjection: true,
+      label: formatDateShort(calcStart),
+      fullDate: `Início Cálculo (${formatDateShort(calcStart)})`,
+      value: startPrice,
+      isReal: true,
+      annotation: 'Início Janela',
+    });
+
+    data.push({
+      label: 'Hoje',
+      fullDate: `Hoje (${formatDateShort(calcEnd)})`,
+      value: currentPrice,
+      isReal: true,
+      annotation: 'Preço Atual',
+    });
+
+    const projectedPrice = currentPrice * (1 + rate);
+    data.push({
+      label: 'Projeção 1A',
+      fullDate: 'Projeção (1 Ano)',
+      value: projectedPrice,
+      isReal: false,
+      annotation: 'Se repetir CAGR',
     });
 
     return data;
-  }, [asset, isHypothetical, mode, isIllusion, currentYearNum, startYear]);
-
-  const CustomCagrTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      const displayValue = data.historyValue || data.projectionValue;
-      const isProj = data.isProjection;
-
-      const bgClass = isDark
-        ? 'bg-gray-900 border-gray-700 text-gray-100'
-        : 'bg-white border-gray-200 text-gray-800 shadow-xl';
-
-      return (
-        <div className={`${bgClass} border text-xs p-3 rounded-lg z-50 min-w-[150px]`}>
-          <div className="font-bold text-gray-500 mb-1 flex justify-between">
-            <span>{data.fullDate}</span>
-            {isProj && (
-              <span className="text-[10px] bg-indigo-100 text-indigo-800 px-1 rounded">FUTURO</span>
-            )}
-          </div>
-          <div className="text-lg font-bold font-mono" style={{ color: mainColor }}>
-            {}
-            {asset?.ticker?.includes('USD') || asset?.ticker?.includes('BTC') ? '$' : 'R$'}
-            {(displayValue || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
-          </div>
-          <div className="text-[10px] text-gray-400 mt-1">
-            {data.label === 'Hoje' ? 'Preço Atual' : 'Preço pela curva CAGR'}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
+  }, [asset, isHypothetical, calcStart, calcEnd]);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col h-full">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col h-full relative overflow-hidden">
       {}
-      <div className="flex justify-between items-start mb-4">
+      <div className="flex justify-between items-start mb-4 z-10">
         <div className="flex gap-3">
-          <div
-            className={`p-2 rounded-lg ${!isHypothetical ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30' : 'bg-blue-100 text-blue-600'}`}
-          >
-            {!isHypothetical ? <Rocket size={20} /> : <Percent size={20} />}
+          <div className="p-2 rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-900/30">
+            <Rocket size={20} />
           </div>
           <div>
             <h4 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              {asset?.ticker || 'Cenário'}
+              {asset?.ticker || 'Simulação'}
+            </h4>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span
+                className={`text-xs font-bold px-1.5 py-0.5 rounded ${asset?.cagr >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
+              >
+                CAGR: {asset?.cagr}%
+              </span>
               {!isHypothetical && (
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 border border-gray-200 dark:border-gray-600">
-                  {startYear} - {currentYearNum}
+                <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                  <Clock size={10} /> {daysCount} dias úteis
                 </span>
               )}
-            </h4>
-            <p className="text-xs text-gray-500">Curva de crescimento real ({asset?.cagr}% a.a.)</p>
+            </div>
           </div>
         </div>
-
-        {}
         {!isHypothetical && (
           <div className="text-right">
-            <div className="text-xs text-gray-400 uppercase font-bold">Hoje</div>
-            <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
-              {(asset.price || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            <div className="text-xs text-gray-400 font-bold uppercase">Preço Hoje</div>
+            <div className="text-lg font-bold text-gray-900 dark:text-white">
+              R$ {asset.price?.toFixed(2)}
             </div>
           </div>
         )}
       </div>
 
       {}
-      <div className="mb-4 p-3 rounded-lg text-sm bg-purple-50 border border-purple-100 text-purple-900 dark:bg-purple-900/20 dark:border-purple-800 dark:text-purple-100">
-        <p>
-          <strong>Cálculo Real:</strong> Esta curva mostra a trajetória matemática exata que conecta
-          o preço de <strong>{startYear}</strong> ao preço de <strong>Hoje</strong> para resultar
-          num CAGR de {asset?.cagr}%.
-        </p>
-      </div>
+      {!isHypothetical && (
+        <div className="mb-4 p-3 rounded-lg text-xs bg-gray-50 border border-gray-200 text-gray-600 dark:bg-gray-900/50 dark:border-gray-700 dark:text-gray-300">
+          <p className="flex justify-between items-center mb-1">
+            <span>
+              📅 <strong>Data Inicial (Supabase):</strong>
+            </span>
+            <span className="font-mono">{formatDateShort(calcStart)}</span>
+          </p>
+          <p className="flex justify-between items-center border-t border-gray-200 dark:border-gray-700 pt-1">
+            <span>
+              📅 <strong>Data Final (Supabase):</strong>
+            </span>
+            <span className="font-mono">{formatDateShort(calcEnd)}</span>
+          </p>
+        </div>
+      )}
 
       {}
       <div className="w-full h-48 mt-auto">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
             <defs>
-              <linearGradient id="colorHistory" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="colorCagr" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor={mainColor} stopOpacity={0.3} />
                 <stop offset="95%" stopColor={mainColor} stopOpacity={0} />
               </linearGradient>
@@ -739,36 +714,56 @@ export const CagrSimulator = ({ asset }) => {
               dy={10}
             />
             <YAxis hide domain={['auto', 'auto']} />
-            <Tooltip content={<CustomCagrTooltip />} />
-
-            <Area
-              type="monotone"
-              dataKey="historyValue"
-              stroke={mainColor}
-              strokeWidth={3}
-              fill="url(#colorHistory)"
-              dot={{ r: 4, fill: mainColor, strokeWidth: 2, stroke: isDark ? '#1f2937' : '#fff' }}
+            <Tooltip
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const d = payload[0].payload;
+                  return (
+                    <div className="bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-600 rounded shadow-lg text-xs">
+                      <p className="font-bold mb-1">{d.fullDate}</p>
+                      <p className="font-mono text-purple-500 font-bold text-sm">
+                        R$ {d.value?.toFixed(2) || d.historyValue?.toFixed(2)}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-1">{d.annotation}</p>
+                    </div>
+                  );
+                }
+                return null;
+              }}
             />
 
+            {}
+            {!isHypothetical && chartData.length >= 2 && (
+              <ReferenceArea
+                x1={chartData[0].label}
+                x2={chartData[1].label}
+                fill={isDark ? '#374151' : '#e5e7eb'}
+                fillOpacity={0.3}
+              />
+            )}
+
             <Area
               type="monotone"
-              dataKey="projectionValue"
+              dataKey={isHypothetical ? 'historyValue' : 'value'}
               stroke={mainColor}
-              strokeDasharray="5 5"
-              strokeWidth={2}
-              fill="transparent"
-              dot={{
-                r: 4,
-                fill: mainColor,
-                strokeWidth: 2,
-                stroke: isDark ? '#1f2937' : '#fff',
-                opacity: 0.6,
-              }}
-              activeDot={{ r: 6 }}
+              strokeWidth={3}
+              fill="url(#colorCagr)"
+              dot={{ r: 4, fill: mainColor, strokeWidth: 2, stroke: isDark ? '#1f2937' : '#fff' }}
             />
           </AreaChart>
         </ResponsiveContainer>
       </div>
+
+      {!isHypothetical && (
+        <div className="text-[10px] text-center mt-2 text-gray-400 flex justify-center items-center gap-4">
+          <span className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-gray-300 dark:bg-gray-600 rounded-sm"></div> Janela Real
+          </span>
+          <span className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-purple-500 rounded-full"></div> Curva CAGR
+          </span>
+        </div>
+      )}
     </div>
   );
 };
@@ -949,14 +944,13 @@ export const AsymmetryExplanation = () => {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 h-full flex flex-col relative overflow-hidden">
-      {}
       <div className="absolute -right-6 -top-6 opacity-[0.03] pointer-events-none">
         <ShieldCheck size={200} />
       </div>
 
       <div className="flex items-center gap-2 mb-6 z-10">
         <div className="p-2 bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-lg">
-          <Scale size={20} /> {}
+          <Scale size={20} />
         </div>
         <div>
           <h4 className="font-bold text-gray-900 dark:text-white leading-tight">
@@ -969,18 +963,15 @@ export const AsymmetryExplanation = () => {
       </div>
 
       <div className="flex-1 flex flex-col md:flex-row gap-8 items-end justify-center z-10 pb-4">
-        {}
         <div className="flex-1 w-full group cursor-default">
           <div className="flex justify-between text-xs mb-2 font-medium text-gray-500 dark:text-gray-400">
             <span>Entrar "Atrasado"</span>
             <span className="text-orange-500 font-bold">+15% Custo</span>
           </div>
           <div className="h-32 bg-gray-100 dark:bg-gray-700 rounded-t-lg relative w-full overflow-hidden">
-            {}
             <div className="absolute bottom-0 w-full bg-orange-400/80 h-[25%] transition-all duration-500 group-hover:bg-orange-500 flex items-center justify-center text-white text-xs font-bold">
               Proteção
             </div>
-            {}
             <div className="absolute bottom-[25%] w-full border-t-2 border-dashed border-gray-400/50 text-[9px] text-gray-400 text-right px-1">
               MM200
             </div>
@@ -990,17 +981,14 @@ export const AsymmetryExplanation = () => {
           </p>
         </div>
 
-        {}
         <div className="text-gray-300 font-bold text-xl italic pb-12 self-center">VS</div>
 
-        {}
         <div className="flex-1 w-full group cursor-default">
           <div className="flex justify-between text-xs mb-2 font-medium text-gray-500 dark:text-gray-400">
             <span>Segurar na Queda</span>
             <span className="text-red-600 dark:text-red-400 font-bold">+60% Custo</span>
           </div>
           <div className="h-32 bg-gray-100 dark:bg-gray-700 rounded-t-lg relative w-full overflow-hidden">
-            {}
             <div className="absolute bottom-0 w-full bg-red-500 h-[85%] transition-all duration-500 group-hover:bg-red-600 flex items-center justify-center text-white text-xs font-bold shadow-[0_0_15px_rgba(239,68,68,0.4)]">
               Recuperação
             </div>
@@ -1023,7 +1011,6 @@ export const CagrExplanation = () => {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 h-full flex flex-col relative overflow-hidden">
-      {}
       <div className="absolute -right-6 -top-6 opacity-[0.03] pointer-events-none">
         <Zap size={200} />
       </div>
@@ -1043,7 +1030,6 @@ export const CagrExplanation = () => {
       </div>
 
       <div className="flex-1 flex flex-col md:flex-row gap-8 items-end justify-center z-10 pb-4">
-        {}
         <div className="flex-1 w-full group cursor-default order-2 md:order-1">
           <div className="flex justify-between text-xs mb-2 font-medium text-gray-500 dark:text-gray-400">
             <span>Alta Velocidade (20%)</span>
@@ -1052,11 +1038,9 @@ export const CagrExplanation = () => {
             </span>
           </div>
           <div className="h-32 bg-gray-100 dark:bg-gray-700 rounded-t-lg relative w-full overflow-hidden flex items-end">
-            {}
             <div className="w-full bg-purple-600 h-[90%] transition-all duration-500 group-hover:bg-purple-500 flex items-start justify-center text-white text-[10px] font-bold pt-2 shadow-[0_0_15px_rgba(147,51,234,0.4)]">
               Aceleração
             </div>
-            {}
             <div className="absolute bottom-0 w-full h-1 bg-gray-300 dark:bg-gray-600"></div>
           </div>
           <div className="mt-3 bg-purple-50 dark:bg-purple-900/10 p-2 rounded border border-purple-100 dark:border-purple-900/20">
@@ -1068,23 +1052,19 @@ export const CagrExplanation = () => {
           </div>
         </div>
 
-        {}
         <div className="text-gray-300 font-bold text-xl italic pb-20 md:pb-12 self-center order-1 md:order-2">
           VS
         </div>
 
-        {}
         <div className="flex-1 w-full group cursor-default order-3">
           <div className="flex justify-between text-xs mb-2 font-medium text-gray-500 dark:text-gray-400">
             <span>"Segurança" (10%)</span>
             <span className="text-gray-500 font-bold">R$ 25.900</span>
           </div>
           <div className="h-32 bg-gray-100 dark:bg-gray-700 rounded-t-lg relative w-full overflow-hidden flex items-end">
-            {}
             <div className="w-full bg-gray-400 dark:bg-gray-500 h-[40%] transition-all duration-500 group-hover:bg-gray-400 flex items-start justify-center text-white text-[10px] font-bold pt-2">
               Lentidão
             </div>
-            {}
             <div className="absolute top-2 right-2 text-gray-400 opacity-50">
               <Anchor size={16} />
             </div>
@@ -1098,7 +1078,6 @@ export const CagrExplanation = () => {
         </div>
       </div>
 
-      {}
       <div className="mt-2 text-center">
         <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">
           Simulação: R$ 10k em 10 anos

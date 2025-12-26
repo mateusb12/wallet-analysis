@@ -380,6 +380,22 @@ def get_investment_opportunities(user_id: str = Depends(get_current_user)):
             elif t_upper.endswith("34") or t_upper.endswith("33"):
                 asset_type = "BDR"
 
+            lookback = 252 if len(df_ticker) >= 252 else len(df_ticker) - 1
+
+            # Pega o registro inicial e final da janela de cálculo
+            row_start = df_ticker.iloc[-lookback]
+            row_end = df_ticker.iloc[-1]
+
+            price_start = float(row_start['close'])
+            price_end = float(row_end['close'])
+
+            # Captura as datas exatas (string YYYY-MM-DD)
+            date_start_str = row_start['trade_date'].strftime('%Y-%m-%d')
+            date_end_str = row_end['trade_date'].strftime('%Y-%m-%d')
+
+            # Cálculo Matemático
+            cagr = ((price_end / price_start) - 1) * 100
+
             results.append({
                 "ticker": ticker,
                 "type": asset_type,
@@ -388,7 +404,12 @@ def get_investment_opportunities(user_id: str = Depends(get_current_user)):
                 "cagr": round(cagr, 2),
                 "sharpe": round(sharpe, 2),
                 "tag": tag,  # Nova propriedade enviada ao Frontend
-                "data_points": data_points  # Útil para mostrar "Dados: 45 dias" no front
+                "data_points": data_points,  # Útil para mostrar "Dados: 45 dias" no front
+                "calc_window": {
+                    "start": date_start_str,
+                    "end": date_end_str,
+                    "days": int(lookback)
+                }
             })
 
         # Ordena: Primeiro os "OK" por CAGR, depois os "INCOMPLETE" no final
