@@ -61,27 +61,26 @@ export const defaultCalculator = menuItems[0];
 
 function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
   const [activeItem, setActiveItem] = useState(defaultCalculator.id);
-  const { user, signOut } = useAuth();
+  
+  const { user, profile, signOut } = useAuth();
 
-  if (user) {
-    console.group('Sidebar User Debug');
-    console.log('Full User Object:', user);
-    console.log('User Metadata:', user.user_metadata);
-    console.log('Avatar URL candidate:', user.user_metadata?.avatar_url);
-    console.log('Picture candidate:', user.user_metadata?.picture);
-    console.groupEnd();
-  }
+  if (user) 
 
   const userInitial = user?.email ? user.email.charAt(0).toUpperCase() : 'U';
 
+  
   const userName =
+    profile?.full_name ||
     user?.user_metadata?.full_name ||
     user?.user_metadata?.name ||
     (user?.email ? user.email.split('@')[0] : 'Visitante');
 
   const userEmail = user?.email || '';
 
-  const userAvatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
+  
+  
+  const userAvatarUrl =
+    profile?.avatar_url || user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
 
   const handleItemClick = (item) => {
     setActiveItem(item.id);
