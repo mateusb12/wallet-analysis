@@ -67,8 +67,8 @@ export default function RiskDisclaimer() {
                 </h4>
                 <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
                   O ranking utiliza o CAGR histórico (passado). Um ativo que subiu 20% ao ano nos
-                  últimos anos não tem garantia nenhuma de repetir essa performance. O mercado é
-                  cíclico.
+                  últimos anos não tem garantia nenhuma de que ele vai repetir essa performance. O
+                  mercado é cíclico.
                 </p>
               </div>
             </div>
@@ -85,8 +85,8 @@ export default function RiskDisclaimer() {
                 </h4>
                 <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
                   A Média Móvel (MM200) sofre em mercados sem tendência ("andando de lado"). O
-                  sistema pode gerar vários sinais falsos de compra e venda (stop) consecutivos,
-                  corroendo o capital com pequenos prejuízos.
+                  sistema pode gerar vários falsos positivos de compra e venda (stop) consecutivos,
+                  corroendo o seu capital com pequenos prejuízos.
                 </p>
               </div>
             </div>
@@ -102,9 +102,9 @@ export default function RiskDisclaimer() {
                   Delay da Tendência (Lag)
                 </h4>
                 <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
-                  Por usar uma média longa (200 dias), o sistema é lento. Você entrará na tendência
-                  depois do início da alta e sairá depois que a queda já começou. O objetivo é
-                  evitar o "grande crash", não acertar o topo e fundo.
+                  Por usar uma média longa (200 dias), o sistema é lento. Você vai entrar na
+                  tendência depois do início da alta e vai sair depois que a queda já começou. O
+                  objetivo aqui é evitar o "grande crash", não acertar o topo e fundo do gráfico.
                 </p>
               </div>
             </div>
@@ -122,7 +122,8 @@ export default function RiskDisclaimer() {
                 <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
                   O sistema destaca um "Líder", mas isso não elimina a necessidade de
                   diversificação. Concentrar todo o capital em um único ativo, por melhores que
-                  sejam seus indicadores técnicos, aumenta drasticamente o risco de ruína.
+                  sejam seus indicadores técnicos, aumenta drasticamente o risco de você arruinar a
+                  carteira toda
                 </p>
               </div>
             </div>
