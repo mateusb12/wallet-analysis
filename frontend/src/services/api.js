@@ -1,3 +1,5 @@
+import { supabase } from './supabaseClient.js';
+
 const getBaseUrl = () => {
   let url = import.meta.env.VITE_API_URL;
 
@@ -114,6 +116,27 @@ export const analysisService = {
 
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || 'Simulation failed');
+    return data;
+  },
+
+  async getOpportunities() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    if (!token) throw new Error('User not authenticated');
+
+    const response = await fetch(`${API_URL}/analysis/opportunities`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Failed to fetch opportunities');
     return data;
   },
 };

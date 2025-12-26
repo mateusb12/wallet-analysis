@@ -1,6 +1,6 @@
 import pandas as pd
-from datetime import datetime
-from fastapi import APIRouter, HTTPException
+from datetime import datetime, timedelta
+from fastapi import APIRouter, HTTPException, Depends, Header
 from backend.source.core.db import get_supabase
 from backend.source.features.analysis.analysis_schema import SimulationRequest
 
@@ -235,3 +235,140 @@ def simulate_fii(payload: SimulationRequest):
         "timeline": timeline,
         "period_text": f"({len(df_sim)} meses: {start_sim_date.strftime('%d/%m/%Y')} a {end_sim_date.strftime('%d/%m/%Y')})"
     }
+
+
+def get_current_user(authorization: str = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authentication Token")
+
+    try:
+        # Extract token from "Bearer <token>"
+        token = authorization.split(" ")[1]
+        supabase = get_supabase()
+
+        # Verify token with Supabase Auth
+        user_response = supabase.auth.get_user(token)
+
+        if not user_response or not user_response.user:
+            raise HTTPException(status_code=401, detail="Invalid Authentication Token")
+
+        return user_response.user.id
+
+    except Exception as e:
+        print(f"Auth Error: {str(e)}")
+        raise HTTPException(status_code=401, detail="Invalid Authentication Token")
+
+
+@analysis_bp.get("/opportunities")
+def get_investment_opportunities(user_id: str = Depends(get_current_user)):
+    print(f"\n--- DEBUG: Analysis for Authenticated User {user_id} ---")
+    supabase = get_supabase()
+
+    # 1. Fetch User's Wallet Tickers
+    wallet_response = supabase.table("asset_purchases") \
+        .select("ticker") \
+        .eq("user_id", user_id) \
+        .execute()
+
+    if not wallet_response.data:
+        print("DEBUG: User has no assets.")
+        return []
+
+    my_tickers = list(set([row['ticker'] for row in wallet_response.data]))
+    print(f"DEBUG: Analyzing {len(my_tickers)} assets: {my_tickers}")
+
+    # 2. Fetch Price History
+    start_date = (datetime.now() - timedelta(days=540)).strftime('%Y-%m-%d')
+
+    all_data = []
+    offset = 0
+    batch_size = 1000
+
+    while True:
+        try:
+            response = supabase.table("b3_prices") \
+                .select("ticker,trade_date,close") \
+                .gte("trade_date", start_date) \
+                .in_("ticker", my_tickers) \
+                .range(offset, offset + batch_size - 1) \
+                .execute()
+
+            rows = response.data
+            if not rows:
+                break
+
+            all_data.extend(rows)
+            count_received = len(rows)
+            offset += count_received
+
+            if count_received < batch_size:
+                break
+
+        except Exception as e:
+            print(f"CRITICAL ERROR: {str(e)}")
+            break
+
+    if not all_data:
+        return []
+
+    # 3. Process Metrics
+    try:
+        df = pd.DataFrame(all_data)
+        df['close'] = pd.to_numeric(df['close'])
+        df['trade_date'] = pd.to_datetime(df['trade_date'])
+
+        results = []
+
+        for ticker, df_ticker in df.groupby('ticker'):
+            df_ticker = df_ticker.sort_values('trade_date')
+
+            if len(df_ticker) < 200:
+                continue
+
+            current_price = float(df_ticker.iloc[-1]['close'])
+            mm200 = df_ticker['close'].rolling(window=200).mean().iloc[-1]
+
+            if pd.isna(mm200):
+                continue
+
+            # CAGR
+            lookback = 252 if len(df_ticker) >= 252 else len(df_ticker) - 1
+            price_1y_ago = float(df_ticker.iloc[-lookback]['close'])
+            cagr = ((current_price / price_1y_ago) - 1) * 100
+
+            # Sharpe
+            df_ticker['returns'] = df_ticker['close'].pct_change()
+            clean_returns = df_ticker['returns'].dropna()
+
+            sharpe = 0.0
+            if not clean_returns.empty:
+                daily_std = clean_returns.std()
+                if daily_std > 0:
+                    sharpe = (clean_returns.mean() / daily_std) * (252 ** 0.5)
+
+            # Asset Type
+            asset_type = "STOCK"
+            t_upper = ticker.upper()
+            if t_upper.endswith("11"):
+                if t_upper in ["IVVB11", "QQQQ11", "BOVA11", "SMAL11", "XINA11", "HASH11", "GOLD11"]:
+                    asset_type = "ETF"
+                else:
+                    asset_type = "FII"
+            elif t_upper.endswith("34") or t_upper.endswith("33"):
+                asset_type = "BDR"
+
+            results.append({
+                "ticker": ticker,
+                "type": asset_type,
+                "price": round(current_price, 2),
+                "mm200": round(float(mm200), 2),
+                "cagr": round(cagr, 2),
+                "sharpe": round(sharpe, 2)
+            })
+
+        results.sort(key=lambda x: x['cagr'], reverse=True)
+        return results
+
+    except Exception as e:
+        print(f"PANDAS ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

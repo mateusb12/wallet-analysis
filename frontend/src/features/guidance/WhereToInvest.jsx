@@ -9,6 +9,7 @@ import {
   ArrowRight,
   X,
   Info,
+  RefreshCw,
 } from 'lucide-react';
 import {
   StrategySimulator,
@@ -19,23 +20,8 @@ import {
   CagrExplanation,
 } from './FinancialEducationCharts';
 import RiskDisclaimer from './RiskDisclaimer.jsx';
-
-const MOCK_API_RESPONSE = [
-  { ticker: 'QQQQ11', type: 'ETF', price: 112.46, mm200: 98.2, cagr: 21.5, sharpe: 1.2 },
-  { ticker: 'IVVB11', type: 'ETF', price: 280.0, mm200: 295.5, cagr: 18.2, sharpe: 0.4 },
-  { ticker: 'BTLG11', type: 'FII', price: 102.11, mm200: 100.5, cagr: 12.8, sharpe: 0.9 },
-  { ticker: 'WEGE3', type: 'STOCK', price: 43.85, mm200: 38.0, cagr: 15.4, sharpe: 1.1 },
-];
-
-const MarketService = {
-  fetchOpportunities: () => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(MOCK_API_RESPONSE);
-      }, 800);
-    });
-  },
-};
+import { analysisService } from '../../services/api.js';
+import { useAuth } from '../auth/AuthContext.jsx';
 
 const SHARPE_RANGES = [
   {
@@ -208,12 +194,16 @@ export default function WhereToInvest() {
   const [recommendation, setRecommendation] = useState(null);
   const [selectedTicker, setSelectedTicker] = useState(null);
 
+  const { user } = useAuth();
+
   useEffect(() => {
+    if (!user) return;
+
     const initData = async () => {
       try {
         setLoading(true);
 
-        const rawData = await MarketService.fetchOpportunities();
+        const rawData = await analysisService.getOpportunities();
 
         const processed = rawData.map((asset) => {
           const momentum = asset.price > asset.mm200;
@@ -223,9 +213,11 @@ export default function WhereToInvest() {
         });
 
         const ranked = processed.sort((a, b) => b.cagr - a.cagr);
+
         let foundLeader = false;
         const finalRanked = ranked.map((asset) => {
           if (!asset.momentum) return { ...asset, status: 'BLOQUEADO' };
+
           if (!foundLeader) {
             foundLeader = true;
             return { ...asset, status: 'LÍDER' };
@@ -234,8 +226,14 @@ export default function WhereToInvest() {
         });
 
         setAnalysis(finalRanked);
+
         const leader = finalRanked.find((a) => a.status === 'LÍDER');
-        setRecommendation(leader || { type: 'CASH' });
+
+        if (finalRanked.length === 0) {
+          setRecommendation(null);
+        } else {
+          setRecommendation(leader || { type: 'CASH', ticker: 'CAIXA' });
+        }
       } catch (error) {
         console.error('Failed to fetch market data', error);
       } finally {
@@ -244,7 +242,7 @@ export default function WhereToInvest() {
     };
 
     initData();
-  }, []);
+  }, [user]);
 
   const maxCagr = useMemo(() => Math.max(...analysis.map((a) => a.cagr), 0), [analysis]);
 
@@ -278,6 +276,23 @@ export default function WhereToInvest() {
       {loading ? (
         <div className="p-12 text-center text-gray-500 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 animate-pulse">
           Calculando tendências e volatilidade...
+        </div>
+      ) : !displayedAsset ? (
+        <div className="p-12 text-center bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="mx-auto w-16 h-16 bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400 rounded-full flex items-center justify-center mb-4">
+            <AlertTriangle size={32} />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+            Dados Insuficientes
+          </h3>
+          <p className="text-gray-500 dark:text-gray-400 max-w-md mx-auto mb-6">
+            O banco de dados não encontrou histórico de preços suficiente (min 200 dias) para
+            calcular os indicadores dos seus ativos.
+          </p>
+          <div className="flex items-center justify-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 py-2 px-4 rounded-lg w-fit mx-auto">
+            <RefreshCw size={16} />
+            Dica: Vá em "Configurações &gt; Sincronização Manual"
+          </div>
         </div>
       ) : (
         <>
