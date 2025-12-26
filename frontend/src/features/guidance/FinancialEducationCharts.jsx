@@ -310,6 +310,7 @@ export const StrategySimulator = ({ asset }) => {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const gridColor = isDark ? '#374151' : '#e5e7eb';
+  const axisTextColor = isDark ? '#9ca3af' : '#6b7280';
 
   const isHypothetical = !asset;
   const isNaive = mode === 'naive';
@@ -346,25 +347,34 @@ export const StrategySimulator = ({ asset }) => {
     }
 
     const points = [];
-    const trendDirection = asset.momentum ? 1 : -1;
-    const trendStep = 0.005;
+    const dataPoints = 20;
+    const daysTotal = 180;
+    const stepDays = Math.floor(daysTotal / dataPoints);
 
-    let currentPrice = asset.price;
-    let simPrice = currentPrice * (1 - trendDirection * trendStep * 5);
-    let simMM = asset.mm200;
+    const isUptrend = asset.momentum;
 
-    for (let i = 0; i < 6; i++) {
-      const dayLabel = getFormattedDate(-(5 - i));
+    const priceStartFactor = isUptrend ? 0.85 : 1.15;
+    const mmStartFactor = isUptrend ? 0.9 : 1.05;
+
+    for (let i = dataPoints; i >= 0; i--) {
+      const progress = 1 - i / dataPoints;
+
+      const dayLabel = i === 0 ? 'Hoje' : getFormattedDate(-(i * stepDays));
+
+      const projectedMM = asset.mm200 * (mmStartFactor + (1 - mmStartFactor) * progress);
+
+      const noise = i === 0 ? 0 : Math.sin(progress * Math.PI * 3) * (asset.price * 0.04);
+      const basePrice = asset.price * (priceStartFactor + (1 - priceStartFactor) * progress);
+      const projectedPrice = basePrice + noise;
 
       points.push({
         day: dayLabel,
-        price: simPrice,
-        mm200: simMM,
-        action: asset.momentum ? 'MANTER' : 'AGUARDAR',
+        price: projectedPrice,
+        mm200: projectedMM,
+        action: projectedPrice > projectedMM ? 'MANTER' : 'AGUARDAR',
       });
-      simPrice = simPrice * (1 + trendDirection * trendStep);
-      simMM = simMM * 1.0005;
     }
+
     return points;
   }, [asset, isHypothetical]);
 
@@ -387,13 +397,15 @@ export const StrategySimulator = ({ asset }) => {
     } else {
       const isGood = asset.momentum;
       return {
-        title: `Análise Técnica: ${asset.ticker}`,
-        desc: isGood ? 'Tendência de Alta Confirmada' : 'Tendência de Baixa Detectada',
+        title: `Análise Técnica (Tendência Primária)`,
+        desc: isGood
+          ? `Tendência de Alta nos últimos meses`
+          : `Tendência de Baixa nos últimos meses`,
         icon: isGood ? <TrendingUp className="text-green-500" /> : <Ban className="text-red-500" />,
-        messageTitle: isGood ? 'Por que é Top Ranking?' : 'Por que está Bloqueado?',
+        messageTitle: isGood ? 'Configuração Top Ranking:' : 'Bloqueio de Segurança:',
         message: isGood
-          ? `O preço (R$ ${asset.price}) está trabalhando ACIMA da média de 200 dias (R$ ${asset.mm200}). O mercado está pagando cada vez mais caro.`
-          : `O preço (R$ ${asset.price}) perdeu a média de 200 (R$ ${asset.mm200}). A probabilidade matemática está contra você agora.`,
+          ? `O preço (R$ ${asset.price}) está trabalhando ACIMA da média de 200 dias (R$ ${asset.mm200}). O mercado vem pagando cada vez mais caro ao longo do tempo.`
+          : `O preço (R$ ${asset.price}) perdeu a média de 200 (R$ ${asset.mm200}). Estatisticamente, ativos abaixo dessa média tendem a continuar caindo ou andar de lado.`,
         color: isGood ? 'indigo' : 'gray',
       };
     }
@@ -404,14 +416,17 @@ export const StrategySimulator = ({ asset }) => {
     if (!cx || !cy) return null;
 
     if (!isHypothetical) {
+      const isToday = payload.day === 'Hoje';
+
       return (
         <circle
           cx={cx}
           cy={cy}
-          r={4}
+          r={isToday ? 5 : 3}
           fill={asset.momentum ? '#10b981' : '#ef4444'}
           stroke="white"
-          strokeWidth={2}
+          strokeWidth={isToday ? 2 : 1}
+          style={{ cursor: 'pointer' }}
         />
       );
     }
@@ -487,10 +502,31 @@ export const StrategySimulator = ({ asset }) => {
 
       <div className="w-full h-40">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 10, right: 30, bottom: 5, left: -10 }}>
+          <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-            <XAxis dataKey="day" hide />
-            <YAxis domain={['auto', 'auto']} hide />
+
+            {}
+            <XAxis
+              dataKey="day"
+              hide={false}
+              interval={isHypothetical ? 0 : 4}
+              tick={{ fontSize: 10, fill: axisTextColor }}
+              axisLine={false}
+              tickLine={false}
+              dy={5}
+            />
+
+            {}
+            <YAxis
+              domain={['auto', 'auto']}
+              hide={false}
+              width={45}
+              tickFormatter={(val) => `R$${val.toFixed(0)}`}
+              tick={{ fontSize: 10, fill: axisTextColor }}
+              axisLine={false}
+              tickLine={false}
+            />
+
             <Tooltip
               content={
                 <CustomStrategyTooltip
@@ -508,6 +544,7 @@ export const StrategySimulator = ({ asset }) => {
               strokeWidth={2}
               strokeDasharray="4 4"
               dot={false}
+              animationDuration={1500}
             />
             <Line
               type="monotone"
@@ -519,9 +556,10 @@ export const StrategySimulator = ({ asset }) => {
                     ? '#10b981'
                     : '#ef4444'
               }
-              strokeWidth={3}
+              strokeWidth={2}
               dot={<CustomDot />}
               activeDot={{ r: 6, strokeWidth: 0 }}
+              animationDuration={1500}
             />
           </LineChart>
         </ResponsiveContainer>
