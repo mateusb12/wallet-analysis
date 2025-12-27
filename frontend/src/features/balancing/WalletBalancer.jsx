@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { fetchWalletPositions } from '../../services/walletDataService.js';
 import TargetConfigModal from './TargetConfigModal';
+import { useAuth } from '../auth/AuthContext';
+import { userService } from '../../services/userService.js';
 
 const FormatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -405,10 +407,9 @@ const DEFAULT_TARGETS = {
 };
 
 const WalletBalancer = () => {
-  const [targets, setTargets] = useState(() => {
-    const saved = localStorage.getItem('wallet_balancer_targets');
-    return saved ? JSON.parse(saved) : DEFAULT_TARGETS;
-  });
+  const { dbUser } = useAuth();
+
+  const targets = dbUser?.balancing_settings || DEFAULT_TARGETS;
 
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [portfolioTree, setPortfolioTree] = useState(null);
@@ -421,16 +422,22 @@ const WalletBalancer = () => {
     loadAndClassifyWallet();
   }, []);
 
-  const handleSaveTargets = (newTargets) => {
-    setTargets(newTargets);
-    localStorage.setItem('wallet_balancer_targets', JSON.stringify(newTargets));
-    setIsConfigOpen(false);
+  const handleSaveTargets = async (newTargets) => {
+    try {
+      await userService.updateProfile({
+        balancing_settings: newTargets,
+      });
+
+      window.location.reload();
+    } catch (error) {
+      console.error('Erro ao salvar configurações:', error);
+      alert('Erro ao salvar as metas. Verifique o console.');
+    }
   };
 
-  const handleResetTargets = () => {
+  const handleResetTargets = async () => {
     if (window.confirm('Deseja restaurar as configurações padrão (Modelo Binário)?')) {
-      setTargets(DEFAULT_TARGETS);
-      localStorage.setItem('wallet_balancer_targets', JSON.stringify(DEFAULT_TARGETS));
+      await handleSaveTargets(DEFAULT_TARGETS);
       setIsConfigOpen(false);
     }
   };
@@ -782,7 +789,6 @@ const WalletBalancer = () => {
           })}
         </div>
 
-        {}
         <AIAnalysisReport tree={portfolioTree} targets={targets} />
       </div>
     </>

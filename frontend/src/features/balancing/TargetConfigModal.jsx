@@ -8,6 +8,7 @@ import {
   Layers,
   AlertCircle,
   CheckCircle2,
+  Loader2,
 } from 'lucide-react';
 
 const COLOR_MAP = {
@@ -87,7 +88,6 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
 
   return (
     <div className="flex items-center gap-4 py-3 group">
-      {}
       <div className="w-28 shrink-0">
         <label
           className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize truncate block"
@@ -97,11 +97,8 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
         </label>
       </div>
 
-      {}
       <div className="flex-1 relative h-6 flex items-center">
-        {}
         <div className="absolute inset-x-0 h-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 overflow-hidden pointer-events-none">
-          {}
           {!isOverLimit && (
             <div
               className={`absolute h-full transition-all duration-300 animate-super-pulse ${colorStyles.bg}`}
@@ -109,7 +106,6 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
             />
           )}
 
-          {}
           {isOverLimit && (
             <div
               className="absolute h-full bg-red-600 transition-all duration-300 animate-super-pulse"
@@ -117,8 +113,6 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
             />
           )}
 
-          {}
-          {}
           {showRedPath && (
             <div
               className="absolute h-full bg-red-500/40 transition-all duration-300"
@@ -126,14 +120,12 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
             />
           )}
 
-          {}
           <div
             className={`absolute h-full ${colorStyles.bg} transition-all duration-75`}
             style={{ width: safeWidth }}
           />
         </div>
 
-        {}
         <input
           type="range"
           min="0"
@@ -143,7 +135,6 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
           className="w-full absolute z-10 opacity-0 cursor-pointer h-6 m-0 p-0"
         />
 
-        {}
         <div
           className={`
             absolute h-4 w-4 bg-white rounded-full shadow-md border pointer-events-none transition-transform duration-75 ease-out z-20
@@ -155,7 +146,6 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
         />
       </div>
 
-      {}
       <div className="w-16 shrink-0 relative">
         <div
           className={`
@@ -189,6 +179,8 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
   const [localTargets, setLocalTargets] = useState(currentTargets);
   const [initialSnapshot, setInitialSnapshot] = useState(null);
 
+  const [isSaving, setIsSaving] = useState(false);
+
   useEffect(() => {
     if (currentTargets && isOpen) {
       setLocalTargets(currentTargets);
@@ -221,6 +213,20 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
   const totalMacro = Object.values(localTargets.macro).reduce((a, b) => a + b, 0);
   const remainingMacroSpace = 100 - totalMacro;
   const isMacroValid = totalMacro === 100;
+
+  const handleSaveClick = async () => {
+    if (!isMacroValid) return;
+
+    setIsSaving(true);
+    try {
+      await onSave(localTargets);
+      onClose();
+    } catch (error) {
+      console.error('Erro ao salvar', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const renderTotalStatus = (total) => {
     const baseClasses =
@@ -293,7 +299,6 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
       `}</style>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden border border-gray-100 dark:border-gray-700">
-        {}
         <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-white dark:bg-gray-800 shrink-0">
           <div>
             <h2 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
@@ -303,15 +308,14 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+            disabled={isSaving}
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors disabled:opacity-50"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {}
         <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-          {}
           <section className="space-y-4">
             <div className="flex justify-between items-end">
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
@@ -344,7 +348,6 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
             </div>
           </section>
 
-          {}
           <section className="space-y-6">
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2 border-b border-gray-100 dark:border-gray-700 pb-2">
               <Layers className="w-4 h-4" /> Metas Específicas
@@ -410,19 +413,19 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
           </section>
         </div>
 
-        {}
         <div className="p-4 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 flex justify-between shrink-0">
           <button
             onClick={onReset}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-200 rounded-lg transition-colors"
+            disabled={isSaving}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
           >
             <RotateCcw className="w-4 h-4" />
             Restaurar
           </button>
 
           <button
-            onClick={() => onSave(localTargets)}
-            disabled={!isMacroValid}
+            onClick={handleSaveClick}
+            disabled={!isMacroValid || isSaving}
             className={`
               flex items-center gap-2 px-6 py-2 rounded-lg font-bold shadow-sm transition-all active:scale-95
               ${
@@ -432,8 +435,17 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
               }
             `}
           >
-            <Save className="w-4 h-4" />
-            {isMacroValid ? 'Salvar Configuração' : 'Corrija o Total'}
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                {isMacroValid ? 'Salvar Configuração' : 'Corrija o Total'}
+              </>
+            )}
           </button>
         </div>
       </div>

@@ -19,9 +19,8 @@ def update_user_profile(
     """
     Atualiza o perfil do usuário logado (Avatar, Nome, etc).
     """
-    # 1. Busca o usuário na tabela public.users
-    # (current_user.id vem do token JWT do Supabase Auth)
-    user_profile = db.query(User).filter(User.id == current_user.id).first()
+    # CORREÇÃO: current_user já é uma string (o ID), então removemos o .id
+    user_profile = db.query(User).filter(User.id == current_user).first()
 
     if not user_profile:
         # Se a trigger falhou ou o usuário não existe no public schema
@@ -52,7 +51,7 @@ def get_user_profile(
     """
     Retorna os dados do perfil público do usuário logado.
     """
-    user_profile = db.query(User).filter(User.id == current_user.id).first()
+    user_profile = db.query(User).filter(User.id == current_user).first()
 
     if not user_profile:
         raise HTTPException(status_code=404, detail="Profile not found")
