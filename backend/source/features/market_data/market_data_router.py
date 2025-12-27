@@ -52,13 +52,18 @@ CLASSIFICATION_OVERRIDES: Dict[str, Dict[str, str]] = {
         "reasoning": "Override: fundo conhecido do segmento lajes corporativas."
     },
     "IVVB11": {
-        "detected_type": "ETF - Internacional (EUA - S&P 500)",
-        "sector": "ETF",
+        "detected_type": "ETF - Internacional (Base Global)",
+        "sector": "ETF - Base Global",
         "reasoning": "Override: ETF conhecido S&P 500."
     },
+    "WRLD11": {
+        "detected_type": "ETF - Internacional (Base Global)",
+        "sector": "ETF - Base Global",
+        "reasoning": "Override: ETF Global."
+    },
     "QQQQ11": {
-        "detected_type": "ETF - Internacional (EUA - Nasdaq-100 High Beta)",
-        "sector": "ETF",
+        "detected_type": "ETF - Tech/Growth (Nasdaq)",
+        "sector": "ETF - Específicos/Fatores",
         "reasoning": "Override: ETF conhecido Nasdaq-100 High Beta."
     },
 }
@@ -226,10 +231,10 @@ def _upsert_cache(supabase, row: Dict[str, Any]) -> None:
 @market_data_bp.post("/classify")
 def classify_ticker(payload: TickerSync):
     """
-    Classify an asset (FII, ETF or Stock) using:
-    - normalization + regex patterns + scoring
-    - cache (Supabase)
-    - hard overrides
+    Classify an asset (FII, ETF or Stock) using strategies for grouping:
+    - Stocks: Perenes (Renda) vs Cíclicas (Crescimento)
+    - ETFs: Base Global vs Fatores/Específicos
+    - FIIs: Tijolo vs Papel logic
     """
     ticker = payload.ticker
     if not ticker:
@@ -328,7 +333,6 @@ def classify_ticker(payload: TickerSync):
 
         # === FII LOGIC ===
         if looks_fii:
-            # FIX: Force sector to 'Real Estate' instead of whatever Yahoo sent
             base_result["sector"] = "Real Estate"
 
             if s_fiagro >= 1:
@@ -374,45 +378,54 @@ def classify_ticker(payload: TickerSync):
             _upsert_cache(supabase, base_result)
             return base_result
 
-        # === ETF LOGIC ===
+        # === ETF LOGIC (Updated for Strategy) ===
         if looks_etf:
-            # FIX: Force sector to 'ETF' (or broad variants)
-            # Default to ETF, can be refined below if 'Internacional' logic exists
-            base_result["sector"] = "ETF"
+            # Default to Specific/Factor
+            base_result["sector"] = "ETF - Específicos/Fatores"
 
-            if ("sp 500" in text) or ("s p 500" in text) or ("s&p 500" in text) or (ticker_up.lower() == "ivvb11"):
-                base_result["detected_type"] = "ETF - Internacional (EUA - S&P 500)"
-                base_result["reasoning"] = "Identificado como ETF ligado ao S&P 500."
-            elif ("nasdaq" in text) or (ticker_up.lower() in ("qqqq11", "qbtc11")):
-                if ticker_up.lower() == "qqqq11" or "high beta" in text:
-                    base_result["detected_type"] = "ETF - Internacional (EUA - Nasdaq-100 High Beta)"
-                else:
-                    base_result["detected_type"] = "ETF - Internacional (EUA - Nasdaq)"
-                base_result["reasoning"] = "Identificado como ETF ligado ao Nasdaq."
-            elif ("ibovespa" in text) or ("ibov" in text) or ("bova" in text):
+            # 1. Base Global / Neutra (Dólar ou Índice Amplo)
+            is_global_base = any(x in text for x in ["sp 500", "s p 500", "s&p 500", "msci world", "total world"])
+            is_br_base = any(x in text for x in ["ibovespa", "ibov", "bova"])
+
+            if is_global_base or (ticker_up in ["IVVB11", "WRLD11", "EURP11", "BIAX11"]):
+                base_result["detected_type"] = "ETF - Internacional (Base Global)"
+                base_result["sector"] = "ETF - Base Global"
+                base_result["reasoning"] = "Índice de mercado amplo (S&P 500 / Mundo)."
+
+            elif is_br_base:
                 base_result["detected_type"] = "ETF - Brasil (Ibovespa)"
-                base_result["reasoning"] = "Identificado como ETF ligado ao Ibovespa."
+                base_result["sector"] = "ETF - Base Brasil"
+                base_result["reasoning"] = "Índice de mercado amplo Brasil."
+
+            # 2. Satélites / Fatores / Temáticos
+            elif ("nasdaq" in text) or (ticker_up in ["QQQQ11", "NASD11"]):
+                base_result["detected_type"] = "ETF - Tech/Growth (Nasdaq)"
+                base_result["reasoning"] = "Foco em Tecnologia/Crescimento."
+
             elif ("small" in text) or ("smal" in text):
-                base_result["detected_type"] = "ETF - Brasil (Small Caps)"
-                base_result["reasoning"] = "Identificado como ETF de small caps."
-            elif ("crypto" in text) or ("bitcoin" in text) or ("hash" in text):
-                base_result["detected_type"] = "ETF - Cripto"
-                base_result["reasoning"] = "Identificado como ETF cripto."
-            elif ("fixed income" in text) or ("renda fixa" in text):
+                base_result["detected_type"] = "ETF - Small Caps"
+                base_result["reasoning"] = "Fator de tamanho (Small Caps)."
+
+            elif ("crypto" in text) or ("bitcoin" in text) or ("hash" in text) or ("ether" in text):
+                base_result["detected_type"] = "ETF - Criptoativos"
+                base_result["reasoning"] = "Exposição a Cripto."
+
+            elif ("fixed income" in text) or ("renda fixa" in text) or ("b5p2" in text.lower()):
                 base_result["detected_type"] = "ETF - Renda Fixa"
-                base_result["reasoning"] = "Identificado como ETF de renda fixa."
+                base_result["reasoning"] = "ETF de renda fixa."
+
             else:
-                base_result["detected_type"] = "ETF - Outros"
-                base_result[
-                    "reasoning"] = "Identificado como ETF, mas não foi possível inferir o índice/região com precisão."
+                base_result["detected_type"] = "ETF - Outros/Temático"
+                base_result["reasoning"] = "ETF setorial ou específico não mapeado como base."
 
             base_result["confidence"] = _confidence_from_scores(False, True, qtype_n, scores, matched_override=False)
             base_result["source"] = "heuristic+yahoo"
             _upsert_cache(supabase, base_result)
             return base_result
 
-        # === STOCKS (AÇÕES) ===
+        # === STOCKS (AÇÕES) LOGIC (Updated for Strategy) ===
         if qtype_n == "equity" or ("equity" in qtype_n):
+            # 1. Translate Sector
             sector_map = {
                 "financial services": "Financeiro",
                 "basic materials": "Materiais Básicos",
@@ -424,13 +437,30 @@ def classify_ticker(payload: TickerSync):
                 "technology": "Tecnologia",
                 "healthcare": "Saúde",
                 "real estate": "Imobiliário",
+                "communication services": "Comunicações"
             }
-            mapped_sector = sector_map.get(sector_n, (sector.capitalize() if sector else "Geral"))
+            translated_sector = sector_map.get(sector_n, (sector.capitalize() if sector else "Geral"))
 
-            # Stock sector is valid, but we translate it
-            base_result["sector"] = mapped_sector
-            base_result["detected_type"] = f"Ação - {mapped_sector}"
-            base_result["reasoning"] = f"Identificado como Ação. Setor Original: {sector or 'desconhecido'}"
+            # 2. Strategic Grouping (Perene vs Cíclico)
+            STRATEGY_PERENE = [
+                "Financeiro",
+                "Utilidade Pública",
+                "Energia",
+                "Consumo Não-Cíclico",
+                "Saúde",
+                "Imobiliário"
+            ]
+
+            if translated_sector in STRATEGY_PERENE:
+                macro_strategy = "Ações - Perenes (Renda/Defesa)"
+            else:
+                macro_strategy = "Ações - Cíclicas (Valor/Crescimento)"
+
+            # Use macro_strategy as 'sector' for the dashboard grouping
+            base_result["sector"] = macro_strategy
+            base_result["detected_type"] = f"Ação - {translated_sector}"
+            base_result["reasoning"] = f"Estratégia: {macro_strategy}. Setor Original: {translated_sector}"
+
             base_result["confidence"] = _confidence_from_scores(False, False, qtype_n, scores, matched_override=False)
             base_result["source"] = "heuristic+yahoo"
             _upsert_cache(supabase, base_result)

@@ -226,11 +226,20 @@ const AssetListTable = ({ assets, totalValue, isUnclassified }) => {
 };
 
 const DEFAULT_TARGETS = {
-  macro: { fii: 40, acoes: 40, etf: 20, outros: 0 },
+  macro: { fii: 34, acoes: 33, etf: 33, outros: 0 },
   micro: {
-    fii: { Tijolo: 60, Papel: 40 },
-    acoes: { Financeiro: 30, Energia: 20, 'Utilidade Pública': 20, Geral: 30 },
-    etf: { Internacional: 70, Brasil: 30 },
+    fii: {
+      Tijolo: 60,
+      Papel: 40,
+    },
+    acoes: {
+      'Perenes (Renda/Defesa)': 60,
+      'Cíclicas (Valor/Crescimento)': 40,
+    },
+    etf: {
+      'Base Global': 70,
+      'Específicos/Fatores': 30,
+    },
     outros: { Indefinido: 0 },
   },
 };
@@ -259,7 +268,7 @@ const WalletBalancer = () => {
   };
 
   const handleResetTargets = () => {
-    if (window.confirm('Deseja restaurar as configurações padrão?')) {
+    if (window.confirm('Deseja restaurar as configurações padrão (Modelo Binário)?')) {
       setTargets(DEFAULT_TARGETS);
       localStorage.setItem('wallet_balancer_targets', JSON.stringify(DEFAULT_TARGETS));
       setIsConfigOpen(false);
@@ -306,7 +315,9 @@ const WalletBalancer = () => {
       };
 
       classifications.forEach((item) => {
-        const typeStr = item.classification.detected_type || 'Indefinido';
+        const cls = item.classification;
+        const typeStr = cls.detected_type || 'Indefinido';
+        const sectorStr = cls.sector || 'Indefinido';
 
         let macro = 'outros';
         let subType = 'Indefinido';
@@ -315,11 +326,13 @@ const WalletBalancer = () => {
         else if (typeStr.startsWith('ETF')) macro = 'etf';
         else if (typeStr.startsWith('Ação')) macro = 'acoes';
 
-        const separator = ' - ';
-        if (typeStr.includes(separator)) {
-          const splitIndex = typeStr.indexOf(separator);
-          if (splitIndex !== -1) {
-            subType = typeStr.substring(splitIndex + separator.length);
+        if (macro === 'acoes' || macro === 'etf') {
+          subType = sectorStr.replace(/^(Ações|ETF)\s-\s/, '');
+        } else if (macro === 'fii') {
+          if (typeStr.includes('Tijolo')) {
+            subType = 'Tijolo';
+          } else {
+            subType = 'Papel';
           }
         }
 
@@ -334,7 +347,8 @@ const WalletBalancer = () => {
         newTree[macro].subTypes[subType].value += item.totalVal;
         newTree[macro].subTypes[subType].assets.push({
           ticker: item.ticker,
-          sector: item.classification.sector || subType,
+
+          sector: typeStr.replace(/^(Ação|FII|ETF)\s-\s/, ''),
           qty: item.qty,
           price: item.price,
         });
@@ -415,7 +429,7 @@ const WalletBalancer = () => {
               Inteligência de Aporte
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Baseado nos seus ativos reais (Classificação Automática)
+              Baseado nos seus ativos reais (Classificação Binária)
             </p>
           </div>
           <div className="ml-auto flex gap-2">
