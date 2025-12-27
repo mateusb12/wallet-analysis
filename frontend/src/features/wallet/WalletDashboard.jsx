@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   fetchWalletPositions,
   fetchWalletPerformanceHistory,
@@ -17,6 +18,9 @@ import {
   DollarSign,
   Percent,
   Clock,
+  Bug,
+  BarChart2,
+  ArrowRight,
 } from 'lucide-react';
 
 import iconStocks from '../../assets/stocks.png';
@@ -679,6 +683,8 @@ const CustomPieTooltip = ({ active, payload }) => {
 };
 
 function WalletDashboard() {
+  const navigate = useNavigate();
+
   const [positions, setPositions] = useState([]);
   const [fullHistoryData, setFullHistoryData] = useState({
     stock: [],
@@ -698,6 +704,8 @@ function WalletDashboard() {
   const [profitPeriod, setProfitPeriod] = useState('total');
 
   const [highlightedDate, setHighlightedDate] = useState(null);
+
+  const [debugShowEmpty, setDebugShowEmpty] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -928,115 +936,168 @@ function WalletDashboard() {
     return <WalletSkeleton />;
   }
 
+  const showEmptyState = (positions.length === 0 && !loading) || debugShowEmpty;
+
   return (
     <div className="p-8 dark:bg-gray-900 min-h-screen font-sans animate-fade-in">
       <DataConsistencyAlert warnings={dataWarnings} className="mb-6" />
 
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">Meu Portfólio</h2>
-        <CategoryTabs
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          categoryTotals={categoryTotals}
-        />
+      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-3">
+            Meu Portfólio
+            {import.meta.env.DEV && (
+              <button
+                onClick={() => setDebugShowEmpty(!debugShowEmpty)}
+                className={`p-2 rounded-lg transition-all border ${
+                  debugShowEmpty
+                    ? 'bg-orange-100 text-orange-600 border-orange-200'
+                    : 'bg-gray-100 text-gray-400 border-gray-200 hover:text-orange-500'
+                }`}
+                title="Simular conta vazia (Debug - Dev Only)"
+              >
+                <Bug size={20} />
+              </button>
+            )}
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
+            Acompanhe a evolução do seu patrimônio em tempo real.
+          </p>
+        </div>
       </div>
 
-      <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-        {}
-        <div className="flex flex-col sm:flex-row justify-between items-end sm:items-center mb-4 gap-2">
-          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-            Resumo Financeiro
+      {showEmptyState ? (
+        <div className="flex flex-col items-center justify-center py-16 px-4 animate-in fade-in duration-500 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50/50 dark:bg-gray-800/30">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-full shadow-lg mb-6 ring-8 ring-gray-100 dark:ring-gray-700/50">
+            <BarChart2 className="w-16 h-16 text-blue-500" />
+          </div>
+
+          <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3 text-center">
+            Sua carteira está vazia
           </h3>
 
-          <div className="flex items-center gap-2 bg-white dark:bg-gray-800 p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm hover:border-blue-400 transition-colors">
-            <Clock className="w-4 h-4 text-blue-500 ml-2" />
-            <select
-              value={profitPeriod}
-              onChange={(e) => setProfitPeriod(e.target.value)}
-              className="bg-transparent border-none text-sm font-medium text-gray-700 dark:text-gray-200 focus:ring-0 cursor-pointer py-1 pr-8 outline-none"
-            >
-              {}
-              {availablePeriods.map((period) => (
-                <option key={period.id} value={period.id}>
-                  {period.label}
-                </option>
-              ))}
-            </select>
+          <p className="text-gray-500 dark:text-gray-400 text-center max-w-md mb-8 leading-relaxed">
+            Parece que você ainda não cadastrou nenhum ativo. Para visualizar gráficos de
+            rentabilidade, distribuição e histórico, você precisa importar seus dados da B3.
+          </p>
+
+          <button
+            onClick={() => navigate('/gerenciar-ativos')}
+            className="group flex items-center gap-3 px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all transform hover:-translate-y-1"
+          >
+            <Wallet className="w-5 h-5" />
+            Gerenciar e Importar Ativos
+            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+          </button>
+
+          <p className="mt-6 text-xs text-gray-400 uppercase tracking-widest font-semibold">
+            Configuração Rápida em 3 minutos
+          </p>
+        </div>
+      ) : (
+        <>
+          <CategoryTabs
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            categoryTotals={categoryTotals}
+          />
+
+          <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+            <div className="flex flex-col sm:flex-row justify-between items-end sm:items-center mb-4 gap-2">
+              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                Resumo Financeiro
+              </h3>
+
+              <div className="flex items-center gap-2 bg-white dark:bg-gray-800 p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm hover:border-blue-400 transition-colors">
+                <Clock className="w-4 h-4 text-blue-500 ml-2" />
+                <select
+                  value={profitPeriod}
+                  onChange={(e) => setProfitPeriod(e.target.value)}
+                  className="bg-transparent border-none text-sm font-medium text-gray-700 dark:text-gray-200 focus:ring-0 cursor-pointer py-1 pr-8 outline-none"
+                >
+                  {availablePeriods.map((period) => (
+                    <option key={period.id} value={period.id}>
+                      {period.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <SummaryCard
+                title="Total Investido"
+                value={formatCurrency(totalInvested)}
+                subtext={selectedAssetTicker ? selectedAssetTicker : 'Custo de aquisição'}
+              />
+              <SummaryCard
+                title="Valor Atual"
+                value={formatCurrency(totalValue)}
+                subtext={`Cotação Atual (${selectedAssetTicker ? selectedAssetTicker : CATEGORIES_CONFIG[activeTab].label})`}
+              />
+              <SummaryCard
+                title={periodStats.profit >= 0 ? 'Lucro (R$)' : 'Prejuízo (R$)'}
+                value={formatCurrency(periodStats.profit)}
+                rawValue={periodStats.profit}
+                type="profit"
+                subtext={periodStats.labelSuffix}
+              />
+              <SummaryCard
+                title="Rentabilidade (%)"
+                value={formatPercent(periodStats.yield)}
+                rawValue={periodStats.yield}
+                type="profit"
+                subtext={periodStats.labelSuffix}
+              />
+            </div>
+
+            {activeTab === 'total' && <TopPerformersSection positions={positions} />}
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+              <PerformanceSection
+                selectedAssetTicker={selectedAssetTicker}
+                setSelectedAssetTicker={setSelectedAssetTicker}
+                activeTab={activeTab}
+                filteredPositions={filteredPositions}
+                timeRange={timeRange}
+                setTimeRange={setTimeRange}
+                loadingSpecific={loadingSpecific}
+                displayedHistory={displayedHistory}
+                benchmarkName={CATEGORIES_CONFIG[activeTab].benchmark}
+                earliestPurchaseDate={earliestPurchaseDate}
+                chartEvents={chartEvents}
+                onChartClick={setHighlightedDate}
+              />
+              <AllocationSection
+                currentPieData={currentPieData}
+                activeTab={activeTab}
+                allocationView={allocationView}
+                setAllocationView={setAllocationView}
+                selectedAssetTicker={selectedAssetTicker}
+                setSelectedAssetTicker={setSelectedAssetTicker}
+                totalValue={totalValue}
+                categoryLabel={CATEGORIES_CONFIG[activeTab].label}
+              />
+            </div>
+
+            <PositionsTable
+              filteredPositions={filteredPositions}
+              totalValue={totalValue}
+              selectedAssetTicker={selectedAssetTicker}
+              setSelectedAssetTicker={setSelectedAssetTicker}
+              categoryLabel={CATEGORIES_CONFIG[activeTab].label}
+            />
+
+            <SourceDataTable
+              data={displayedHistory}
+              benchmarkName={CATEGORIES_CONFIG[activeTab].benchmark}
+              isSpecificAsset={!!selectedAssetTicker}
+              assetTicker={selectedAssetTicker}
+              highlightDate={highlightedDate}
+            />
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <SummaryCard
-            title="Total Investido"
-            value={formatCurrency(totalInvested)}
-            subtext={selectedAssetTicker ? selectedAssetTicker : 'Custo de aquisição'}
-          />
-          <SummaryCard
-            title="Valor Atual"
-            value={formatCurrency(totalValue)}
-            subtext={`Cotação Atual (${selectedAssetTicker ? selectedAssetTicker : CATEGORIES_CONFIG[activeTab].label})`}
-          />
-          <SummaryCard
-            title={periodStats.profit >= 0 ? 'Lucro (R$)' : 'Prejuízo (R$)'}
-            value={formatCurrency(periodStats.profit)}
-            rawValue={periodStats.profit}
-            type="profit"
-            subtext={periodStats.labelSuffix}
-          />
-          <SummaryCard
-            title="Rentabilidade (%)"
-            value={formatPercent(periodStats.yield)}
-            rawValue={periodStats.yield}
-            type="profit"
-            subtext={periodStats.labelSuffix}
-          />
-        </div>
-
-        {activeTab === 'total' && <TopPerformersSection positions={positions} />}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          <PerformanceSection
-            selectedAssetTicker={selectedAssetTicker}
-            setSelectedAssetTicker={setSelectedAssetTicker}
-            activeTab={activeTab}
-            filteredPositions={filteredPositions}
-            timeRange={timeRange}
-            setTimeRange={setTimeRange}
-            loadingSpecific={loadingSpecific}
-            displayedHistory={displayedHistory}
-            benchmarkName={CATEGORIES_CONFIG[activeTab].benchmark}
-            earliestPurchaseDate={earliestPurchaseDate}
-            chartEvents={chartEvents}
-            onChartClick={setHighlightedDate}
-          />
-          <AllocationSection
-            currentPieData={currentPieData}
-            activeTab={activeTab}
-            allocationView={allocationView}
-            setAllocationView={setAllocationView}
-            selectedAssetTicker={selectedAssetTicker}
-            setSelectedAssetTicker={setSelectedAssetTicker}
-            totalValue={totalValue}
-            categoryLabel={CATEGORIES_CONFIG[activeTab].label}
-          />
-        </div>
-
-        <PositionsTable
-          filteredPositions={filteredPositions}
-          totalValue={totalValue}
-          selectedAssetTicker={selectedAssetTicker}
-          setSelectedAssetTicker={setSelectedAssetTicker}
-          categoryLabel={CATEGORIES_CONFIG[activeTab].label}
-        />
-
-        <SourceDataTable
-          data={displayedHistory}
-          benchmarkName={CATEGORIES_CONFIG[activeTab].benchmark}
-          isSpecificAsset={!!selectedAssetTicker}
-          assetTicker={selectedAssetTicker}
-          highlightDate={highlightedDate}
-        />
-      </div>
+        </>
+      )}
     </div>
   );
 }

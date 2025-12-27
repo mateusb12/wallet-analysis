@@ -1,26 +1,31 @@
 import js from '@eslint/js';
 import globals from 'globals';
+import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import prettier from 'eslint-plugin-prettier';
-import prettierConfig from 'eslint-config-prettier';
 import { defineConfig } from 'eslint/config';
+
 import noCommentsPlugin from './eslint-plugin-no-comments.js';
 
 export default defineConfig([
+  /* =====================================================
+   * IGNORE PATHS
+   * ===================================================== */
   {
     ignores: ['dist/**', 'node_modules/**', '*.config.js', 'eslint-plugin-no-comments.js'],
   },
 
+  /* =====================================================
+   * BASE JS (eslint:recommended em flat config)
+   * ===================================================== */
+  js.configs.recommended,
+
+  /* =====================================================
+   * REACT / JSX
+   * ===================================================== */
   {
     files: ['**/*.{js,jsx}'],
-
-    extends: [
-      js.configs.recommended,
-      reactHooks.configs['recommended-latest'],
-      reactRefresh.configs.vite,
-      prettierConfig,
-    ],
 
     languageOptions: {
       ecmaVersion: 'latest',
@@ -32,16 +37,69 @@ export default defineConfig([
     },
 
     plugins: {
+      react,
+      'react-hooks': reactHooks,
+      'react-refresh': reactRefresh,
       prettier,
       'no-comments': noCommentsPlugin,
     },
 
+    settings: {
+      react: {
+        version: 'detect',
+      },
+    },
+
     rules: {
+      /* =====================================================
+       * INDENTAÇÃO (JS PURO)
+       * ===================================================== */
+      indent: [
+        'error',
+        2,
+        {
+          ignoredNodes: [
+            'JSXElement',
+            'JSXElement > *',
+            'JSXAttribute',
+            'JSXExpressionContainer',
+            'TemplateLiteral',
+          ],
+        },
+      ],
+
+      /* =====================================================
+       * REACT / JSX (DELEGADO AO PRETTIER)
+       * ===================================================== */
+      'react/jsx-indent': 'off',
+      'react/jsx-indent-props': 'off',
+
+      /* =====================================================
+       * REACT HOOKS
+       * ===================================================== */
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+
+      /* =====================================================
+       * REACT REFRESH
+       * ===================================================== */
+      'react-refresh/only-export-components': 'off',
+
+      /* =====================================================
+       * PRETTIER (FORMATAÇÃO)
+       * ===================================================== */
+      'prettier/prettier': 'error',
+
+      /* =====================================================
+       * CUSTOM RULES
+       * ===================================================== */
       'no-comments/no-explanatory-comments': 'warn',
       'no-comments/no-empty-blocks': 'warn',
-      'prettier/prettier': 'error',
+
+      /* =====================================================
+       * AJUSTES PRÁTICOS
+       * ===================================================== */
       'no-unused-vars': 'off',
-      'react-refresh/only-export-components': 'off',
     },
   },
 ]);
