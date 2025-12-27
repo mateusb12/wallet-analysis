@@ -643,6 +643,15 @@ export const StrategySimulator = ({ asset }) => {
   );
 };
 
+const getFutureDateLabel = () => {
+  const date = new Date();
+  date.setFullYear(date.getFullYear() + 1);
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = date.toLocaleString('pt-BR', { month: 'short' }).replace('.', '');
+  const year = date.getFullYear().toString().slice(-2);
+  return `Projeção (${day}/${month}/${year})`;
+};
+
 export const CagrSimulator = ({ asset }) => {
   const [mode, setMode] = useState('real');
   const [activeTab, setActiveTab] = useState('CAGR');
@@ -734,7 +743,6 @@ export const CagrSimulator = ({ asset }) => {
       return CAGR_SCENARIO_DATA.map((d) => ({
         ...d,
         label: d.year.toString(),
-
         displayValue: isIllusion ? d.val_illusion : d.val_real,
         isProjection: false,
       }));
@@ -764,16 +772,60 @@ export const CagrSimulator = ({ asset }) => {
     });
 
     const projectedPrice = currentPrice * (1 + rate);
+
+    const projectionLabel =
+      typeof getFutureDateLabel === 'function' ? getFutureDateLabel() : 'Projeção 1A';
+
     data.push({
-      label: 'Projeção 1A',
-      fullDate: 'Projeção (1 Ano)',
+      label: projectionLabel,
+      fullDate: projectionLabel,
       displayValue: projectedPrice,
       isReal: false,
       annotation: 'Se repetir CAGR',
+      isProjection: true,
     });
 
     return data;
   }, [asset, isHypothetical, calcStart, calcEnd, isIllusion, activeTab]);
+
+  const CustomXAxisTick = ({ x, y, payload, index }) => {
+    const isProjection = index === chartData.length - 1 && !isHypothetical;
+
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text
+          x={0}
+          y={0}
+          dy={16}
+          textAnchor="middle"
+          fill={isProjection ? '#a855f7' : axisTextColor}
+          fontWeight={isProjection ? 'bold' : 'normal'}
+          fontSize={10}
+        >
+          {payload.value}
+        </text>
+      </g>
+    );
+  };
+
+  const CustomAreaDot = (props) => {
+    const { cx, cy, index, payload } = props;
+
+    const shouldRender = index === 0 || index === chartData.length - 1 || payload.label === 'Hoje';
+
+    if (!shouldRender || cx === undefined) return null;
+
+    return (
+      <circle
+        cx={cx}
+        cy={cy}
+        r={4}
+        fill={mainColor}
+        stroke={isDark ? '#1f2937' : '#fff'}
+        strokeWidth={2}
+      />
+    );
+  };
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col h-full relative overflow-hidden transition-all duration-300">
@@ -798,8 +850,6 @@ export const CagrSimulator = ({ asset }) => {
 
         <div className="flex flex-col items-end gap-2">
           <AssetBadge name={asset?.ticker} isHypothetical={isHypothetical} />
-
-          {}
           {isHypothetical ? (
             <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex text-xs font-bold w-fit">
               <button
@@ -867,25 +917,24 @@ export const CagrSimulator = ({ asset }) => {
         </p>
       </div>
 
-      {}
       <div className="w-full flex-1 min-h-[12rem] mt-auto z-10 flex flex-col justify-center">
         {!isHypothetical && activeTab === 'SHARPE' && sharpeData ? (
           <div className="flex flex-col gap-4 animate-in fade-in zoom-in duration-300">
             {}
             <div className="grid grid-cols-3 gap-2">
-              <div className="bg-gray-50 dark:bg-gray-700/50 p-2 rounded border border-gray-100 dark:border-gray-600 text-center">
-                <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">
-                  Seu investimetno
+              <div className="bg-gray-100 dark:bg-gray-700 p-2 rounded border border-gray-200 dark:border-gray-600 text-center shadow-sm">
+                <div className="text-[10px] text-gray-500 dark:text-gray-300 uppercase font-bold mb-1">
+                  Seu investimento
                 </div>
-                <div className="text-sm font-bold text-gray-800 dark:text-gray-200">
+                <div className="text-sm font-black text-gray-900 dark:text-white">
                   {sharpeData.rp.toFixed(1)}%
                 </div>
               </div>
-              <div className="bg-gray-50 dark:bg-gray-700/50 p-2 rounded border border-gray-100 dark:border-gray-600 text-center">
-                <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">
+              <div className="bg-gray-100 dark:bg-gray-700 p-2 rounded border border-gray-200 dark:border-gray-600 text-center shadow-sm">
+                <div className="text-[10px] text-gray-500 dark:text-gray-300 uppercase font-bold mb-1">
                   Se fosse renda fixa
                 </div>
-                <div className="text-sm font-bold text-gray-800 dark:text-gray-200">
+                <div className="text-sm font-black text-gray-900 dark:text-white">
                   {sharpeData.rf.toFixed(1)}%
                 </div>
               </div>
@@ -924,14 +973,12 @@ export const CagrSimulator = ({ asset }) => {
             {}
             <div className="w-full mt-2">
               <div className="h-2.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden relative">
-                {}
                 <div
                   className="absolute top-0 bottom-0 w-1.5 bg-gray-800 dark:bg-white border-white dark:border-gray-900 shadow-lg z-20 transition-all duration-1000 ease-out"
                   style={{
                     left: `${Math.min(Math.max((asset.sharpe + 0.5) * 33, 0), 100)}%`,
                   }}
                 />
-                {}
                 <div className="absolute inset-0 opacity-60 bg-gradient-to-r from-red-500 via-yellow-400 to-green-500" />
               </div>
 
@@ -944,7 +991,7 @@ export const CagrSimulator = ({ asset }) => {
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="colorCagr" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={mainColor} stopOpacity={0.3} />
@@ -956,10 +1003,12 @@ export const CagrSimulator = ({ asset }) => {
 
               <XAxis
                 dataKey="label"
-                tick={{ fontSize: 10, fill: axisTextColor }}
+                tick={<CustomXAxisTick />}
                 axisLine={false}
                 tickLine={false}
                 dy={10}
+                interval={0}
+                padding={{ left: 15, right: 15 }}
               />
               <YAxis hide domain={['auto', 'auto']} />
 
@@ -1012,7 +1061,7 @@ export const CagrSimulator = ({ asset }) => {
                 stroke={mainColor}
                 strokeWidth={3}
                 fill="url(#colorCagr)"
-                dot={{ r: 4, fill: mainColor, strokeWidth: 2, stroke: isDark ? '#1f2937' : '#fff' }}
+                dot={<CustomAreaDot />}
                 animationDuration={1000}
               />
             </AreaChart>
@@ -1033,7 +1082,6 @@ export const CagrSimulator = ({ asset }) => {
         </div>
       )}
 
-      {}
       {!isHypothetical && activeTab === 'CAGR' && (
         <div className="mt-4 pt-2 border-t border-gray-100 dark:border-gray-700 text-right">
           <span className="text-xs font-bold text-gray-500">
