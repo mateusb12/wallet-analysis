@@ -22,6 +22,7 @@ import {
 import RiskDisclaimer from './RiskDisclaimer.jsx';
 import Pagination from '../../components/Pagination';
 import { analysisService } from '../../services/api.js';
+import { fetchWalletPositions } from '../../services/walletDataService.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 
 import iconStocks from '../../assets/stocks.png';
@@ -215,6 +216,7 @@ export default function WhereToInvest() {
   const [analysis, setAnalysis] = useState([]);
   const [recommendation, setRecommendation] = useState(null);
   const [selectedTicker, setSelectedTicker] = useState(null);
+  const [userPositions, setUserPositions] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
@@ -227,7 +229,16 @@ export default function WhereToInvest() {
       try {
         setLoading(true);
 
-        const rawData = await analysisService.getOpportunities();
+        const [rawData, walletData] = await Promise.all([
+          analysisService.getOpportunities(),
+          fetchWalletPositions(),
+        ]);
+
+        const posMap = {};
+        walletData.forEach((pos) => {
+          posMap[pos.ticker] = pos.total_value_current;
+        });
+        setUserPositions(posMap);
 
         const processed = rawData.map((asset) => {
           if (asset.tag === 'INCOMPLETE') {
@@ -602,7 +613,10 @@ export default function WhereToInvest() {
 
           <div className="grid md:grid-cols-2 gap-6 pt-4">
             <StrategySimulator asset={selectedAssetData} />
-            <CagrSimulator asset={selectedAssetData} />
+            <CagrSimulator
+              asset={selectedAssetData}
+              userTotalValue={selectedAssetData ? userPositions[selectedAssetData.ticker] : 0}
+            />
             <DrawdownAnalysis />
             <VolatilityImpact />
           </div>

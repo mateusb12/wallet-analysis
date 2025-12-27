@@ -603,7 +603,7 @@ const getFutureDateLabel = () => {
   return `Projeção (${day}/${month}/${year})`;
 };
 
-export const CagrSimulator = ({ asset }) => {
+export const CagrSimulator = ({ asset, userTotalValue }) => {
   const [mode, setMode] = useState('real');
   const [activeTab, setActiveTab] = useState('CAGR');
 
@@ -705,9 +705,13 @@ export const CagrSimulator = ({ asset }) => {
     if (activeTab === 'SHARPE') return [];
 
     const data = [];
-    const currentPrice = asset.price || 100;
+
+    const hasPosition = userTotalValue && userTotalValue > 0;
+    const baseValue = hasPosition ? userTotalValue : asset.price || 100;
+
     const rate = asset.cagr / 100;
-    const startPrice = currentPrice / (1 + rate);
+
+    const startPrice = baseValue / (1 + rate);
 
     data.push({
       label: formatDateLong(calcStart),
@@ -722,14 +726,14 @@ export const CagrSimulator = ({ asset }) => {
     data.push({
       label: 'Hoje',
       fullDate: `Hoje (${formatDateLong(calcEnd)})`,
-      history: currentPrice,
-      projection: currentPrice,
-      displayValue: currentPrice,
+      history: baseValue,
+      projection: baseValue,
+      displayValue: baseValue,
       isReal: true,
-      annotation: 'Preço Atual',
+      annotation: hasPosition ? 'Seu Saldo Atual' : 'Preço/Simulação',
     });
 
-    const projectedPrice = currentPrice * (1 + rate);
+    const projectedPrice = baseValue * (1 + rate);
     const projectionLabel =
       typeof getFutureDateLabel === 'function' ? getFutureDateLabel() : 'Projeção 1A';
 
@@ -745,7 +749,7 @@ export const CagrSimulator = ({ asset }) => {
     });
 
     return data;
-  }, [asset, isHypothetical, calcStart, calcEnd, isIllusion, activeTab]);
+  }, [asset, isHypothetical, calcStart, calcEnd, isIllusion, activeTab, userTotalValue]);
 
   const CustomXAxisTick = ({ x, y, payload, index }) => {
     const isProjection = index === chartData.length - 1 && !isHypothetical;
