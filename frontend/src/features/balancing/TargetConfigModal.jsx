@@ -71,17 +71,14 @@ const StackedBar = ({ data, colorMap, total }) => {
 
 const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, colorStyles }) => {
   const isOverLimit = value > maxPotential;
-
   const safeValue = isOverLimit ? maxPotential : value;
   const safeWidth = `${Math.max(0, safeValue)}%`;
 
   const showRedPath = value < initialValue;
   const redPathLeft = `${value}%`;
   const redPathWidth = `${initialValue - value}%`;
-
   const excessLeft = `${maxPotential}%`;
   const excessWidth = `${value - maxPotential}%`;
-
   const potentialStart = showRedPath ? initialValue : value;
   const potentialLeft = `${potentialStart}%`;
   const potentialWidth = `${Math.max(0, maxPotential - potentialStart)}%`;
@@ -98,6 +95,7 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
       </div>
 
       <div className="flex-1 relative h-6 flex items-center">
+        {}
         <div className="absolute inset-x-0 h-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 overflow-hidden pointer-events-none">
           {!isOverLimit && (
             <div
@@ -105,36 +103,36 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
               style={{ left: potentialLeft, width: potentialWidth }}
             />
           )}
-
           {isOverLimit && (
             <div
               className="absolute h-full bg-red-600 transition-all duration-300 animate-super-pulse"
               style={{ left: excessLeft, width: excessWidth }}
             />
           )}
-
           {showRedPath && (
             <div
               className="absolute h-full bg-red-500/40 transition-all duration-300"
               style={{ left: redPathLeft, width: redPathWidth }}
             />
           )}
-
           <div
             className={`absolute h-full ${colorStyles.bg} transition-all duration-75`}
             style={{ width: safeWidth }}
           />
         </div>
 
+        {}
         <input
           type="range"
           min="0"
           max="100"
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
+          onPointerUp={() => console.log(`[Slider] Valor final definido para ${label}:`, value)}
           className="w-full absolute z-10 opacity-0 cursor-pointer h-6 m-0 p-0"
         />
 
+        {}
         <div
           className={`
             absolute h-4 w-4 bg-white rounded-full shadow-md border pointer-events-none transition-transform duration-75 ease-out z-20
@@ -146,6 +144,7 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
         />
       </div>
 
+      {}
       <div className="w-16 shrink-0 relative">
         <div
           className={`
@@ -178,7 +177,6 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
 const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset }) => {
   const [localTargets, setLocalTargets] = useState(currentTargets);
   const [initialSnapshot, setInitialSnapshot] = useState(null);
-
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -217,12 +215,19 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
   const handleSaveClick = async () => {
     if (!isMacroValid) return;
 
+    console.group('=== 💾 PREPARANDO PARA SALVAR ===');
+    console.log('Dados Atuais (Estado):', localTargets);
+    console.log('Total Macro:', totalMacro);
+    console.groupEnd();
+
     setIsSaving(true);
     try {
       await onSave(localTargets);
+
       onClose();
     } catch (error) {
-      console.error('Erro ao salvar', error);
+      console.error('❌ Erro no Modal ao tentar salvar:', error);
+      alert('Erro ao salvar. Verifique o console.');
     } finally {
       setIsSaving(false);
     }
@@ -241,7 +246,6 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
         </span>
       );
     }
-
     if (total > 100) {
       return (
         <span
@@ -251,7 +255,6 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
         </span>
       );
     }
-
     return (
       <span
         className={`${baseClasses} text-amber-600 bg-amber-50 border-amber-100 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20`}
@@ -282,23 +285,15 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
           background-color: #4b5563;
           border-radius: 20px;
         }
-
         @keyframes super-pulse {
-          0%, 100% {
-            opacity: 0.3;
-            filter: brightness(1);
-          }
-          50% {
-            opacity: 1;
-            filter: brightness(1.3);
-          }
+          0%, 100% { opacity: 0.3; filter: brightness(1); }
+          50% { opacity: 1; filter: brightness(1.3); }
         }
-        .animate-super-pulse {
-          animation: super-pulse 1s ease-in-out infinite;
-        }
+        .animate-super-pulse { animation: super-pulse 1s ease-in-out infinite; }
       `}</style>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden border border-gray-100 dark:border-gray-700">
+        {}
         <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-white dark:bg-gray-800 shrink-0">
           <div>
             <h2 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
@@ -309,13 +304,15 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
           <button
             onClick={onClose}
             disabled={isSaving}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors disabled:opacity-50"
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
+        {}
         <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+          {}
           <section className="space-y-4">
             <div className="flex justify-between items-end">
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
@@ -323,15 +320,12 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
               </h3>
               {renderTotalStatus(totalMacro)}
             </div>
-
             <div className="bg-gray-50/50 dark:bg-gray-900/30 p-5 rounded-xl border border-gray-100 dark:border-gray-700">
               <StackedBar data={localTargets.macro} colorMap={COLOR_MAP} total={totalMacro} />
-
               <div className="space-y-1 divide-y divide-gray-100 dark:divide-gray-700/50">
                 {Object.entries(localTargets.macro).map(([key, val]) => {
                   const maxPotential = val + remainingMacroSpace;
                   const initialVal = initialSnapshot.macro[key] || 0;
-
                   return (
                     <RangeSlider
                       key={key}
@@ -348,11 +342,11 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
             </div>
           </section>
 
+          {}
           <section className="space-y-6">
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2 border-b border-gray-100 dark:border-gray-700 pb-2">
               <Layers className="w-4 h-4" /> Metas Específicas
             </h3>
-
             {Object.entries(localTargets.micro).map(([macroKey, subTypes]) => {
               const subTotal = Object.values(subTypes).reduce((a, b) => a + b, 0);
               const remainingSubSpace = 100 - subTotal;
@@ -364,7 +358,6 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
                   <div
                     className={`absolute left-0 top-0 bottom-0 w-1 rounded-full ${parentColors.bg} opacity-20 group-hover:opacity-100 transition-opacity`}
                   />
-
                   <div className="pl-6 py-2">
                     <div className="flex justify-between items-center mb-3">
                       <h4
@@ -373,26 +366,16 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
                         {macroKey}
                       </h4>
                       <span
-                        className={`
-                          text-xs font-mono px-2 py-0.5 rounded transition-colors
-                          ${
-                            isValid
-                              ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-                              : 'bg-red-50 text-red-600 font-bold dark:bg-red-500/10 dark:text-red-400 animate-pulse'
-                          }
-                        `}
+                        className={`text-xs font-mono px-2 py-0.5 rounded transition-colors ${isValid ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' : 'bg-red-50 text-red-600 font-bold animate-pulse'}`}
                       >
                         Total: {subTotal}%
                       </span>
                     </div>
-
                     <div className="pl-2">
                       {Object.entries(subTypes).map(([subKey, val], idx) => {
                         const microColors = MICRO_PALETTE[idx % MICRO_PALETTE.length];
-
                         const maxPotential = val + remainingSubSpace;
                         const initialVal = initialSnapshot.micro[macroKey]?.[subKey] || 0;
-
                         return (
                           <RangeSlider
                             key={subKey}
@@ -413,37 +396,27 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
           </section>
         </div>
 
+        {}
         <div className="p-4 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 flex justify-between shrink-0">
           <button
             onClick={onReset}
             disabled={isSaving}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
           >
-            <RotateCcw className="w-4 h-4" />
-            Restaurar
+            <RotateCcw className="w-4 h-4" /> Restaurar
           </button>
-
           <button
             onClick={handleSaveClick}
             disabled={!isMacroValid || isSaving}
-            className={`
-              flex items-center gap-2 px-6 py-2 rounded-lg font-bold shadow-sm transition-all active:scale-95
-              ${
-                isMacroValid
-                  ? 'bg-gray-900 hover:bg-black text-white dark:bg-white dark:text-black dark:hover:bg-gray-200'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }
-            `}
+            className={`flex items-center gap-2 px-6 py-2 rounded-lg font-bold shadow-sm transition-all active:scale-95 ${isMacroValid ? 'bg-gray-900 hover:bg-black text-white dark:bg-white dark:text-black' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
           >
             {isSaving ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Salvando...
+                <Loader2 className="w-4 h-4 animate-spin" /> Salvando...
               </>
             ) : (
               <>
-                <Save className="w-4 h-4" />
-                {isMacroValid ? 'Salvar Configuração' : 'Corrija o Total'}
+                <Save className="w-4 h-4" /> Salvar
               </>
             )}
           </button>

@@ -424,15 +424,23 @@ const WalletBalancer = () => {
   }, []);
 
   const handleSaveTargets = async (newTargets) => {
+    console.group('🚀 WalletBalancer: Salvando Metas');
+    console.log('Payload recebido do modal:', newTargets);
+
     try {
-      await userService.updateProfile({
+      const response = await userService.updateProfile({
         balancing_settings: newTargets,
       });
 
-      window.location.reload();
+      console.log('✅ Resposta do userService:', response);
+      alert('Configurações salvas! (Verifique o console se houver erros vermelhos)');
+
+      setIsConfigOpen(false);
     } catch (error) {
-      console.error('Erro ao salvar configurações:', error);
-      alert('Erro ao salvar as metas. Verifique o console.');
+      console.error('❌ ERRO CRÍTICO ao salvar configurações:', error);
+      alert('Erro ao salvar as metas. Verifique o console (F12) para a mensagem de erro vermelha.');
+    } finally {
+      console.groupEnd();
     }
   };
 
