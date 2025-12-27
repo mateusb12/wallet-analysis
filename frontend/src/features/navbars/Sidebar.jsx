@@ -11,6 +11,8 @@ import Contributions from '../../pages/Contributions.jsx';
 import { Settings as SettingsIcon, LogOut } from 'lucide-react';
 import WhereToInvest from '../guidance/WhereToInvest.jsx';
 import WalletBalancer from '../balancing/WalletBalancer.jsx';
+import { Database } from 'lucide-react';
+import AssetsManager from '../importer/AssetsManager.jsx';
 
 const menuItems = [
   {
@@ -36,6 +38,12 @@ const menuItems = [
     label: 'Balanceador Inteligente',
     icon: '⚖️',
     component: WalletBalancer,
+  },
+  {
+    id: 'data-management',
+    label: 'Gerenciar ativos',
+    icon: '🗄️',
+    component: AssetsManager,
   },
   {
     id: 'price-analyzer',
