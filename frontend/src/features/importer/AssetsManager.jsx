@@ -12,6 +12,8 @@ import {
   Save,
   FileSpreadsheet,
   AlertCircle,
+  Bug,
+  ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
 
@@ -20,6 +22,11 @@ import iconEtf from '../../assets/etf.png';
 import iconFiis from '../../assets/fiis.png';
 import iconTotal from '../../assets/all.png';
 import { formatChartDate } from '../../utils/dateUtils.js';
+
+import shotA from '../../assets/screenshots/A.jpeg';
+import shotB from '../../assets/screenshots/B.jpeg';
+import shotC from '../../assets/screenshots/C.jpeg';
+import shotD from '../../assets/screenshots/D.jpeg';
 
 export default function AssetsManager() {
   const { user } = useAuth();
@@ -36,6 +43,8 @@ export default function AssetsManager() {
   const [importPreview, setImportPreview] = useState([]);
   const [fileName, setFileName] = useState('');
   const [isProcessingImport, setIsProcessingImport] = useState(false);
+
+  const [debugShowEmpty, setDebugShowEmpty] = useState(false);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -372,6 +381,8 @@ export default function AssetsManager() {
     .filter((p) => p.ticker.toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
 
+  const showEmptyState = (purchases.length === 0 && !isLoading) || debugShowEmpty;
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col h-full transition-all duration-300">
       {}
@@ -379,9 +390,11 @@ export default function AssetsManager() {
         <div>
           <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
             Gerenciar Aportes
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800">
-              {purchases.length} registros
-            </span>
+            {!showEmptyState && (
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800">
+                {purchases.length} registros
+              </span>
+            )}
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Visualize e edite seu histórico ou importe novos dados.
@@ -389,16 +402,31 @@ export default function AssetsManager() {
         </div>
 
         <div className="flex items-center gap-3 w-full md:w-auto">
-          <div className="relative flex-1 md:flex-none">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar ticker..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-48"
-            />
-          </div>
+          {}
+          <button
+            onClick={() => setDebugShowEmpty(!debugShowEmpty)}
+            className={`p-2 rounded-lg transition-all border ${
+              debugShowEmpty
+                ? 'bg-orange-100 text-orange-600 border-orange-200'
+                : 'bg-gray-100 text-gray-400 border-gray-200 hover:text-orange-500'
+            }`}
+            title="Simular conta vazia (Debug)"
+          >
+            <Bug size={18} />
+          </button>
+
+          {!showEmptyState && (
+            <div className="relative flex-1 md:flex-none">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar ticker..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 pr-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-48"
+              />
+            </div>
+          )}
 
           <button
             onClick={() => setIsImportModalOpen(true)}
@@ -411,149 +439,206 @@ export default function AssetsManager() {
       </div>
 
       {}
-      <div className="overflow-x-auto custom-scrollbar flex-1 min-h-[400px]">
-        <table className="w-full text-sm text-left">
-          <thead className="text-xs text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-900 sticky top-0 z-10 shadow-sm">
-            <tr>
-              <th className="px-6 py-3 text-center tracking-wider">Data</th>
-              <th className="px-6 py-3 text-center tracking-wider">Ativo</th>
-              <th className="px-6 py-3 text-center tracking-wider">Tipo</th>
-              <th className="px-6 py-3 text-center tracking-wider">Qtd</th>
-              <th className="px-6 py-3 text-center tracking-wider">Preço</th>
-              <th className="px-6 py-3 text-center tracking-wider">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {isLoading ? (
-              <tr>
-                <td colSpan="6" className="p-8 text-center text-gray-500">
-                  Carregando...
-                </td>
-              </tr>
-            ) : filteredPurchases.length === 0 ? (
-              <tr>
-                <td colSpan="6" className="p-12 text-center text-gray-400">
-                  Nenhum aporte encontrado.
-                </td>
-              </tr>
-            ) : (
-              filteredPurchases.map((item) => {
-                const isEditing = editingId === item.id;
-                const typeConfig = getTypeConfig(item.type);
+      {showEmptyState ? (
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-8 flex flex-col items-center animate-in fade-in duration-300">
+          <div className="text-center max-w-lg mb-8">
+            <div className="bg-blue-50 dark:bg-blue-900/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileSpreadsheet className="w-8 h-8 text-blue-500" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              Você ainda não possui ativos
+            </h2>
+            <p className="text-gray-500 dark:text-gray-400 mb-6">
+              Para começar a acompanhar sua rentabilidade, importe seus dados diretamente da Área do
+              Investidor da B3. É simples e rápido.
+            </p>
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-all transform hover:scale-105"
+            >
+              <UploadCloud className="w-5 h-5" />
+              Realizar Primeira Importação
+            </button>
+          </div>
 
-                return (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
-                  >
-                    <td className="px-6 py-4 text-center whitespace-nowrap">
-                      {isEditing ? (
-                        <input
-                          type="date"
-                          value={editForm.date}
-                          onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
-                          className="bg-white dark:bg-gray-900 border rounded px-2 py-1 text-gray-900 dark:text-white"
-                        />
-                      ) : (
-                        <span className="text-gray-600 dark:text-gray-300 font-mono text-xs font-medium">
-                          {formatChartDate(item.trade_date)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-center font-bold text-gray-800 dark:text-gray-100">
-                      {item.ticker}
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      {isEditing ? (
-                        <select
-                          value={editForm.type}
-                          onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
-                          className="bg-white dark:bg-gray-900 border rounded px-2 py-1 text-gray-900 dark:text-white"
-                        >
-                          <option value="stock">Ação</option>
-                          <option value="fii">FII</option>
-                          <option value="etf">ETF</option>
-                          <option value="bdr">BDR</option>
-                        </select>
-                      ) : (
-                        <div
-                          className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${typeConfig.style}`}
-                        >
-                          <img
-                            src={typeConfig.icon}
-                            alt={typeConfig.label}
-                            className="w-4 h-4 object-contain drop-shadow-sm"
-                          />
-                          <span className="text-[10px] font-bold tracking-wider">
-                            {typeConfig.label}
-                          </span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-center font-medium text-gray-900 dark:text-white">
-                      {item.qty}
-                    </td>
-                    <td className="px-6 py-4 text-center font-medium text-gray-600 dark:text-gray-300">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={editForm.price}
-                          onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
-                          className="w-24 bg-white dark:bg-gray-900 border rounded px-2 py-1 text-gray-900 dark:text-white"
-                        />
-                      ) : (
-                        Number(item.price).toLocaleString('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        })
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="flex justify-center gap-2 opacity-80 hover:opacity-100">
-                        {isEditing ? (
-                          <>
-                            <button
-                              onClick={() => handleSaveEdit(item.id)}
-                              className="p-1.5 bg-green-50 text-green-600 rounded hover:bg-green-100"
-                            >
-                              <Save size={16} />
-                            </button>
-                            <button
-                              onClick={() => setEditingId(null)}
-                              className="p-1.5 bg-gray-50 text-gray-500 rounded hover:bg-gray-100"
-                            >
-                              <X size={16} />
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => handleEditClick(item)}
-                              className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
-                            >
-                              <Edit2 size={16} />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(item.id)}
-                              className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </>
-                        )}
-                      </div>
+          <div className="w-full max-w-6xl border-t border-gray-200 dark:border-gray-700 pt-8">
+            <h3 className="text-center text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-6 flex items-center justify-center gap-2">
+              <ArrowRight className="w-4 h-4" />
+              Passo a Passo da Importação
+              <ArrowRight className="w-4 h-4" />
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[
+                { img: shotA, label: '1. Acesse Extratos' },
+                { img: shotB, label: '2. Clique nesse botão amarelo' },
+                { img: shotC, label: '3. Selecione 12 Meses' },
+                { img: shotD, label: '4. Baixe o Excel' },
+              ].map((item, idx) => (
+                <div
+                  key={idx}
+                  className="group relative rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden hover:shadow-md transition-shadow"
+                >
+                  <div className="absolute top-0 left-0 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-br-lg z-10 shadow-sm">
+                    {item.label}
+                  </div>
+                  <img
+                    src={item.img}
+                    alt={`Passo ${idx + 1}`}
+                    className="w-full aspect-[4/3] object-contain bg-gray-50 dark:bg-gray-900 group-hover:scale-105 transition-transform duration-300"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="overflow-x-auto custom-scrollbar flex-1 min-h-[400px]">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-900 sticky top-0 z-10 shadow-sm">
+                <tr>
+                  <th className="px-6 py-3 text-center tracking-wider">Data</th>
+                  <th className="px-6 py-3 text-center tracking-wider">Ativo</th>
+                  <th className="px-6 py-3 text-center tracking-wider">Tipo</th>
+                  <th className="px-6 py-3 text-center tracking-wider">Qtd</th>
+                  <th className="px-6 py-3 text-center tracking-wider">Preço</th>
+                  <th className="px-6 py-3 text-center tracking-wider">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan="6" className="p-8 text-center text-gray-500">
+                      Carregando...
                     </td>
                   </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+                ) : filteredPurchases.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="p-12 text-center text-gray-400">
+                      Nenhum resultado para a busca.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredPurchases.map((item) => {
+                    const isEditing = editingId === item.id;
+                    const typeConfig = getTypeConfig(item.type);
 
-      {}
-      {}
+                    return (
+                      <tr
+                        key={item.id}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
+                      >
+                        <td className="px-6 py-4 text-center whitespace-nowrap">
+                          {isEditing ? (
+                            <input
+                              type="date"
+                              value={editForm.date}
+                              onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                              className="bg-white dark:bg-gray-900 border rounded px-2 py-1 text-gray-900 dark:text-white"
+                            />
+                          ) : (
+                            <span className="text-gray-600 dark:text-gray-300 font-mono text-xs font-medium">
+                              {formatChartDate(item.trade_date)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center font-bold text-gray-800 dark:text-gray-100">
+                          {item.ticker}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {isEditing ? (
+                            <select
+                              value={editForm.type}
+                              onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
+                              className="bg-white dark:bg-gray-900 border rounded px-2 py-1 text-gray-900 dark:text-white"
+                            >
+                              <option value="stock">Ação</option>
+                              <option value="fii">FII</option>
+                              <option value="etf">ETF</option>
+                              <option value="bdr">BDR</option>
+                            </select>
+                          ) : (
+                            <div
+                              className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${typeConfig.style}`}
+                            >
+                              <img
+                                src={typeConfig.icon}
+                                alt={typeConfig.label}
+                                className="w-4 h-4 object-contain drop-shadow-sm"
+                              />
+                              <span className="text-[10px] font-bold tracking-wider">
+                                {typeConfig.label}
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center font-medium text-gray-900 dark:text-white">
+                          {item.qty}
+                        </td>
+                        <td className="px-6 py-4 text-center font-medium text-gray-600 dark:text-gray-300">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editForm.price}
+                              onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                              className="w-24 bg-white dark:bg-gray-900 border rounded px-2 py-1 text-gray-900 dark:text-white"
+                            />
+                          ) : (
+                            Number(item.price).toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex justify-center gap-2 opacity-80 hover:opacity-100">
+                            {isEditing ? (
+                              <>
+                                <button
+                                  onClick={() => handleSaveEdit(item.id)}
+                                  className="p-1.5 bg-green-50 text-green-600 rounded hover:bg-green-100"
+                                >
+                                  <Save size={16} />
+                                </button>
+                                <button
+                                  onClick={() => setEditingId(null)}
+                                  className="p-1.5 bg-gray-50 text-gray-500 rounded hover:bg-gray-100"
+                                >
+                                  <X size={16} />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => handleEditClick(item)}
+                                  className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                                >
+                                  <Edit2 size={16} />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(item.id)}
+                                  className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {}
+        </>
+      )}
+
       {}
       {isImportModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
