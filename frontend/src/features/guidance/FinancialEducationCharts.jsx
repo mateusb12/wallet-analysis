@@ -790,6 +790,12 @@ export const CagrSimulator = ({ asset }) => {
 
   const CustomXAxisTick = ({ x, y, payload, index }) => {
     const isProjection = index === chartData.length - 1 && !isHypothetical;
+    const isFirst = index === 0;
+    const isLast = index === chartData.length - 1;
+
+    let anchor = 'middle';
+    if (isFirst) anchor = 'start';
+    if (isLast) anchor = 'end';
 
     return (
       <g transform={`translate(${x},${y})`}>
@@ -797,7 +803,7 @@ export const CagrSimulator = ({ asset }) => {
           x={0}
           y={0}
           dy={16}
-          textAnchor="middle"
+          textAnchor={anchor}
           fill={isProjection ? '#a855f7' : axisTextColor}
           fontWeight={isProjection ? 'bold' : 'normal'}
           fontSize={10}
@@ -991,7 +997,7 @@ export const CagrSimulator = ({ asset }) => {
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
               <defs>
                 <linearGradient id="colorCagr" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={mainColor} stopOpacity={0.3} />
@@ -1008,7 +1014,7 @@ export const CagrSimulator = ({ asset }) => {
                 tickLine={false}
                 dy={10}
                 interval={0}
-                padding={{ left: 15, right: 15 }}
+                padding={{ left: 10, right: 10 }}
               />
               <YAxis hide domain={['auto', 'auto']} />
 
