@@ -306,55 +306,6 @@ const CustomStrategyTooltip = ({ active, payload, isDark, mode, isHypothetical }
   return null;
 };
 
-const CustomCagrTooltip = ({ active, payload, isDark, mode }) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    const isIllusion = mode === 'illusion';
-    const displayValue = isIllusion ? data.val_illusion : data.val_real;
-    const baseline = 10000;
-    const variation = ((displayValue - baseline) / baseline) * 100;
-    const isPositive = variation >= 0;
-    const bgClass = isDark
-      ? 'bg-gray-900 border-gray-700 text-gray-100'
-      : 'bg-white border-gray-200 text-gray-800 shadow-xl';
-
-    return (
-      <div className={`${bgClass} border text-xs p-3 rounded-lg z-50 min-w-[180px]`}>
-        <div className="border-b border-gray-500/20 pb-2 mb-2 flex justify-between items-center">
-          <span className="font-bold text-gray-500 uppercase">Ano {data.year}</span>
-          <span className={`font-bold ${data.pct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-            {data.year === getCurrentYear(0)
-              ? 'Início'
-              : `${data.pct > 0 ? '+' : ''}${data.pct}% no ano`}
-          </span>
-        </div>
-        <div className="space-y-1">
-          <p className="text-[10px] uppercase text-gray-500">Patrimônio Acumulado</p>
-          <p className="text-xl font-bold font-mono">
-            R$ {displayValue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-          </p>
-          <div
-            className={`flex items-center gap-1 mt-1 font-bold ${isPositive ? 'text-green-500' : 'text-red-500'}`}
-          >
-            {isPositive ? (
-              <TrendingUp size={14} />
-            ) : (
-              <TrendingUp size={14} className="rotate-180" />
-            )}
-            {variation.toFixed(1)}% Total
-          </div>
-        </div>
-        {isIllusion && (
-          <div className="mt-3 pt-2 border-t border-gray-500/20 text-[10px] text-blue-500 italic">
-            *Projeção linear baseada na média simples
-          </div>
-        )}
-      </div>
-    );
-  }
-  return null;
-};
-
 const AssetBadge = ({ name, isHypothetical }) => (
   <div
     className={`flex items-center gap-1.5 px-2 py-1 rounded border self-end md:self-auto mb-2 md:mb-0 
@@ -664,7 +615,10 @@ export const CagrSimulator = ({ asset }) => {
   const isHypothetical = !asset;
   const isIllusion = mode === 'illusion';
 
-  const mainColor = isHypothetical && isIllusion ? '#3b82f6' : '#9333ea';
+  const colorProjection = '#9333ea';
+  const colorHistory = '#9ca3af';
+
+  const hypotheticalColor = isIllusion ? '#3b82f6' : '#9333ea';
 
   const calcStart = asset?.calc_window?.start;
   const calcEnd = asset?.calc_window?.end;
@@ -679,7 +633,7 @@ export const CagrSimulator = ({ asset }) => {
           icon: <Activity className="text-blue-500" />,
           messageTitle: 'A Ilusão da Planilha:',
           message:
-            'Se você ganha 50% e depois perde 40%, a média aritmética diz que você ganhou 5%. Parece um crescimento suave e constante, mas é matematicamente falso.',
+            'Se você ganha 50% e depois perde 40%, a média aritmética diz que você ganhou 5%. Parece um crescimento constante, mas é matematicamente falso.',
           color: 'blue',
         };
       } else {
@@ -689,7 +643,7 @@ export const CagrSimulator = ({ asset }) => {
           icon: <Rocket className="text-purple-600 dark:text-purple-400" />,
           messageTitle: 'O Custo da Volatilidade:',
           message:
-            'Na vida real, ganhar 50% e perder 40% resulta em PREJUÍZO de -10% sobre o capital. O CAGR desconta esses solavancos e mostra o crescimento verdadeiro.',
+            'Na vida real, ganhar 50% e perder 40% resulta em PREJUÍZO de -10% sobre o capital (1,5 * 0,6) O CAGR desconta esses picos e mostra o crescimento verdadeiro do ativo.',
           color: 'purple',
         };
       }
@@ -758,6 +712,8 @@ export const CagrSimulator = ({ asset }) => {
     data.push({
       label: formatDateLong(calcStart),
       fullDate: `Início Cálculo (${formatDateLong(calcStart)})`,
+      history: startPrice,
+      projection: null,
       displayValue: startPrice,
       isReal: true,
       annotation: 'Início Janela',
@@ -766,19 +722,22 @@ export const CagrSimulator = ({ asset }) => {
     data.push({
       label: 'Hoje',
       fullDate: `Hoje (${formatDateLong(calcEnd)})`,
+      history: currentPrice,
+      projection: currentPrice,
       displayValue: currentPrice,
       isReal: true,
       annotation: 'Preço Atual',
     });
 
     const projectedPrice = currentPrice * (1 + rate);
-
     const projectionLabel =
       typeof getFutureDateLabel === 'function' ? getFutureDateLabel() : 'Projeção 1A';
 
     data.push({
       label: projectionLabel,
       fullDate: projectionLabel,
+      history: null,
+      projection: projectedPrice,
       displayValue: projectedPrice,
       isReal: false,
       annotation: 'Se repetir CAGR',
@@ -804,7 +763,7 @@ export const CagrSimulator = ({ asset }) => {
           y={0}
           dy={16}
           textAnchor={anchor}
-          fill={isProjection ? '#a855f7' : axisTextColor}
+          fill={isProjection ? colorProjection : axisTextColor}
           fontWeight={isProjection ? 'bold' : 'normal'}
           fontSize={10}
         >
@@ -815,27 +774,45 @@ export const CagrSimulator = ({ asset }) => {
   };
 
   const CustomAreaDot = (props) => {
-    const { cx, cy, index, payload } = props;
+    const { cx, cy, payload } = props;
+    if (!cx || !cy) return null;
 
-    const shouldRender = index === 0 || index === chartData.length - 1 || payload.label === 'Hoje';
+    if (isHypothetical) {
+      return (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={4}
+          fill={hypotheticalColor}
+          stroke={isDark ? '#1f2937' : '#fff'}
+          strokeWidth={2}
+        />
+      );
+    }
 
-    if (!shouldRender || cx === undefined) return null;
+    const isToday = payload.label === 'Hoje';
+    const isFuture = payload.isProjection;
 
-    return (
-      <circle
-        cx={cx}
-        cy={cy}
-        r={4}
-        fill={mainColor}
-        stroke={isDark ? '#1f2937' : '#fff'}
-        strokeWidth={2}
-      />
-    );
+    let fill = colorHistory;
+    let stroke = isDark ? '#1f2937' : '#fff';
+    let r = 4;
+    let strokeWidth = 2;
+
+    if (isToday) {
+      fill = isDark ? '#fff' : '#fff';
+      stroke = colorProjection;
+      r = 5;
+      strokeWidth = 3;
+    } else if (isFuture) {
+      fill = colorProjection;
+      r = 4;
+    }
+
+    return <circle cx={cx} cy={cy} r={r} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />;
   };
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col h-full relative overflow-hidden transition-all duration-300">
-      {}
       <div className="flex flex-col md:flex-row md:items-start justify-between mb-4 gap-2 z-10">
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-lg bg-${config.color}-100 dark:bg-${config.color}-900/30`}>
@@ -906,7 +883,6 @@ export const CagrSimulator = ({ asset }) => {
         </div>
       </div>
 
-      {}
       <div
         className={`mb-4 p-3 rounded-lg text-sm border z-10 transition-colors duration-300
         ${config.color === 'purple' ? 'bg-purple-50 border-purple-100 text-purple-900 dark:bg-purple-900/10 dark:border-purple-900/30 dark:text-purple-200' : ''}
@@ -954,7 +930,6 @@ export const CagrSimulator = ({ asset }) => {
               </div>
             </div>
 
-            {}
             <div className="flex items-center justify-center gap-3 py-2">
               <div className="flex flex-col items-center">
                 <div className="border-b-2 border-gray-300 dark:border-gray-600 px-2 pb-1 mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">
@@ -976,7 +951,6 @@ export const CagrSimulator = ({ asset }) => {
               </div>
             </div>
 
-            {}
             <div className="w-full mt-2">
               <div className="h-2.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden relative">
                 <div
@@ -999,9 +973,17 @@ export const CagrSimulator = ({ asset }) => {
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
               <defs>
-                <linearGradient id="colorCagr" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={mainColor} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={mainColor} stopOpacity={0} />
+                <linearGradient id="colorProjection" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={colorProjection} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={colorProjection} stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="colorHistory" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={colorHistory} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={colorHistory} stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="colorHypothetical" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={hypotheticalColor} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={hypotheticalColor} stopOpacity={0} />
                 </linearGradient>
               </defs>
 
@@ -1022,6 +1004,12 @@ export const CagrSimulator = ({ asset }) => {
                 content={({ active, payload }) => {
                   if (active && payload && payload.length) {
                     const d = payload[0].payload;
+                    const valueColor = isHypothetical
+                      ? hypotheticalColor
+                      : d.isProjection
+                        ? colorProjection
+                        : colorHistory;
+
                     return (
                       <div className="bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-600 rounded shadow-lg text-xs z-50">
                         <p className="font-bold mb-1 border-b border-gray-100 dark:border-gray-700 pb-1">
@@ -1029,7 +1017,7 @@ export const CagrSimulator = ({ asset }) => {
                         </p>
                         <div className="flex justify-between gap-4 mt-1">
                           <span className="text-gray-500">Valor:</span>
-                          <span style={{ color: mainColor }} className="font-mono font-bold">
+                          <span style={{ color: valueColor }} className="font-mono font-bold">
                             R${' '}
                             {d.displayValue?.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
                           </span>
@@ -1052,24 +1040,40 @@ export const CagrSimulator = ({ asset }) => {
                 }}
               />
 
-              {!isHypothetical && chartData.length >= 2 && (
-                <ReferenceArea
-                  x1={chartData[0].label}
-                  x2={chartData[1].label}
-                  fill={isDark ? '#374151' : '#e5e7eb'}
-                  fillOpacity={0.3}
+              {isHypothetical ? (
+                <Area
+                  type="monotone"
+                  dataKey="displayValue"
+                  stroke={hypotheticalColor}
+                  strokeWidth={2}
+                  fill="url(#colorHypothetical)"
+                  dot={<CustomAreaDot />}
+                  animationDuration={1000}
                 />
+              ) : (
+                <>
+                  <Area
+                    type="monotone"
+                    dataKey="history"
+                    stroke={colorHistory}
+                    strokeWidth={2}
+                    fill="url(#colorHistory)"
+                    dot={<CustomAreaDot />}
+                    animationDuration={1000}
+                    connectNulls={false}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="projection"
+                    stroke={colorProjection}
+                    strokeWidth={2}
+                    fill="url(#colorProjection)"
+                    dot={<CustomAreaDot />}
+                    animationDuration={1000}
+                    connectNulls={false}
+                  />
+                </>
               )}
-
-              <Area
-                type="monotone"
-                dataKey="displayValue"
-                stroke={mainColor}
-                strokeWidth={3}
-                fill="url(#colorCagr)"
-                dot={<CustomAreaDot />}
-                animationDuration={1000}
-              />
             </AreaChart>
           </ResponsiveContainer>
         )}
