@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, UniqueConstraint, Date, Boolean, Numeric, Text, \
-    BigInteger, Identity, UUID, ForeignKey, Table
+    BigInteger, Identity, UUID, ForeignKey, Table, JSON
 from sqlalchemy.sql import func
 from backend.source.core.database import Base
 
@@ -121,6 +121,8 @@ class User(Base):
         server_default=func.now(),
         onupdate=func.now()
     )
+
+    balancing_settings = Column(JSON, default={}, nullable=True)
 
     # Opcional: Se quiser converter para dict facilmente
     def to_dict(self):
