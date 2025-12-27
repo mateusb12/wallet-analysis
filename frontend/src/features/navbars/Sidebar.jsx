@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
+import { NavLink } from 'react-router-dom';
 
 import FiiSimulator from '../../pages/FiiSimulator.jsx';
 import IpcaCalculator from '../../pages/IpcaCalculator.jsx';
@@ -7,70 +8,75 @@ import PricePositionCalculator from '../stockHistoricData/PricePositionCalculato
 import WalletDashboard from '../wallet/WalletDashboard.jsx';
 import Settings from '../settings/Settings.jsx';
 import Contributions from '../../pages/Contributions.jsx';
-
-import { Settings as SettingsIcon, LogOut } from 'lucide-react';
 import WhereToInvest from '../guidance/WhereToInvest.jsx';
 import WalletBalancer from '../balancing/WalletBalancer.jsx';
-import { Database } from 'lucide-react';
 import AssetsManager from '../importer/AssetsManager.jsx';
 
-const menuItems = [
+import { Settings as SettingsIcon, LogOut, Database } from 'lucide-react';
+
+export const menuItems = [
   {
     id: 'wallet-dashboard',
     label: 'Minha Carteira',
     icon: '💼',
+    path: '/',
     component: WalletDashboard,
   },
   {
     id: 'contributions',
     label: 'Meus Aportes',
     icon: '📝',
+    path: '/aportes',
     component: Contributions,
   },
   {
     id: 'where-to-invest',
     label: 'Onde aportar?',
     icon: '🧭',
+    path: '/recomendacao',
     component: WhereToInvest,
   },
   {
     id: 'wallet-balancer',
     label: 'Balanceador Inteligente',
     icon: '⚖️',
+    path: '/balanceador',
     component: WalletBalancer,
   },
   {
     id: 'data-management',
     label: 'Gerenciar ativos',
     icon: '🗄️',
+    path: '/gerenciar-ativos',
     component: AssetsManager,
   },
   {
     id: 'price-analyzer',
     label: 'Analisador de Preço (Ações)',
     icon: '💹',
+    path: '/analise-preco',
     component: PricePositionCalculator,
   },
   {
     id: 'fii-simulator',
     label: 'Simulador de Investimento (FIIs)',
     icon: '📈',
+    path: '/simulador-fii',
     component: FiiSimulator,
   },
   {
     id: 'ipca-calculator',
     label: 'Calculadora de Correção (IPCA)',
     icon: '📊',
+    path: '/calculadora-ipca',
     component: IpcaCalculator,
   },
 ];
 
-export const defaultCalculator = menuItems[0];
+export const SettingsComponent = Settings;
 
-function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
-  const [activeItem, setActiveItem] = useState(defaultCalculator.id);
-
-  const { user, profile, signOut } = useAuth();
+function Sidebar({ isMobileOpen, onClose }) {
+  const { user, profile } = useAuth();
 
   const userInitial = user?.email ? user.email.charAt(0).toUpperCase() : 'U';
 
@@ -85,17 +91,14 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
   const userAvatarUrl =
     profile?.avatar_url || user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
 
-  const handleItemClick = (item) => {
-    setActiveItem(item.id);
-    onSelectCalculator(item.component);
-    if (onClose) onClose();
-  };
-
-  const handleSettingsClick = () => {
-    setActiveItem('settings');
-    onSelectCalculator(Settings);
-    if (onClose) onClose();
-  };
+  const getLinkClass = ({ isActive }) => `
+    w-full text-left px-3 py-3 rounded-lg transition-all duration-200 flex items-center space-x-3 group border
+    ${
+      isActive
+        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 border-transparent'
+        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50 hover:text-gray-900 dark:hover:text-white border-transparent'
+    }
+  `;
 
   const sidebarContent = (
     <>
@@ -119,21 +122,18 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
         <ul className="space-y-1">
           {menuItems.map((item) => (
             <li key={item.id}>
-              <button
-                onClick={() => handleItemClick(item)}
-                className={`w-full text-left px-3 py-3 rounded-lg transition-all duration-200 flex items-center space-x-3 group border ${
-                  activeItem === item.id
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 border-transparent'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50 hover:text-gray-900 dark:hover:text-white border-transparent'
-                }`}
-              >
-                <span
-                  className={`text-xl transition-transform duration-200 ${activeItem === item.id ? 'scale-110' : 'group-hover:scale-110'}`}
-                >
-                  {item.icon}
-                </span>
-                <span className="text-sm font-medium">{item.label}</span>
-              </button>
+              <NavLink to={item.path} className={getLinkClass} onClick={() => onClose && onClose()}>
+                {({ isActive }) => (
+                  <>
+                    <span
+                      className={`text-xl transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}
+                    >
+                      {item.icon}
+                    </span>
+                    <span className="text-sm font-medium">{item.label}</span>
+                  </>
+                )}
+              </NavLink>
             </li>
           ))}
         </ul>
@@ -149,7 +149,6 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
               className="w-10 h-10 rounded-full object-cover shadow-md ring-2 ring-white dark:ring-gray-600 shrink-0"
               referrerPolicy="no-referrer"
               onError={(e) => {
-                console.error('Error loading avatar image:', userAvatarUrl);
                 e.target.style.display = 'none';
               }}
             />
@@ -166,17 +165,19 @@ function Sidebar({ onSelectCalculator, isMobileOpen, onClose }) {
             </p>
           </div>
 
-          <button
-            onClick={handleSettingsClick}
-            title="Configurações"
-            className={`p-1.5 rounded-lg transition-colors ${
-              activeItem === 'settings'
-                ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/30'
-                : 'text-gray-400 hover:text-blue-500 hover:bg-gray-50 dark:hover:bg-gray-600'
-            }`}
+          <NavLink
+            to="/configuracoes"
+            onClick={() => onClose && onClose()}
+            className={({ isActive }) =>
+              `p-1.5 rounded-lg transition-colors ${
+                isActive
+                  ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/30'
+                  : 'text-gray-400 hover:text-blue-500 hover:bg-gray-50 dark:hover:bg-gray-600'
+              }`
+            }
           >
             <SettingsIcon className="w-5 h-5" strokeWidth={1.75} />
-          </button>
+          </NavLink>
         </div>
 
         <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center font-medium">
