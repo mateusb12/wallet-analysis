@@ -403,17 +403,19 @@ export default function AssetsManager() {
 
         <div className="flex items-center gap-3 w-full md:w-auto">
           {}
-          <button
-            onClick={() => setDebugShowEmpty(!debugShowEmpty)}
-            className={`p-2 rounded-lg transition-all border ${
-              debugShowEmpty
-                ? 'bg-orange-100 text-orange-600 border-orange-200'
-                : 'bg-gray-100 text-gray-400 border-gray-200 hover:text-orange-500'
-            }`}
-            title="Simular conta vazia (Debug)"
-          >
-            <Bug size={18} />
-          </button>
+          {import.meta.env.DEV && (
+            <button
+              onClick={() => setDebugShowEmpty(!debugShowEmpty)}
+              className={`p-2 rounded-lg transition-all border ${
+                debugShowEmpty
+                  ? 'bg-orange-100 text-orange-600 border-orange-200'
+                  : 'bg-gray-100 text-gray-400 border-gray-200 hover:text-orange-500'
+              }`}
+              title="Simular conta vazia (Debug - Dev Only)"
+            >
+              <Bug size={18} />
+            </button>
+          )}
 
           {!showEmptyState && (
             <div className="relative flex-1 md:flex-none">
