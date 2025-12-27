@@ -31,8 +31,60 @@ import {
   Zap,
   Clock,
   Anchor,
+  Layers,
 } from 'lucide-react';
 import { useTheme } from '../theme/ThemeContext';
+
+const RISK_FREE_RATE = 10.65;
+
+const SHARPE_RANGES = [
+  {
+    min: -999,
+    max: 0,
+    label: 'Pior que renda fixa',
+    description: 'O ativo não compensa o risco. Retorno inferior à taxa livre de risco.',
+    color: 'red',
+  },
+  {
+    min: 0,
+    max: 0.5,
+    label: 'Risco alto para pouco retorno',
+    description: 'Alta volatilidade com retorno ineficiente. Grande chance de erro emocional.',
+    color: 'orange',
+  },
+  {
+    min: 0.5,
+    max: 1.0,
+    label: 'Aceitável, mas sofrido',
+    description: 'Retorno razoável, porém com oscilações que podem testar a disciplina.',
+    color: 'yellow',
+  },
+  {
+    min: 1.0,
+    max: 1.2,
+    label: 'Bom equilíbrio',
+    description: 'Crescimento consistente com volatilidade controlada.',
+    color: 'green',
+  },
+  {
+    min: 1.2,
+    max: 2.0,
+    label: 'Retorno eficiente',
+    description: 'Excelente relação entre retorno e risco. Ativo sustentável.',
+    color: 'blue',
+  },
+  {
+    min: 2.0,
+    max: 999,
+    label: 'Excepcional',
+    description: 'Retorno muito alto para o risco assumido. Geralmente temporário.',
+    color: 'purple',
+  },
+];
+
+const getSharpeInfo = (value) => {
+  return SHARPE_RANGES.find((r) => value >= r.min && value < r.max) || SHARPE_RANGES[0];
+};
 
 const getFormattedDate = (daysOffset = 0) => {
   const date = new Date();
@@ -593,6 +645,7 @@ export const StrategySimulator = ({ asset }) => {
 
 export const CagrSimulator = ({ asset }) => {
   const [mode, setMode] = useState('real');
+  const [activeTab, setActiveTab] = useState('CAGR');
 
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -632,19 +685,49 @@ export const CagrSimulator = ({ asset }) => {
         };
       }
     } else {
-      const isGood = asset.cagr > 10;
-      return {
-        title: `Projeção (${asset.ticker})`,
-        desc: isGood ? 'Alta Aceleração Histórica' : 'Crescimento Moderado/Baixo',
-        icon: <Zap className={isGood ? 'text-purple-600' : 'text-gray-500'} />,
-        messageTitle: isGood ? 'Motor Potente:' : 'Desempenho:',
-        message: isGood
-          ? `Este ativo tem entregado ${asset.cagr}% ao ano. Se mantiver esse ritmo, o capital dobra a cada ${(72 / asset.cagr).toFixed(1)} anos.`
-          : `O crescimento atual é de ${asset.cagr}%. É positivo, mas exige paciência.`,
-        color: isGood ? 'purple' : 'gray',
-      };
+      if (activeTab === 'SHARPE') {
+        const sharpeInfo = getSharpeInfo(asset.sharpe);
+        return {
+          title: `Risco Sharpe (${asset.ticker})`,
+          desc: 'Eficiência Risco vs Retorno',
+          icon: <Layers className="text-orange-500" />,
+          messageTitle: `${sharpeInfo.label}:`,
+          message: sharpeInfo.description,
+          color: sharpeInfo.color,
+        };
+      } else {
+        const isGood = asset.cagr > 10;
+        return {
+          title: `Projeção (${asset.ticker})`,
+          desc: isGood ? 'Alta Aceleração Histórica' : 'Crescimento Moderado/Baixo',
+          icon: <Zap className={isGood ? 'text-purple-600' : 'text-gray-500'} />,
+          messageTitle: isGood ? 'Motor Potente:' : 'Desempenho:',
+          message: isGood
+            ? `Este ativo tem entregado ${asset.cagr}% ao ano. Se mantiver esse ritmo, o capital dobra a cada ${(72 / asset.cagr).toFixed(1)} anos.`
+            : `O crescimento atual é de ${asset.cagr}%. É positivo, mas exige paciência.`,
+          color: isGood ? 'purple' : 'gray',
+        };
+      }
     }
-  }, [isHypothetical, asset, isIllusion]);
+  }, [isHypothetical, asset, isIllusion, activeTab]);
+
+  const sharpeData = useMemo(() => {
+    if (!asset || activeTab !== 'SHARPE') return null;
+
+    const excessReturn = asset.cagr - RISK_FREE_RATE;
+    let impliedVolatility = 0;
+
+    if (asset.sharpe !== 0) {
+      impliedVolatility = Math.abs(excessReturn / asset.sharpe);
+    }
+
+    return {
+      rp: asset.cagr,
+      rf: RISK_FREE_RATE,
+      sigma: impliedVolatility,
+      excess: excessReturn,
+    };
+  }, [asset, activeTab]);
 
   const chartData = useMemo(() => {
     if (isHypothetical) {
@@ -656,6 +739,8 @@ export const CagrSimulator = ({ asset }) => {
         isProjection: false,
       }));
     }
+
+    if (activeTab === 'SHARPE') return [];
 
     const data = [];
     const currentPrice = asset.price || 100;
@@ -688,10 +773,10 @@ export const CagrSimulator = ({ asset }) => {
     });
 
     return data;
-  }, [asset, isHypothetical, calcStart, calcEnd, isIllusion]);
+  }, [asset, isHypothetical, calcStart, calcEnd, isIllusion, activeTab]);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col h-full relative overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col h-full relative overflow-hidden transition-all duration-300">
       {}
       <div className="flex flex-col md:flex-row md:items-start justify-between mb-4 gap-2 z-10">
         <div className="flex items-center gap-3">
@@ -702,7 +787,7 @@ export const CagrSimulator = ({ asset }) => {
             <h4 className="font-bold text-gray-900 dark:text-white text-base">{config.title}</h4>
             <div className="flex items-center gap-2">
               <p className="text-xs text-gray-500 dark:text-gray-400">{config.desc}</p>
-              {!isHypothetical && (
+              {!isHypothetical && activeTab !== 'SHARPE' && (
                 <span className="text-[10px] text-gray-500 flex items-center gap-1 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
                   <Clock size={10} /> {daysCount}d
                 </span>
@@ -739,16 +824,27 @@ export const CagrSimulator = ({ asset }) => {
               </button>
             </div>
           ) : (
-            <div className="text-right pr-1">
-              <span
-                className={`text-xs font-bold px-2 py-1 rounded border ${
-                  asset?.cagr >= 0
-                    ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400'
-                    : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400'
+            <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex text-xs font-bold w-fit">
+              <button
+                onClick={() => setActiveTab('CAGR')}
+                className={`px-3 py-1.5 rounded-md transition-all ${
+                  activeTab === 'CAGR'
+                    ? 'bg-white text-purple-600 shadow-sm dark:bg-gray-600 dark:text-purple-300'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
                 }`}
               >
-                CAGR: {asset?.cagr}%
-              </span>
+                CAGR %
+              </button>
+              <button
+                onClick={() => setActiveTab('SHARPE')}
+                className={`px-3 py-1.5 rounded-md transition-all ${
+                  activeTab === 'SHARPE'
+                    ? 'bg-white text-orange-600 shadow-sm dark:bg-gray-600 dark:text-orange-300'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                }`}
+              >
+                Sharpe
+              </button>
             </div>
           )}
         </div>
@@ -760,6 +856,10 @@ export const CagrSimulator = ({ asset }) => {
         ${config.color === 'purple' ? 'bg-purple-50 border-purple-100 text-purple-900 dark:bg-purple-900/10 dark:border-purple-900/30 dark:text-purple-200' : ''}
         ${config.color === 'blue' ? 'bg-blue-50 border-blue-100 text-blue-900 dark:bg-blue-900/10 dark:border-blue-900/30 dark:text-blue-200' : ''}
         ${config.color === 'gray' ? 'bg-gray-50 border-gray-200 text-gray-800 dark:bg-gray-700/30 dark:border-gray-600 dark:text-gray-300' : ''}
+        ${config.color === 'green' ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/10 dark:border-emerald-900/30 dark:text-emerald-200' : ''}
+        ${config.color === 'yellow' ? 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/10 dark:border-yellow-900/30 dark:text-yellow-200' : ''}
+        ${config.color === 'orange' ? 'bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900/10 dark:border-orange-900/30 dark:text-orange-200' : ''}
+        ${config.color === 'red' ? 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/10 dark:border-red-900/30 dark:text-red-200' : ''}
       `}
       >
         <p>
@@ -768,83 +868,158 @@ export const CagrSimulator = ({ asset }) => {
       </div>
 
       {}
-      <div className="w-full h-48 mt-auto z-10">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
-            <defs>
-              <linearGradient id="colorCagr" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={mainColor} stopOpacity={0.3} />
-                <stop offset="95%" stopColor={mainColor} stopOpacity={0} />
-              </linearGradient>
-            </defs>
+      <div className="w-full flex-1 min-h-[12rem] mt-auto z-10 flex flex-col justify-center">
+        {!isHypothetical && activeTab === 'SHARPE' && sharpeData ? (
+          <div className="flex flex-col gap-4 animate-in fade-in zoom-in duration-300">
+            {}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-gray-50 dark:bg-gray-700/50 p-2 rounded border border-gray-100 dark:border-gray-600 text-center">
+                <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">
+                  Seu investimetno
+                </div>
+                <div className="text-sm font-bold text-gray-800 dark:text-gray-200">
+                  {sharpeData.rp.toFixed(1)}%
+                </div>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-700/50 p-2 rounded border border-gray-100 dark:border-gray-600 text-center">
+                <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">
+                  Se fosse renda fixa
+                </div>
+                <div className="text-sm font-bold text-gray-800 dark:text-gray-200">
+                  {sharpeData.rf.toFixed(1)}%
+                </div>
+              </div>
+              <div className="bg-orange-50 dark:bg-orange-900/20 p-2 rounded border border-orange-100 dark:border-orange-900/30 text-center">
+                <div className="text-[10px] text-orange-600 dark:text-orange-400 uppercase font-bold mb-1">
+                  Volatilidade
+                </div>
+                <div className="text-sm font-bold text-orange-600 dark:text-orange-400">
+                  {sharpeData.sigma.toFixed(1)}%
+                </div>
+              </div>
+            </div>
 
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+            {}
+            <div className="flex items-center justify-center gap-3 py-2">
+              <div className="flex flex-col items-center">
+                <div className="border-b-2 border-gray-300 dark:border-gray-600 px-2 pb-1 mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+                  <span
+                    className="text-green-600 dark:text-green-400 font-bold"
+                    title="Prêmio de Risco"
+                  >
+                    {sharpeData.excess.toFixed(1)}%
+                  </span>
+                  <span className="text-[9px] mx-1 text-gray-400">(Excesso)</span>
+                </div>
+                <div className="text-xs font-bold text-orange-500" title="Volatilidade (Risco)">
+                  {sharpeData.sigma.toFixed(1)}%
+                </div>
+              </div>
+              <div className="text-xl font-bold text-gray-400">=</div>
+              <div className={`text-4xl font-black text-${config.color}-500`}>
+                {asset.sharpe.toFixed(2)}
+              </div>
+            </div>
 
-            <XAxis
-              dataKey="label"
-              tick={{ fontSize: 10, fill: axisTextColor }}
-              axisLine={false}
-              tickLine={false}
-              dy={10}
-            />
-            <YAxis hide domain={['auto', 'auto']} />
+            {}
+            <div className="w-full mt-2">
+              <div className="h-2.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden relative">
+                {}
+                <div
+                  className="absolute top-0 bottom-0 w-1.5 bg-gray-800 dark:bg-white border-white dark:border-gray-900 shadow-lg z-20 transition-all duration-1000 ease-out"
+                  style={{
+                    left: `${Math.min(Math.max((asset.sharpe + 0.5) * 33, 0), 100)}%`,
+                  }}
+                />
+                {}
+                <div className="absolute inset-0 opacity-60 bg-gradient-to-r from-red-500 via-yellow-400 to-green-500" />
+              </div>
 
-            <Tooltip
-              content={({ active, payload }) => {
-                if (active && payload && payload.length) {
-                  const d = payload[0].payload;
-                  return (
-                    <div className="bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-600 rounded shadow-lg text-xs z-50">
-                      <p className="font-bold mb-1 border-b border-gray-100 dark:border-gray-700 pb-1">
-                        {isHypothetical ? `Ano ${d.year}` : d.fullDate}
-                      </p>
-                      <div className="flex justify-between gap-4 mt-1">
-                        <span className="text-gray-500">Valor:</span>
-                        <span style={{ color: mainColor }} className="font-mono font-bold">
-                          R$ {d.displayValue?.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-                        </span>
-                      </div>
-                      {isHypothetical && (
-                        <div className="text-[10px] text-gray-400 mt-1">
-                          Rentabilidade Anual:{' '}
-                          <span className={d.pct >= 0 ? 'text-green-500' : 'text-red-500'}>
-                            {d.pct}%
+              <div className="flex justify-between mt-1 text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                <span>Ruim (-0.5)</span>
+                <span>Neutro (1.0)</span>
+                <span>Bom (2.5)</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
+              <defs>
+                <linearGradient id="colorCagr" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={mainColor} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={mainColor} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 10, fill: axisTextColor }}
+                axisLine={false}
+                tickLine={false}
+                dy={10}
+              />
+              <YAxis hide domain={['auto', 'auto']} />
+
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    const d = payload[0].payload;
+                    return (
+                      <div className="bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-600 rounded shadow-lg text-xs z-50">
+                        <p className="font-bold mb-1 border-b border-gray-100 dark:border-gray-700 pb-1">
+                          {isHypothetical ? `Ano ${d.year}` : d.fullDate}
+                        </p>
+                        <div className="flex justify-between gap-4 mt-1">
+                          <span className="text-gray-500">Valor:</span>
+                          <span style={{ color: mainColor }} className="font-mono font-bold">
+                            R${' '}
+                            {d.displayValue?.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
                           </span>
                         </div>
-                      )}
-                      {!isHypothetical && d.annotation && (
-                        <p className="text-[10px] text-gray-400 mt-1 italic">{d.annotation}</p>
-                      )}
-                    </div>
-                  );
-                }
-                return null;
-              }}
-            />
-
-            {!isHypothetical && chartData.length >= 2 && (
-              <ReferenceArea
-                x1={chartData[0].label}
-                x2={chartData[1].label}
-                fill={isDark ? '#374151' : '#e5e7eb'}
-                fillOpacity={0.3}
+                        {isHypothetical && (
+                          <div className="text-[10px] text-gray-400 mt-1">
+                            Rentabilidade Anual:{' '}
+                            <span className={d.pct >= 0 ? 'text-green-500' : 'text-red-500'}>
+                              {d.pct}%
+                            </span>
+                          </div>
+                        )}
+                        {!isHypothetical && d.annotation && (
+                          <p className="text-[10px] text-gray-400 mt-1 italic">{d.annotation}</p>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
               />
-            )}
 
-            <Area
-              type="monotone"
-              dataKey="displayValue"
-              stroke={mainColor}
-              strokeWidth={3}
-              fill="url(#colorCagr)"
-              dot={{ r: 4, fill: mainColor, strokeWidth: 2, stroke: isDark ? '#1f2937' : '#fff' }}
-              animationDuration={1000}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+              {!isHypothetical && chartData.length >= 2 && (
+                <ReferenceArea
+                  x1={chartData[0].label}
+                  x2={chartData[1].label}
+                  fill={isDark ? '#374151' : '#e5e7eb'}
+                  fillOpacity={0.3}
+                />
+              )}
+
+              <Area
+                type="monotone"
+                dataKey="displayValue"
+                stroke={mainColor}
+                strokeWidth={3}
+                fill="url(#colorCagr)"
+                dot={{ r: 4, fill: mainColor, strokeWidth: 2, stroke: isDark ? '#1f2937' : '#fff' }}
+                animationDuration={1000}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
-      {}
       {isHypothetical && (
         <div className="mt-4 pt-2 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center text-xs">
           <span className="text-gray-500 uppercase font-bold">Resultado Final (Ano 6)</span>
@@ -855,6 +1030,15 @@ export const CagrSimulator = ({ asset }) => {
               <span className="font-bold text-purple-600">R$ 7.290 (Real)</span>
             )}
           </div>
+        </div>
+      )}
+
+      {}
+      {!isHypothetical && activeTab === 'CAGR' && (
+        <div className="mt-4 pt-2 border-t border-gray-100 dark:border-gray-700 text-right">
+          <span className="text-xs font-bold text-gray-500">
+            CAGR: <span className="text-purple-600">{asset?.cagr}%</span>
+          </span>
         </div>
       )}
     </div>
