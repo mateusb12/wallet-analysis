@@ -19,6 +19,7 @@ import { fetchWalletPositions } from '../../services/walletDataService.js';
 import TargetConfigModal from './TargetConfigModal';
 import { useAuth } from '../auth/AuthContext';
 import { userService } from '../../services/userService.js';
+import ContributionAllocator from './ContributionAllocator.jsx';
 
 const FormatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -790,6 +791,7 @@ const WalletBalancer = () => {
         </div>
 
         <AIAnalysisReport tree={portfolioTree} targets={targets} />
+        <ContributionAllocator tree={portfolioTree} targets={targets} />
       </div>
     </>
   );
