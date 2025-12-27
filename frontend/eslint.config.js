@@ -52,27 +52,23 @@ export default defineConfig([
 
     rules: {
       /* =====================================================
-       * INDENTAÇÃO (JS PURO)
+       * ❌ FORMATAÇÃO — ESLINT NÃO OPINA
+       * (PRETTIER É O DONO)
        * ===================================================== */
-      indent: [
-        'error',
-        2,
-        {
-          ignoredNodes: [
-            'JSXElement',
-            'JSXElement > *',
-            'JSXAttribute',
-            'JSXExpressionContainer',
-            'TemplateLiteral',
-          ],
-        },
-      ],
-
-      /* =====================================================
-       * REACT / JSX (DELEGADO AO PRETTIER)
-       * ===================================================== */
+      indent: 'off',
       'react/jsx-indent': 'off',
       'react/jsx-indent-props': 'off',
+
+      /* =====================================================
+       * PRETTIER (FORMATAÇÃO REAL)
+       * ===================================================== */
+      'prettier/prettier': 'error',
+
+      /* =====================================================
+       * REACT / JSX
+       * ===================================================== */
+      'react/react-in-jsx-scope': 'off',
+      'react/jsx-uses-react': 'off',
 
       /* =====================================================
        * REACT HOOKS
@@ -84,11 +80,6 @@ export default defineConfig([
        * REACT REFRESH
        * ===================================================== */
       'react-refresh/only-export-components': 'off',
-
-      /* =====================================================
-       * PRETTIER (FORMATAÇÃO)
-       * ===================================================== */
-      'prettier/prettier': 'error',
 
       /* =====================================================
        * CUSTOM RULES

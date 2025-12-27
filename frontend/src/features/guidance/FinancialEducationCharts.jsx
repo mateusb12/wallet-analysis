@@ -40,10 +40,19 @@ const getFormattedDate = (daysOffset = 0) => {
   return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }).replace('.', '');
 };
 
-const formatDateShort = (dateStr) => {
+export const formatDateLong = (dateStr) => {
   if (!dateStr) return 'Início';
-  const [year, month, day] = dateStr.split('-');
-  return `${day}/${month}/${year.slice(2)}`;
+
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+
+  if (isNaN(date.getTime())) return dateStr;
+
+  const dayFormatted = String(date.getDate()).padStart(2, '0');
+  const monthFormatted = date.toLocaleString('pt-BR', { month: 'short' }).replace('.', '');
+  const yearFormatted = date.getFullYear();
+
+  return `${dayFormatted}/${monthFormatted}/${yearFormatted}`;
 };
 
 const getCurrentYear = (yearOffset = 0) => {
@@ -654,8 +663,8 @@ export const CagrSimulator = ({ asset }) => {
     const startPrice = currentPrice / (1 + rate);
 
     data.push({
-      label: formatDateShort(calcStart),
-      fullDate: `Início Cálculo (${formatDateShort(calcStart)})`,
+      label: formatDateLong(calcStart),
+      fullDate: `Início Cálculo (${formatDateLong(calcStart)})`,
       displayValue: startPrice,
       isReal: true,
       annotation: 'Início Janela',
@@ -663,7 +672,7 @@ export const CagrSimulator = ({ asset }) => {
 
     data.push({
       label: 'Hoje',
-      fullDate: `Hoje (${formatDateShort(calcEnd)})`,
+      fullDate: `Hoje (${formatDateLong(calcEnd)})`,
       displayValue: currentPrice,
       isReal: true,
       annotation: 'Preço Atual',
