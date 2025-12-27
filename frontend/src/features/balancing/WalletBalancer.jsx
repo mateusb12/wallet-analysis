@@ -12,6 +12,8 @@ import {
   Copy,
   Check,
   Settings,
+  Lightbulb,
+  Sparkles,
 } from 'lucide-react';
 import { fetchWalletPositions } from '../../services/walletDataService.js';
 import TargetConfigModal from './TargetConfigModal';
@@ -85,6 +87,164 @@ const findPriorityPath = (tree, targets) => {
     macro: winnerMacro.key,
     micro: winnerMicro,
   };
+};
+
+const AIAnalysisReport = ({ tree, targets }) => {
+  if (!tree) return null;
+
+  const insights = [];
+
+  const fiiData = tree.fii;
+  if (fiiData && fiiData.totalValue > 0) {
+    const papelVal = fiiData.subTypes['Papel']?.value || 0;
+    const papelPct = (papelVal / fiiData.totalValue) * 100;
+
+    if (papelPct > 55) {
+      insights.push({
+        type: 'warning',
+        title: 'Exposição Excessiva em Crédito (FIIs)',
+        text: `Sua carteira de FIIs está ${papelPct.toFixed(0)}% em Papel (Dívida). Isso gera dividendos agora, mas não protege contra inflação no longo prazo como Imóveis reais.`,
+        action:
+          'Pare de comprar Papel. Foque 100% dos próximos aportes em Tijolo (Logística/Shoppings).',
+      });
+    } else if (papelPct < 25) {
+      insights.push({
+        type: 'info',
+        title: 'Oportunidade de Renda',
+        text: `Você tem pouca exposição a Recebíveis (${papelPct.toFixed(0)}%). Em momentos de juros altos, você pode estar deixando dinheiro na mesa.`,
+        action: 'Considere aumentar levemente a mão em FIIs de Papel High Grade.',
+      });
+    }
+  }
+
+  const stockData = tree.acoes;
+  if (stockData && stockData.totalValue > 0) {
+    const perenesVal = stockData.subTypes['Perenes (Renda/Defesa)']?.value || 0;
+    const perenesPct = (perenesVal / stockData.totalValue) * 100;
+
+    let totalStockCount = 0;
+    Object.values(stockData.subTypes).forEach((sub) => {
+      totalStockCount += sub.assets.length;
+    });
+
+    if (totalStockCount <= 4) {
+      insights.push({
+        type: 'warning',
+        title: 'Alerta de Concentração (Risco Específico)',
+        text: `Você tem apenas ${totalStockCount} ações na carteira (N=${totalStockCount}). Se o governo intervir em uma delas (ex: BBAS3), o impacto no seu patrimônio será devastador.`,
+        action:
+          'Urgente: Adicione pelo menos mais 2 ou 3 empresas de setores diferentes (Ex: Saneamento, Elétricas).',
+      });
+    }
+
+    if (perenesPct > 70) {
+      insights.push({
+        type: 'info',
+        title: 'Carteira de Ações Muito Conservadora',
+        text: `Mais de ${perenesPct.toFixed(0)}% das suas ações são defensivas. É seguro, mas pode travar seu crescimento patrimonial no longo prazo.`,
+        action: 'Estude adicionar empresas Cíclicas (Indústria/Varejo) ou Small Caps de qualidade.',
+      });
+    } else if (perenesPct < 40) {
+      insights.push({
+        type: 'warning',
+        title: 'Alta Volatilidade em Ações',
+        text: 'Sua carteira está muito exposta a ciclos econômicos (Cíclicas). Se a bolsa cair, sua volatilidade será alta.',
+        action: 'Reforce a base com Bancos, Elétricas ou Seguros (Perenes).',
+      });
+    }
+  }
+
+  const etfData = tree.etf;
+  if (etfData && etfData.totalValue > 0) {
+    const fatorVal = etfData.subTypes['Específicos/Fatores']?.value || 0;
+    const fatorPct = (fatorVal / etfData.totalValue) * 100;
+
+    if (fatorPct > 40) {
+      insights.push({
+        type: 'warning',
+        title: 'Risco de Concentração Internacional',
+        text: `Você tem ${fatorPct.toFixed(0)}% de ETFs em apostas específicas (Tech/Cripto/Small Caps). Isso é agressivo demais para uma carteira passiva.`,
+        action: 'Foque seus aportes no índice neutro (IVVB11/WRLD11) para diluir esse risco.',
+      });
+    }
+  }
+
+  if (insights.length === 0) {
+    insights.push({
+      type: 'success',
+      title: 'Carteira Equilibrada!',
+      text: 'Parabéns, seus ativos estão bem distribuídos em quantidade e estratégia. Você atingiu um ótimo equilíbrio.',
+      action: 'Apenas mantenha a constância nos aportes.',
+    });
+  }
+
+  return (
+    <div className="mt-8 bg-gradient-to-br from-indigo-50 to-white dark:from-gray-800 dark:to-gray-800/50 rounded-2xl p-6 border border-indigo-100 dark:border-gray-700 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg text-indigo-600 dark:text-indigo-400">
+          <Sparkles className="w-5 h-5" />
+        </div>
+        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">
+          Análise Inteligente da Carteira
+        </h3>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {insights.map((insight, idx) => (
+          <div
+            key={idx}
+            className={`
+              p-5 rounded-xl border flex flex-col gap-3 transition-all duration-300 hover:shadow-md
+              ${
+                insight.type === 'warning'
+                  ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-700/50'
+                  : insight.type === 'success'
+                    ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-700/50'
+                    : 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-700/50'
+              }
+            `}
+          >
+            <div className="flex items-start gap-3">
+              {insight.type === 'warning' && (
+                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              )}
+              {insight.type === 'success' && (
+                <Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              )}
+              {insight.type === 'info' && (
+                <Lightbulb className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              )}
+              <div>
+                <h4
+                  className={`font-bold text-sm mb-1
+                  ${
+                    insight.type === 'warning'
+                      ? 'text-amber-800 dark:text-amber-200'
+                      : insight.type === 'success'
+                        ? 'text-emerald-800 dark:text-emerald-200'
+                        : 'text-blue-800 dark:text-blue-200'
+                  }
+                `}
+                >
+                  {insight.title}
+                </h4>
+                <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                  {insight.text}
+                </p>
+              </div>
+            </div>
+
+            {insight.action && (
+              <div className="mt-auto pt-3 border-t border-black/5 dark:border-white/5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-80">
+                <ArrowRight className="w-3 h-3" />
+                <span>{insight.action}</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 const DriftIndicator = ({ label, currentPct, targetPct, amount, compact = false }) => {
@@ -347,7 +507,6 @@ const WalletBalancer = () => {
         newTree[macro].subTypes[subType].value += item.totalVal;
         newTree[macro].subTypes[subType].assets.push({
           ticker: item.ticker,
-
           sector: typeStr.replace(/^(Ação|FII|ETF)\s-\s/, ''),
           qty: item.qty,
           price: item.price,
@@ -622,6 +781,9 @@ const WalletBalancer = () => {
             );
           })}
         </div>
+
+        {}
+        <AIAnalysisReport tree={portfolioTree} targets={targets} />
       </div>
     </>
   );
