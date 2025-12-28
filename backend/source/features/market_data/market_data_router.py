@@ -122,11 +122,20 @@ P_TIJOLO_GERAL = [
     re.compile(r"\bvarej\w*\b"),
     re.compile(r"\blajes?\b"),
     re.compile(r"\bescritor\w*\b"),
+
+    # --- ALTERAÇÃO AQUI ---
     re.compile(r"\bcorporativ\w*\b"),
+    re.compile(r"\bcorporate\b"),  # Adicionado: Pega "Corporate" (XPCM11, etc)
     re.compile(r"\boffice\b"),
+
     re.compile(r"\brenda\s+urbana\b"),
     re.compile(r"\bedifici\w*\b"),
-    re.compile(r"\bimoveis?\b"),
+
+    # --- ALTERAÇÃO AQUI ---
+    re.compile(r"\bimoveis?\b"),  # Pega "Imóvel"
+    re.compile(r"\bimobiliari\w*\b"),  # Adicionado: Pega "Imobiliário" (presente no nome de quase todos)
+    re.compile(r"\breal\s+estate\b"),  # Adicionado: Pega descrições em inglês (comum no Yahoo)
+
     re.compile(r"\bpredio\b"),
     re.compile(r"\bhospital\b"),
     re.compile(r"\beducacional\b"),
@@ -441,9 +450,14 @@ def classify_ticker(payload: TickerSync):
                 base_result["detected_type"] = "FII - Multiestratégia"
                 base_result["reasoning"] = f"Termos de multiestratégia (score={s_multi})."
             elif (is_cri and is_tijolo):
-                base_result["sector"] = "híbrido"
-                base_result["detected_type"] = "FII - Híbrido (Misto)"
-                base_result["reasoning"] = f"Mix de Papel e Tijolo."
+                if s_tijolo > s_cri:
+                    base_result["sector"] = "tijolo"
+                    base_result["detected_type"] = f"FII - Tijolo (Geral)"
+                    base_result["reasoning"] = f"Tijolo predominante ({s_tijolo} vs {s_cri})."
+                else:
+                    base_result["sector"] = "híbrido"
+                    base_result["detected_type"] = "FII - Híbrido (Misto)"
+                    base_result["reasoning"] = f"Mix de Papel e Tijolo equilibrado."
             elif is_cri:
                 base_result["sector"] = "papel"
                 base_result["detected_type"] = "FII - Papel (CRI)"
