@@ -226,15 +226,15 @@ def get_market_constants():
 def sync_ticker(payload: TickerSync):
     """
     Sincroniza histórico (OHLCV) via Yahoo Finance.
-    Usa a robustez do código antigo com a estrutura do novo.
+    CORRIGIDO: Aponta para a tabela antiga 'b3_prices' e coluna 'trade_date'.
     """
     ticker = payload.ticker
     if not ticker:
         raise HTTPException(status_code=400, detail="Ticker is required")
 
-    # Lógica de datas do código antigo
+    # Lógica de datas (5 anos)
     end_date = datetime.now() + timedelta(days=1)
-    start_date = end_date - timedelta(days=400 * 5)  # 5 anos aprox
+    start_date = end_date - timedelta(days=365 * 5)
 
     yf_ticker = f"{ticker}.SA" if not ticker.endswith(".SA") else ticker
     clean_ticker = ticker.replace(".SA", "").upper()
@@ -254,24 +254,20 @@ def sync_ticker(payload: TickerSync):
         if df_raw.empty:
             raise HTTPException(status_code=404, detail="Yahoo returned no data")
 
-        # Usa a normalização robusta antiga
         df_norm = normalize_yahoo_robust(df_raw)
 
         if df_norm.empty:
-            raise HTTPException(status_code=422, detail="Data downloaded but failed normalization (missing columns).")
+            raise HTTPException(status_code=422, detail="Data downloaded but failed normalization.")
 
         supabase = get_supabase()
 
         records = []
         current_time = datetime.now().isoformat()
 
-        # Converte para formato do Supabase
         for _, row in df_norm.iterrows():
             records.append({
                 "ticker": clean_ticker,
-                "date": row["date"],  # Atenção: seu DB usa 'date' ou 'trade_date'? Ajuste aqui.
-                # O código novo usa 'date' na table 'market_data_daily'.
-                # Se seu DB for antigo, pode ser 'trade_date'.
+                "trade_date": row["date"],  # <--- VOLTOU PARA 'trade_date' (compatível com b3_prices)
                 "open": float(row["open"]),
                 "high": float(row["high"]),
                 "low": float(row["low"]),
@@ -280,15 +276,15 @@ def sync_ticker(payload: TickerSync):
                 "inserted_at": current_time
             })
 
-        # Batch Insert (Melhoria do código novo)
+        # Batch Insert
         BATCH_SIZE = 1000
         for i in range(0, len(records), BATCH_SIZE):
             batch = records[i:i + BATCH_SIZE]
-            # Assumindo tabela nova 'market_data_daily' e colunas novas.
-            # Se for usar a tabela antiga 'b3_prices', mude o nome da tabela e a chave para 'trade_date'
-            response = supabase.table("market_data_daily").upsert(
+
+            # <--- CORREÇÃO PRINCIPAL AQUI: Volta para 'b3_prices'
+            response = supabase.table("b3_prices").upsert(
                 batch,
-                on_conflict="ticker,date"
+                on_conflict="ticker,trade_date"
             ).execute()
 
         return {
