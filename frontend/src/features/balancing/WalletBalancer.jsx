@@ -441,14 +441,26 @@ const WalletBalancer = () => {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    async function initializeSystem() {
-      setSettingsLoading(true);
-
+    async function fetchConstantsOnly() {
       try {
         const backendSchema = await fetchAssetConstants();
         setSchema(backendSchema);
+      } catch (err) {
+        console.error('Erro buscando constantes:', err);
+      }
+    }
+    fetchConstantsOnly();
+  }, []);
 
+  useEffect(() => {
+    async function syncUserPreferences() {
+      if (!schema) {
+        setSettingsLoading(true);
+      }
+
+      try {
         let userPrefs = DEFAULT_TARGETS;
+
         if (session) {
           const userProfile = await userService.getProfile();
           if (userProfile?.balancing_settings) {
@@ -456,15 +468,15 @@ const WalletBalancer = () => {
           }
         }
 
-        if (backendSchema) {
+        if (schema) {
           const mergedTargets = { macro: { ...userPrefs.macro }, micro: { ...userPrefs.micro } };
 
-          Object.keys(backendSchema).forEach((macroKey) => {
+          Object.keys(schema).forEach((macroKey) => {
             if (!mergedTargets.micro[macroKey]) {
               mergedTargets.micro[macroKey] = {};
             }
 
-            backendSchema[macroKey].categories.forEach((cat) => {
+            schema[macroKey].categories.forEach((cat) => {
               if (typeof mergedTargets.micro[macroKey][cat] === 'undefined') {
                 mergedTargets.micro[macroKey][cat] = 0;
               }
@@ -476,16 +488,16 @@ const WalletBalancer = () => {
           setTargets(userPrefs);
         }
       } catch (err) {
-        console.error('Erro na inicialização:', err);
+        console.error('Erro na sincronização:', err);
       } finally {
         setSettingsLoading(false);
       }
     }
 
     if (!authLoading) {
-      initializeSystem();
+      syncUserPreferences();
     }
-  }, [session, authLoading]);
+  }, [session, authLoading, schema]);
 
   useEffect(() => {
     loadAndClassifyWallet();
