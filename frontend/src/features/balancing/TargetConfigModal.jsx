@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Settings,
   X,
@@ -128,7 +128,6 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
           max="100"
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
-          onPointerUp={() => console.log(`[Slider] Valor final definido para ${label}:`, value)}
           className="w-full absolute z-10 opacity-0 cursor-pointer h-6 m-0 p-0"
         />
 
@@ -175,16 +174,24 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
 };
 
 const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset }) => {
-  const [localTargets, setLocalTargets] = useState(currentTargets);
+  const [localTargets, setLocalTargets] = useState(null);
   const [initialSnapshot, setInitialSnapshot] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  const hasInitialized = useRef(false);
+
   useEffect(() => {
-    if (currentTargets && isOpen) {
-      setLocalTargets(currentTargets);
-      setInitialSnapshot(JSON.parse(JSON.stringify(currentTargets)));
+    if (isOpen) {
+      if (!hasInitialized.current && currentTargets) {
+        setLocalTargets(JSON.parse(JSON.stringify(currentTargets)));
+        setInitialSnapshot(JSON.parse(JSON.stringify(currentTargets)));
+        hasInitialized.current = true;
+      }
+    } else {
+      hasInitialized.current = false;
+      setLocalTargets(null);
     }
-  }, [currentTargets, isOpen]);
+  }, [isOpen, currentTargets]);
 
   if (!isOpen || !localTargets || !initialSnapshot) return null;
 
@@ -215,16 +222,9 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
   const handleSaveClick = async () => {
     if (!isMacroValid) return;
 
-    console.group('=== 💾 PREPARANDO PARA SALVAR ===');
-    console.log('Dados Atuais (Estado):', localTargets);
-    console.log('Total Macro:', totalMacro);
-    console.groupEnd();
-
     setIsSaving(true);
     try {
       await onSave(localTargets);
-
-      onClose();
     } catch (error) {
       console.error('❌ Erro no Modal ao tentar salvar:', error);
       alert('Erro ao salvar. Verifique o console.');

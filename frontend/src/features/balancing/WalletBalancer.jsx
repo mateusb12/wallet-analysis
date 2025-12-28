@@ -14,6 +14,7 @@ import {
   Settings,
   Lightbulb,
   Sparkles,
+  XCircle,
 } from 'lucide-react';
 import { fetchWalletPositions } from '../../services/walletDataService.js';
 import TargetConfigModal from './TargetConfigModal';
@@ -408,16 +409,51 @@ const DEFAULT_TARGETS = {
 };
 
 const WalletBalancer = () => {
-  const { dbUser } = useAuth();
+  const { session, loading: authLoading } = useAuth();
 
-  const targets = dbUser?.balancing_settings || DEFAULT_TARGETS;
-
+  const [targets, setTargets] = useState(DEFAULT_TARGETS);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [portfolioTree, setPortfolioTree] = useState(null);
-  const [loading, setLoading] = useState(true);
+
+  const [walletLoading, setWalletLoading] = useState(true);
+
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
   const [expanded, setExpanded] = useState({ fii: true, acoes: false, etf: false, outros: true });
   const [expandedSub, setExpandedSub] = useState({});
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    async function fetchSettings() {
+      if (!session) {
+        if (!authLoading) setSettingsLoading(false);
+        return;
+      }
+
+      try {
+        console.log('🔄 Carteira: Buscando metas do banco de dados...');
+        const userProfile = await userService.getProfile();
+
+        if (userProfile && userProfile.balancing_settings) {
+          console.log('✅ Carteira: Metas carregadas:', userProfile.balancing_settings);
+          setTargets(userProfile.balancing_settings);
+        } else {
+          console.warn(
+            '⚠️ Carteira: Usuário carregado mas sem "balancing_settings". Usando Default.'
+          );
+        }
+      } catch (err) {
+        console.error('❌ Carteira: Erro ao buscar metas:', err);
+      } finally {
+        setSettingsLoading(false);
+      }
+    }
+
+    if (!authLoading) {
+      fetchSettings();
+    }
+  }, [session, authLoading]);
 
   useEffect(() => {
     loadAndClassifyWallet();
@@ -425,20 +461,22 @@ const WalletBalancer = () => {
 
   const handleSaveTargets = async (newTargets) => {
     console.group('🚀 WalletBalancer: Salvando Metas');
-    console.log('Payload recebido do modal:', newTargets);
+    console.log('Payload:', newTargets);
 
     try {
       const response = await userService.updateProfile({
         balancing_settings: newTargets,
       });
 
-      console.log('✅ Resposta do userService:', response);
-      alert('Configurações salvas! (Verifique o console se houver erros vermelhos)');
+      console.log('✅ Salvo no Backend:', response);
 
+      setTargets(newTargets);
+
+      alert('Configurações salvas com sucesso!');
       setIsConfigOpen(false);
     } catch (error) {
       console.error('❌ ERRO CRÍTICO ao salvar configurações:', error);
-      alert('Erro ao salvar as metas. Verifique o console (F12) para a mensagem de erro vermelha.');
+      alert('Erro ao salvar as metas. Verifique o console.');
     } finally {
       console.groupEnd();
     }
@@ -452,7 +490,9 @@ const WalletBalancer = () => {
   };
 
   const loadAndClassifyWallet = async () => {
-    setLoading(true);
+    setWalletLoading(true);
+    setError(null);
+
     try {
       const positions = await fetchWalletPositions();
 
@@ -538,8 +578,9 @@ const WalletBalancer = () => {
       setPortfolioTree(newTree);
     } catch (error) {
       console.error('Critical error building wallet tree:', error);
+      setError(error.message || 'Falha ao processar dados da carteira. Tente recarregar.');
     } finally {
-      setLoading(false);
+      setWalletLoading(false);
     }
   };
 
@@ -572,12 +613,40 @@ const WalletBalancer = () => {
     });
   };
 
-  if (loading) {
+  const isLoading = walletLoading || authLoading || settingsLoading;
+
+  if (isLoading) {
     return (
-      <div className="bg-white dark:bg-gray-800 p-12 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 max-w-2xl mx-auto flex flex-col items-center justify-center text-center">
+      <div className="bg-white dark:bg-gray-800 p-12 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 max-w-2xl mx-auto flex flex-col items-center justify-center text-center animate-in fade-in duration-500">
         <RefreshCw className="w-10 h-10 text-blue-500 animate-spin mb-4" />
-        <h3 className="text-lg font-bold text-gray-800 dark:text-white">Analisando Carteira...</h3>
+        <h3 className="text-lg font-bold text-gray-800 dark:text-white">
+          {authLoading
+            ? 'Verificando Sessão...'
+            : settingsLoading
+              ? 'Sincronizando Metas...'
+              : 'Analisando Carteira...'}
+        </h3>
         <p className="text-sm text-gray-500">Classificando seus ativos em tempo real</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border border-red-200 dark:border-red-900/50 max-w-2xl mx-auto flex flex-col items-center justify-center text-center">
+        <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-full mb-4">
+          <XCircle className="w-10 h-10 text-red-500" />
+        </div>
+        <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">
+          Ops! Algo deu errado
+        </h3>
+        <p className="text-gray-600 dark:text-gray-300 mb-6 max-w-md">{error}</p>
+        <button
+          onClick={loadAndClassifyWallet}
+          className="flex items-center gap-2 px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors shadow-sm"
+        >
+          <RefreshCw className="w-4 h-4" /> Tentar Novamente
+        </button>
       </div>
     );
   }
