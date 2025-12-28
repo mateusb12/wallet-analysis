@@ -30,6 +30,18 @@ const FormatPercent = (value) =>
     value / 100
   );
 
+async function fetchAssetConstants() {
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  try {
+    const response = await fetch(`${API_URL}/sync/constants`);
+    if (!response.ok) throw new Error('Falha ao buscar constantes');
+    return await response.json();
+  } catch (error) {
+    console.error('Usando fallback de constantes:', error);
+    return null;
+  }
+}
+
 async function classifyAsset(ticker) {
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
   try {
@@ -393,8 +405,11 @@ const DEFAULT_TARGETS = {
   macro: { fii: 34, acoes: 33, etf: 33, outros: 0 },
   micro: {
     fii: {
-      Tijolo: 60,
-      Papel: 40,
+      Tijolo: 40,
+      Papel: 30,
+      Híbrido: 10,
+      Desenvolvimento: 10,
+      'Fundos de Fundos': 10,
     },
     acoes: {
       'Perenes (Renda/Defesa)': 60,
@@ -411,6 +426,7 @@ const DEFAULT_TARGETS = {
 const WalletBalancer = () => {
   const { session, loading: authLoading } = useAuth();
 
+  const [schema, setSchema] = useState(null);
   const [targets, setTargets] = useState(DEFAULT_TARGETS);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [portfolioTree, setPortfolioTree] = useState(null);
@@ -425,33 +441,49 @@ const WalletBalancer = () => {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    async function fetchSettings() {
-      if (!session) {
-        if (!authLoading) setSettingsLoading(false);
-        return;
-      }
+    async function initializeSystem() {
+      setSettingsLoading(true);
 
       try {
-        console.log('🔄 Carteira: Buscando metas do banco de dados...');
-        const userProfile = await userService.getProfile();
+        const backendSchema = await fetchAssetConstants();
+        setSchema(backendSchema);
 
-        if (userProfile && userProfile.balancing_settings) {
-          console.log('✅ Carteira: Metas carregadas:', userProfile.balancing_settings);
-          setTargets(userProfile.balancing_settings);
+        let userPrefs = DEFAULT_TARGETS;
+        if (session) {
+          const userProfile = await userService.getProfile();
+          if (userProfile?.balancing_settings) {
+            userPrefs = userProfile.balancing_settings;
+          }
+        }
+
+        if (backendSchema) {
+          const mergedTargets = { macro: { ...userPrefs.macro }, micro: { ...userPrefs.micro } };
+
+          Object.keys(backendSchema).forEach((macroKey) => {
+            if (!mergedTargets.micro[macroKey]) {
+              mergedTargets.micro[macroKey] = {};
+            }
+
+            backendSchema[macroKey].categories.forEach((cat) => {
+              if (typeof mergedTargets.micro[macroKey][cat] === 'undefined') {
+                mergedTargets.micro[macroKey][cat] = 0;
+              }
+            });
+          });
+
+          setTargets(mergedTargets);
         } else {
-          console.warn(
-            '⚠️ Carteira: Usuário carregado mas sem "balancing_settings". Usando Default.'
-          );
+          setTargets(userPrefs);
         }
       } catch (err) {
-        console.error('❌ Carteira: Erro ao buscar metas:', err);
+        console.error('Erro na inicialização:', err);
       } finally {
         setSettingsLoading(false);
       }
     }
 
     if (!authLoading) {
-      fetchSettings();
+      initializeSystem();
     }
   }, [session, authLoading]);
 
@@ -469,9 +501,7 @@ const WalletBalancer = () => {
       });
 
       console.log('✅ Salvo no Backend:', response);
-
       setTargets(newTargets);
-
       alert('Configurações salvas com sucesso!');
       setIsConfigOpen(false);
     } catch (error) {
@@ -545,15 +575,18 @@ const WalletBalancer = () => {
         if (macro === 'acoes' || macro === 'etf') {
           subType = sectorStr.replace(/^(Ações|ETF)\s-\s/, '');
         } else if (macro === 'fii') {
-          if (typeStr.includes('Tijolo')) {
-            subType = 'Tijolo';
+          if (sectorStr && sectorStr.toLowerCase() !== 'outros' && sectorStr !== 'Indefinido') {
+            subType = sectorStr
+              .split(' ')
+              .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+              .join(' ');
+            subType = subType.replace(' De ', ' de ');
           } else {
-            subType = 'Papel';
+            subType = typeStr.includes('Tijolo') ? 'Tijolo' : 'Papel';
           }
         }
 
         if (!newTree[macro]) newTree[macro] = { totalValue: 0, percentOfTotal: 0, subTypes: {} };
-
         newTree[macro].totalValue += item.totalVal;
 
         if (!newTree[macro].subTypes[subType]) {
@@ -563,7 +596,7 @@ const WalletBalancer = () => {
         newTree[macro].subTypes[subType].value += item.totalVal;
         newTree[macro].subTypes[subType].assets.push({
           ticker: item.ticker,
-          sector: typeStr.replace(/^(Ação|FII|ETF)\s-\s/, ''),
+          sector: subType,
           qty: item.qty,
           price: item.price,
         });
@@ -659,6 +692,7 @@ const WalletBalancer = () => {
         isOpen={isConfigOpen}
         onClose={() => setIsConfigOpen(false)}
         currentTargets={targets}
+        schema={schema}
         onSave={handleSaveTargets}
         onReset={handleResetTargets}
       />
@@ -673,7 +707,7 @@ const WalletBalancer = () => {
               Inteligência de Aporte
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Baseado nos seus ativos reais (Classificação Binária)
+              Baseado nos seus ativos reais (Classificação Dinâmica)
             </p>
           </div>
           <div className="ml-auto flex gap-2">

@@ -173,7 +173,7 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
   );
 };
 
-const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset }) => {
+const TargetConfigModal = ({ isOpen, onClose, currentTargets, schema, onSave, onReset }) => {
   const [localTargets, setLocalTargets] = useState(null);
   const [initialSnapshot, setInitialSnapshot] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -264,6 +264,8 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
     );
   };
 
+  const sourceData = schema ? Object.entries(schema) : Object.entries(localTargets.micro);
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <style>{`
@@ -347,11 +349,27 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2 border-b border-gray-100 dark:border-gray-700 pb-2">
               <Layers className="w-4 h-4" /> Metas Específicas
             </h3>
-            {Object.entries(localTargets.micro).map(([macroKey, subTypes]) => {
-              const subTotal = Object.values(subTypes).reduce((a, b) => a + b, 0);
+
+            {sourceData.map((entry) => {
+              const macroKey = entry[0];
+
+              let categoriesList = [];
+              if (schema) {
+                categoriesList = entry[1].categories;
+              } else {
+                categoriesList = Object.keys(entry[1]);
+              }
+
+              const currentValues = localTargets.micro[macroKey] || {};
+              const subTotal = Object.values(currentValues).reduce(
+                (a, b) => a + (typeof b === 'number' ? b : 0),
+                0
+              );
               const remainingSubSpace = 100 - subTotal;
               const parentColors = COLOR_MAP[macroKey.toLowerCase()] || COLOR_MAP.outros;
               const isValid = subTotal === 100;
+
+              if (!localTargets.micro[macroKey] && schema) return null;
 
               return (
                 <div key={macroKey} className="group relative">
@@ -372,10 +390,13 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, onSave, onReset })
                       </span>
                     </div>
                     <div className="pl-2">
-                      {Object.entries(subTypes).map(([subKey, val], idx) => {
+                      {categoriesList.map((subKey, idx) => {
                         const microColors = MICRO_PALETTE[idx % MICRO_PALETTE.length];
+                        const val = currentValues[subKey] || 0;
+
                         const maxPotential = val + remainingSubSpace;
                         const initialVal = initialSnapshot.micro[macroKey]?.[subKey] || 0;
+
                         return (
                           <RangeSlider
                             key={subKey}
