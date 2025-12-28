@@ -192,3 +192,21 @@ export async function syncTickerHistory(ticker) {
     return { success: false, error: error.message || 'Failed to connect to Python backend' };
   }
 }
+
+export async function fetchPriceClosestToDate(ticker, targetDate) {
+  const { data, error } = await supabase
+    .from('b3_prices')
+    .select('close, trade_date')
+    .eq('ticker', ticker.toUpperCase())
+    .lte('trade_date', targetDate)
+    .order('trade_date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error(`Erro ao buscar preço histórico para ${ticker}:`, error);
+    return null;
+  }
+
+  return data ? parseFloat(data.close) : null;
+}

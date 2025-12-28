@@ -9,16 +9,16 @@ import {
   BarChart2,
   DollarSign,
   Percent,
+  Activity,
 } from 'lucide-react';
 import { formatChartDate } from '../utils/dateUtils.js';
-import { fetchB3Prices } from '../services/b3service.js';
+import { fetchB3Prices, fetchPriceClosestToDate } from '../services/b3service.js';
 
 const getDetailedTimeElapsed = (dateString) => {
   if (!dateString) return { short: '-', long: '-' };
 
   const start = new Date(dateString);
   const end = new Date();
-
   start.setHours(0, 0, 0, 0);
   end.setHours(0, 0, 0, 0);
 
@@ -28,11 +28,9 @@ const getDetailedTimeElapsed = (dateString) => {
 
   if (days < 0) {
     months--;
-
     const prevMonth = new Date(end.getFullYear(), end.getMonth(), 0);
     days += prevMonth.getDate();
   }
-
   if (months < 0) {
     years--;
     months += 12;
@@ -45,12 +43,10 @@ const getDetailedTimeElapsed = (dateString) => {
     partsShort.push(`${years}a`);
     partsLong.push(`${years} ano${years > 1 ? 's' : ''}`);
   }
-
   if (months > 0) {
     partsShort.push(`${months}m`);
     partsLong.push(`${months} mês${months !== 1 ? 'es' : ''}`);
   }
-
   if (days > 0 && years === 0) {
     partsShort.push(`${days}d`);
     partsLong.push(`${days} dia${days > 1 ? 's' : ''}`);
@@ -81,7 +77,6 @@ export default function Contributions() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
-
   const [performanceMode, setPerformanceMode] = useState('relative');
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -97,36 +92,57 @@ export default function Contributions() {
 
       const data = await response.json();
       const uniqueTickers = [...new Set(data.map((item) => item.ticker))];
-      const currentPricesMap = {};
+
+      const marketDataMap = {};
+
+      const dateOneYearAgo = new Date();
+      dateOneYearAgo.setFullYear(dateOneYearAgo.getFullYear() - 1);
+      const dateOneYearAgoStr = dateOneYearAgo.toISOString().split('T')[0];
 
       await Promise.all(
         uniqueTickers.map(async (ticker) => {
           try {
             const { data: priceData } = await fetchB3Prices(ticker, 1, 1);
+
+            const priceOld = await fetchPriceClosestToDate(ticker, dateOneYearAgoStr);
+
             if (priceData && priceData.length > 0) {
-              currentPricesMap[ticker] = parseFloat(priceData[0].close);
+              marketDataMap[ticker] = {
+                current: parseFloat(priceData[0].close),
+                oneYearAgo: priceOld,
+              };
             }
           } catch (err) {
-            console.error(`Erro ao buscar preço para ${ticker}`, err);
+            console.error(`Erro ao buscar dados de mercado para ${ticker}`, err);
           }
         })
       );
 
       const enrichedData = data.map((item) => {
-        const currentPrice = currentPricesMap[item.ticker] || null;
+        const marketData = marketDataMap[item.ticker];
+        const currentPrice = marketData?.current || null;
+        const priceOneYearAgo = marketData?.oneYearAgo || null;
+
         let profitValue = 0;
         let profitPercent = 0;
+        let asset1YGrowth = null;
 
         if (currentPrice) {
           const totalPaid = Number(item.price) * Number(item.qty);
           const totalCurrent = currentPrice * Number(item.qty);
           profitValue = totalCurrent - totalPaid;
           profitPercent = ((currentPrice - Number(item.price)) / Number(item.price)) * 100;
+
+          if (priceOneYearAgo) {
+            asset1YGrowth = ((currentPrice - priceOneYearAgo) / priceOneYearAgo) * 100;
+          }
         }
 
         return {
           ...item,
           currentPrice,
+          priceOneYearAgo,
+          asset1YGrowth,
           profitValue,
           profitPercent,
           hasPriceData: !!currentPrice,
@@ -136,11 +152,7 @@ export default function Contributions() {
       const sorted = enrichedData.sort((a, b) => {
         const dateA = new Date(a.trade_date);
         const dateB = new Date(b.trade_date);
-        const dateDiff = dateB - dateA;
-        if (dateDiff !== 0) return dateDiff;
-        if (a.type < b.type) return -1;
-        if (a.type > b.type) return 1;
-        return b.profitPercent - a.profitPercent;
+        return dateB - dateA;
       });
 
       setPurchases(sorted);
@@ -186,6 +198,7 @@ export default function Contributions() {
           totalProfit: 0,
           hasData: false,
           firstTradeDate: item.trade_date,
+          asset1YGrowth: item.asset1YGrowth,
         };
       }
 
@@ -206,11 +219,17 @@ export default function Contributions() {
 
     return Object.values(aggregation)
       .filter((a) => a.hasData)
-      .map((item) => ({
-        ...item,
-        totalYieldPercent:
-          item.totalInvested > 0 ? (item.totalProfit / item.totalInvested) * 100 : 0,
-      }))
+      .map((item) => {
+        const totalYieldPercent =
+          item.totalInvested > 0 ? (item.totalProfit / item.totalInvested) * 100 : 0;
+        const timeData = getDetailedTimeElapsed(item.firstTradeDate);
+
+        return {
+          ...item,
+          totalYieldPercent,
+          timeData,
+        };
+      })
       .sort((a, b) => {
         if (performanceMode === 'relative') {
           return b.totalYieldPercent - a.totalYieldPercent;
@@ -237,7 +256,7 @@ export default function Contributions() {
             Meus Aportes
           </h2>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Histórico completo de negociações ordenado por data, tipo e rentabilidade
+            Histórico completo e análise de performance vs. mercado.
           </p>
         </div>
 
@@ -270,7 +289,9 @@ export default function Contributions() {
       {}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-8">
         {loading ? (
-          <div className="p-8 text-center text-gray-500">Calculando rentabilidade histórica...</div>
+          <div className="p-8 text-center text-gray-500">
+            Calculando rentabilidade e dados históricos...
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -279,9 +300,12 @@ export default function Contributions() {
                   <th className="px-6 py-3 font-medium text-center">Data</th>
                   <th className="px-6 py-3 font-medium text-center">Ativo</th>
                   <th className="px-6 py-3 font-medium text-center">Tipo</th>
-                  <th className="px-6 py-3 font-medium text-center">Quantidade</th>
-                  <th className="px-6 py-3 font-medium text-center">Preço por Unidade</th>
+                  <th className="px-6 py-3 font-medium text-center">Qtd</th>
+                  <th className="px-6 py-3 font-medium text-center">Preço Pago</th>
                   <th className="px-6 py-3 font-medium text-center">Total Pago</th>
+                  <th className="px-6 py-3 font-medium text-center bg-gray-100/50 dark:bg-gray-700/70 border-l border-gray-200 dark:border-gray-600">
+                    Valor Atual
+                  </th>
                   <th className="px-6 py-3 font-medium text-center border-l border-gray-100 dark:border-gray-700">
                     <div className="flex items-center justify-center gap-1">
                       <Clock className="w-3 h-3" /> Tempo
@@ -295,6 +319,7 @@ export default function Contributions() {
                 {filteredPurchases.length > 0 ? (
                   filteredPurchases.map((item) => {
                     const isProfit = item.profitValue >= 0;
+
                     const colorClass = isProfit
                       ? 'text-green-600 dark:text-green-400'
                       : 'text-red-600 dark:text-red-400';
@@ -303,6 +328,10 @@ export default function Contributions() {
                       : 'bg-red-50 dark:bg-red-900/20';
 
                     const timeData = getDetailedTimeElapsed(item.trade_date);
+
+                    const totalCurrentValue = item.hasPriceData
+                      ? Number(item.currentPrice) * Number(item.qty)
+                      : null;
 
                     return (
                       <tr
@@ -339,6 +368,20 @@ export default function Contributions() {
                         </td>
 
                         {}
+                        {}
+                        <td
+                          className={`px-6 py-4 text-center font-bold bg-gray-50/50 dark:bg-gray-800/50 border-l border-gray-100 dark:border-gray-700 ${item.hasPriceData ? colorClass : 'text-gray-800 dark:text-gray-100'}`}
+                        >
+                          {totalCurrentValue !== null ? (
+                            totalCurrentValue.toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+
                         <td
                           className="px-6 py-4 text-center text-gray-500 dark:text-gray-400 border-l border-gray-100 dark:border-gray-700 font-medium text-xs cursor-help"
                           title={timeData.long}
@@ -378,7 +421,7 @@ export default function Contributions() {
                 ) : (
                   <tr>
                     <td
-                      colSpan="9"
+                      colSpan="10"
                       className="px-6 py-8 text-center text-gray-500 dark:text-gray-400"
                     >
                       Nenhum aporte encontrado.
@@ -398,11 +441,10 @@ export default function Contributions() {
             <div className="flex items-center gap-2">
               <BarChart2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
               <h3 className="text-xl font-bold text-gray-800 dark:text-white">
-                Performance Consolidada por Ativo
+                Performance por Ativo vs. Mercado (12m)
               </h3>
             </div>
 
-            {}
             <div className="flex items-center p-1 bg-gray-100 dark:bg-gray-700 rounded-lg">
               <button
                 onClick={() => setPerformanceMode('relative')}
@@ -412,8 +454,7 @@ export default function Contributions() {
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                 }`}
               >
-                <Percent className="w-4 h-4" />
-                Retorno (%)
+                <Percent className="w-4 h-4" /> Retorno (%)
               </button>
               <button
                 onClick={() => setPerformanceMode('absolute')}
@@ -423,8 +464,7 @@ export default function Contributions() {
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                 }`}
               >
-                <DollarSign className="w-4 h-4" />
-                Valor (R$)
+                <DollarSign className="w-4 h-4" /> Valor (R$)
               </button>
             </div>
           </div>
@@ -442,7 +482,8 @@ export default function Contributions() {
                   ? displayValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                   : `${displayValue > 0 ? '+' : ''}${displayValue.toFixed(2)}%`;
 
-              const timeData = getDetailedTimeElapsed(asset.firstTradeDate);
+              const hasBenchmark =
+                asset.asset1YGrowth !== null && asset.asset1YGrowth !== undefined;
 
               return (
                 <div key={asset.ticker} className="flex items-center gap-4 text-sm group">
@@ -460,18 +501,17 @@ export default function Contributions() {
                   </div>
 
                   {}
-                  <div className="w-20 text-right flex flex-col items-end justify-center">
-                    <div
-                      className="flex items-center text-xs text-gray-500 dark:text-gray-400 gap-1 cursor-help"
-                      title={`Investido há: ${timeData.long}`}
-                    >
-                      <Clock className="w-3 h-3" />
-                      <span className="whitespace-nowrap">{timeData.short}</span>
+                  <div className="w-24 text-right hidden sm:flex flex-col items-end mr-2 border-r border-gray-100 dark:border-gray-700 pr-4">
+                    <div className="flex items-center gap-1 text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">
+                      <Clock className="w-3 h-3" /> Tempo
+                    </div>
+                    <div className="font-mono font-bold text-gray-600 dark:text-gray-300">
+                      {asset.timeData.short}
                     </div>
                   </div>
 
                   {}
-                  <div className="flex-1 h-8 bg-gray-50 dark:bg-gray-700/50 rounded-lg relative overflow-hidden flex items-center">
+                  <div className="flex-1 h-9 bg-gray-50 dark:bg-gray-700/50 rounded-lg relative overflow-hidden flex items-center">
                     <div
                       className={`h-full transition-all duration-500 ease-out rounded-r-lg ${isProfit ? 'bg-green-500/20 border-r-4 border-green-500' : 'bg-red-500/20 border-r-4 border-red-500'}`}
                       style={{ width: `${widthPercentage}%` }}
@@ -483,10 +523,42 @@ export default function Contributions() {
                         {formattedValue}
                       </span>
                     </div>
+
+                    {}
+                    {hasBenchmark && (
+                      <div
+                        className="absolute right-3 flex flex-col items-end justify-center cursor-help group/bench"
+                        title={`O ativo ${asset.ticker} acumulou ${asset.asset1YGrowth.toFixed(2)}% de alta nos últimos 12 meses.`}
+                      >
+                        <div className="flex items-center gap-1 opacity-60 group-hover/bench:opacity-100 transition-opacity">
+                          <Activity className="w-3 h-3 text-gray-400" />
+                          <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase font-bold">
+                            Mkt 12m
+                          </span>
+                        </div>
+                        <span
+                          className={`text-xs font-bold ${asset.asset1YGrowth >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}
+                        >
+                          {asset.asset1YGrowth > 0 ? '+' : ''}
+                          {asset.asset1YGrowth.toFixed(1)}%
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
             })}
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs text-gray-400 gap-2">
+            <div className="flex gap-4">
+              <span className="flex items-center gap-1">
+                <Clock className="w-3 h-3" /> Tempo investido no ativo.
+              </span>
+              <span className="flex items-center gap-1">
+                <Activity className="w-3 h-3" /> Variação do ativo no último ano (Benchmark).
+              </span>
+            </div>
           </div>
         </div>
       )}
