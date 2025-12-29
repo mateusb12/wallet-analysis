@@ -3,8 +3,6 @@ import { useAuth } from '../features/auth/AuthContext';
 import {
   TrendingUp,
   Search,
-  ArrowUp,
-  ArrowDown,
   Clock,
   BarChart2,
   DollarSign,
@@ -92,6 +90,12 @@ const calculateEquivalentRate = (totalProfitPercent, tradeDate, mode) => {
 
   const adjusted = Math.pow(multiplier, exponent) - 1;
   return adjusted * 100;
+};
+
+const getValueColor = (val) => {
+  if (val > 0) return 'text-emerald-600 dark:text-emerald-400';
+  if (val < 0) return 'text-rose-600 dark:text-rose-400';
+  return 'text-gray-600 dark:text-gray-400';
 };
 
 export default function Contributions() {
@@ -205,6 +209,16 @@ export default function Contributions() {
     const matchesType = typeFilter === 'all' || item.type === typeFilter;
     return matchesSearch && matchesType;
   });
+
+  const processedPurchases = filteredPurchases.map((item) => {
+    const displayPercent = calculateEquivalentRate(item.profitPercent, item.trade_date, rentabMode);
+    return { ...item, displayPercent };
+  });
+
+  const maxAbsPercent = Math.max(
+    0.1,
+    ...processedPurchases.map((i) => Math.abs(i.displayPercent || 0))
+  );
 
   const getTypeColor = (type) => {
     switch (type) {
@@ -345,18 +359,16 @@ export default function Contributions() {
                   {}
                   <th
                     ref={rentabMenuRef}
-                    className="px-6 py-3 font-medium text-center cursor-pointer hover:bg-gray-200/50 dark:hover:bg-gray-600/50 transition-colors relative"
+                    className="px-6 py-3 font-medium text-left cursor-pointer hover:bg-gray-200/50 dark:hover:bg-gray-600/50 transition-colors relative min-w-[220px]"
                     onClick={() => setIsRentabMenuOpen(!isRentabMenuOpen)}
                   >
-                    <div className="flex items-center justify-center gap-1 text-gray-700 dark:text-gray-200">
+                    <div className="flex items-center gap-1 text-gray-700 dark:text-gray-200">
                       Rentab. ({rentabOptions[rentabMode].label})
                       <ChevronDown
                         size={14}
                         className={`transform transition-transform ${isRentabMenuOpen ? 'rotate-180' : ''}`}
                       />
                     </div>
-
-                    {}
                     {isRentabMenuOpen && (
                       <div className="absolute right-0 top-full mt-2 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50 overflow-hidden">
                         {Object.keys(rentabOptions).map((key) => (
@@ -383,31 +395,34 @@ export default function Contributions() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {filteredPurchases.length > 0 ? (
-                  filteredPurchases.map((item) => {
-                    const isProfit = item.profitValue >= 0;
-                    const colorClass = isProfit
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-red-600 dark:text-red-400';
-                    const bgClass = isProfit
-                      ? 'bg-green-50 dark:bg-green-900/20'
-                      : 'bg-red-50 dark:bg-red-900/20';
+                {processedPurchases.length > 0 ? (
+                  processedPurchases.map((item) => {
                     const timeData = getDetailedTimeElapsed(item.trade_date);
                     const totalCurrentValue = item.hasPriceData
                       ? Number(item.currentPrice) * Number(item.qty)
                       : null;
+                    const totalPaidValue = Number(item.price) * Number(item.qty);
 
-                    const displayPercent = calculateEquivalentRate(
-                      item.profitPercent,
-                      item.trade_date,
-                      rentabMode
-                    );
-                    const isDisplayProfit = displayPercent >= 0;
+                    const isSimpleProfit = totalCurrentValue >= totalPaidValue;
+                    const valAtualColor = isSimpleProfit
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-red-600 dark:text-red-400';
+
+                    const isDisplayProfit = (item.displayPercent || 0) >= 0;
+
+                    const rawPercent = item.hasPriceData ? item.displayPercent : 0;
+                    const absPercent = Math.abs(rawPercent);
+
+                    const barWidth = Math.min(100, (absPercent / maxAbsPercent) * 100);
+
+                    const barColorClass = isDisplayProfit
+                      ? 'bg-emerald-500 dark:bg-emerald-500'
+                      : 'bg-rose-500 dark:bg-rose-500';
 
                     return (
                       <tr
                         key={item.id}
-                        className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
+                        className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors group"
                       >
                         <td className="px-6 py-4 text-center whitespace-nowrap text-gray-600 dark:text-gray-300">
                           {formatChartDate(item.trade_date)}
@@ -432,13 +447,14 @@ export default function Contributions() {
                           })}
                         </td>
                         <td className="px-6 py-4 text-center font-medium text-gray-900 dark:text-white">
-                          {(Number(item.price) * Number(item.qty)).toLocaleString('pt-BR', {
+                          {totalPaidValue.toLocaleString('pt-BR', {
                             style: 'currency',
                             currency: 'BRL',
                           })}
                         </td>
+
                         <td
-                          className={`px-6 py-4 text-center font-bold bg-gray-50/50 dark:bg-gray-800/50 border-l border-gray-100 dark:border-gray-700 ${item.hasPriceData ? colorClass : 'text-gray-800 dark:text-gray-100'}`}
+                          className={`px-6 py-4 text-center font-bold bg-gray-50/50 dark:bg-gray-800/50 border-l border-gray-100 dark:border-gray-700 ${item.hasPriceData ? valAtualColor : 'text-gray-400'}`}
                         >
                           {totalCurrentValue !== null ? (
                             totalCurrentValue.toLocaleString('pt-BR', {
@@ -449,13 +465,17 @@ export default function Contributions() {
                             <span className="text-gray-400">-</span>
                           )}
                         </td>
+
                         <td
                           className="px-6 py-4 text-center text-gray-500 dark:text-gray-400 border-l border-gray-100 dark:border-gray-700 font-medium text-xs cursor-help"
                           title={timeData.long}
                         >
                           {timeData.short}
                         </td>
-                        <td className={`px-6 py-4 text-right font-bold ${colorClass}`}>
+
+                        <td
+                          className={`px-6 py-4 text-right font-bold ${getValueColor(item.profitValue)}`}
+                        >
                           {item.hasPriceData ? (
                             item.profitValue.toLocaleString('pt-BR', {
                               style: 'currency',
@@ -467,23 +487,30 @@ export default function Contributions() {
                         </td>
 
                         {}
-                        <td className="px-6 py-4 text-center relative">
+                        <td className="px-6 py-4 align-middle">
                           {item.hasPriceData ? (
-                            <div
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${isDisplayProfit ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}
-                            >
-                              {isDisplayProfit ? (
-                                <ArrowUp className="w-3 h-3 mr-1" />
-                              ) : (
-                                <ArrowDown className="w-3 h-3 mr-1" />
-                              )}
-                              {displayPercent.toFixed(2)}%{' '}
-                              <span className="text-[9px] ml-1 opacity-70">
-                                {rentabOptions[rentabMode].suffix}
-                              </span>
+                            <div className="flex items-center w-full gap-3">
+                              {}
+                              <div
+                                className={`w-16 text-right font-bold text-xs ${isDisplayProfit ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}
+                              >
+                                {isDisplayProfit ? '+' : ''}
+                                {rawPercent.toFixed(2)}%
+                              </div>
+
+                              {}
+                              <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex items-center">
+                                {}
+                                <div
+                                  className={`h-full rounded-full transition-all duration-500 ${barColorClass}`}
+                                  style={{ width: `${barWidth}%` }}
+                                />
+                              </div>
                             </div>
                           ) : (
-                            <span className="text-gray-400 text-xs">S/ Dados</span>
+                            <span className="text-gray-400 text-xs text-center block">
+                              S/ Dados
+                            </span>
                           )}
                         </td>
                       </tr>
