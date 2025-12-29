@@ -34,6 +34,11 @@ CLASSIFICATION_OVERRIDES: Dict[str, Dict[str, str]] = {
         "sector": "papel",
         "reasoning": "Override: Fundo majoritariamente de CRI."
     },
+    "VGIR11": {
+        "detected_type": "FII - Papel (CDI)",
+        "sector": "papel",
+        "reasoning": "Override: Fundo de papel indexado ao CDI (Valora)."
+    },
     "KNHF11": {
         "detected_type": "FII - Híbrido",
         "sector": "híbrido",
@@ -590,11 +595,13 @@ def classify_ticker(payload: TickerSync):
         sector_y = str(info.get("sector") or "")
         quote_type = str(info.get("quoteType") or "")
         category = str(info.get("category") or "")
+        industry = str(info.get("industry") or "")
+        sector_disp = str(info.get("sectorDisp") or "")
 
         base_result["quote_type"] = quote_type or "unknown"
         base_result["raw_info_sample"] = (summary[:100] + "...") if summary else "Sem descrição"
 
-        text = _norm(f"{summary} {short_name} {long_name} {category}")
+        text = _norm(f"{summary} {short_name} {long_name} {category} {industry} {sector_disp}")
         qtype_n = _norm(quote_type)
 
         # 4) SCORING
