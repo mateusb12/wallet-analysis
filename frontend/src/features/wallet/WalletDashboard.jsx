@@ -25,6 +25,8 @@ import {
   ChevronUp,
   ChevronRight,
   History as HistoryIcon,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 import iconStocks from '../../assets/stocks.png';
@@ -866,6 +868,8 @@ function WalletDashboard() {
   const [debugShowEmpty, setDebugShowEmpty] = useState(false);
   const [assetsHistoryMap, setAssetsHistoryMap] = useState({});
 
+  const [copied, setCopied] = useState(false);
+
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
   useEffect(() => {
@@ -1000,6 +1004,33 @@ function WalletDashboard() {
     setHighlightedDate(null);
     if (activeTab !== 'total') setAllocationView('specific');
   }, [activeTab]);
+
+  const handleCopyDashboard = () => {
+    const dashboardSnapshot = {
+      summary: {
+        totalInvested,
+        totalValue,
+        periodStats,
+      },
+      categories: categoryTotals,
+      positions: positions.map((p) => ({
+        ticker: p.ticker,
+        qty: p.qty,
+        avgPrice: p.purchase_price,
+        currentPrice: p.current_price,
+        total: p.total_value_current,
+        type: p.type,
+
+        transactions: assetsHistoryMap[p.ticker] || [],
+      })),
+    };
+
+    const jsonString = JSON.stringify(dashboardSnapshot, null, 2);
+    navigator.clipboard.writeText(jsonString).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   const categoryTotals = useMemo(() => {
     const totals = { stock: 0, etf: 0, fii: 0, total: 0 };
@@ -1182,6 +1213,29 @@ function WalletDashboard() {
             Acompanhe a evolução do seu patrimônio em tempo real.
           </p>
         </div>
+
+        {}
+        {!showEmptyState && (
+          <div className="flex gap-2">
+            <button
+              onClick={handleCopyDashboard}
+              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 border border-gray-200 dark:border-gray-700 rounded-lg transition-all shadow-sm font-medium text-sm"
+              title="Copiar JSON dos dados atuais"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-4 h-4 text-green-500" />
+                  <span>Copiado!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4" />
+                  <span>Copiar Dados</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       {showEmptyState ? (
