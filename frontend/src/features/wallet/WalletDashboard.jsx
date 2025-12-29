@@ -1070,9 +1070,26 @@ function WalletDashboard() {
   }, [activeTab, allocationView, generalAllocationData, filteredPositions]);
 
   const chartEvents = useMemo(() => {
-    if (selectedAssetTicker) return positions.filter((p) => p.ticker === selectedAssetTicker);
-    return filteredPositions;
-  }, [selectedAssetTicker, filteredPositions, positions]);
+    let relevantTransactions = [];
+
+    let targetTickers = [];
+    if (selectedAssetTicker) {
+      targetTickers = [selectedAssetTicker];
+    } else {
+      targetTickers = filteredPositions.map((p) => p.ticker);
+    }
+
+    targetTickers.forEach((ticker) => {
+      const history = assetsHistoryMap[ticker] || [];
+      relevantTransactions = [...relevantTransactions, ...history];
+    });
+
+    return relevantTransactions.map((t) => ({
+      ...t,
+      purchaseDate: t.trade_date,
+      purchase_price: t.price !== undefined ? t.price : t.purchase_price || 0,
+    }));
+  }, [selectedAssetTicker, filteredPositions, assetsHistoryMap]);
 
   const earliestPurchaseDate = useMemo(() => {
     if (selectedAssetTicker) {
