@@ -11,11 +11,16 @@ import {
   Edit2,
   Save,
   FileSpreadsheet,
-  AlertCircle,
   Bug,
   ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
+import {
+  getWalletPurchases,
+  updatePurchase,
+  deletePurchase,
+  importPurchases,
+} from '../../services/walletDataService.js';
 
 import iconStocks from '../../assets/stocks.png';
 import iconEtf from '../../assets/etf.png';
@@ -45,8 +50,6 @@ export default function AssetsManager() {
   const [isProcessingImport, setIsProcessingImport] = useState(false);
 
   const [debugShowEmpty, setDebugShowEmpty] = useState(false);
-
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
   useEffect(() => {
     if (user?.id) fetchPurchases();
@@ -146,13 +149,11 @@ export default function AssetsManager() {
   };
 
   const fetchPurchases = async () => {
+    if (!user?.id) return;
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/wallet/purchases?user_id=${user.id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setPurchases(data);
-      }
+      const data = await getWalletPurchases(user.id);
+      setPurchases(data);
     } catch (error) {
       console.error('Failed to fetch history:', error);
     } finally {
@@ -172,18 +173,14 @@ export default function AssetsManager() {
 
   const handleSaveEdit = async (id) => {
     try {
-      const response = await fetch(`${API_URL}/wallet/purchases/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.id,
-          trade_date: editForm.date,
-          price: Number(editForm.price),
-          qty: Number(editForm.qty),
-          type: editForm.type,
-        }),
+      await updatePurchase(id, {
+        user_id: user.id,
+        trade_date: editForm.date,
+        price: Number(editForm.price),
+        qty: Number(editForm.qty),
+        type: editForm.type,
       });
-      if (!response.ok) throw new Error('Erro ao atualizar');
+
       await fetchPurchases();
       setEditingId(null);
     } catch (error) {
@@ -195,7 +192,7 @@ export default function AssetsManager() {
     if (!confirm('Excluir este aporte permanentemente?')) return;
     setIsDeleting(id);
     try {
-      await fetch(`${API_URL}/wallet/purchases/${id}`, { method: 'DELETE' });
+      await deletePurchase(id);
       await fetchPurchases();
     } catch (error) {
       alert('Erro ao excluir.');
@@ -350,14 +347,7 @@ export default function AssetsManager() {
         })),
       };
 
-      const response = await fetch(`${API_URL}/wallet/import`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || 'Falha na importação');
-
+      const data = await importPurchases(payload);
       alert(`Sucesso! ${data.count} novos ativos salvos.`);
 
       await fetchPurchases();
@@ -636,8 +626,6 @@ export default function AssetsManager() {
               </tbody>
             </table>
           </div>
-
-          {}
         </>
       )}
 

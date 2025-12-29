@@ -17,6 +17,67 @@ const normalizeDate = (dateInput) => {
   return null;
 };
 
+export const getWalletPurchases = async (userId) => {
+  try {
+    const response = await fetch(`${API_BASE}/wallet/purchases?user_id=${userId}`);
+    if (!response.ok) {
+      throw new Error('Falha ao buscar histórico de compras');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Erro em getWalletPurchases:', error);
+    throw error;
+  }
+};
+
+export const updatePurchase = async (id, payload) => {
+  try {
+    const response = await fetch(`${API_BASE}/wallet/purchases/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error('Erro ao atualizar aporte');
+
+    cachedPositions = null;
+    return await response.json();
+  } catch (error) {
+    console.error('Erro em updatePurchase:', error);
+    throw error;
+  }
+};
+
+export const deletePurchase = async (id) => {
+  try {
+    const response = await fetch(`${API_BASE}/wallet/purchases/${id}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Erro ao excluir aporte');
+
+    cachedPositions = null;
+    return true;
+  } catch (error) {
+    console.error('Erro em deletePurchase:', error);
+    throw error;
+  }
+};
+
+export const importPurchases = async (payload) => {
+  try {
+    const response = await fetch(`${API_BASE}/wallet/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Falha na importação');
+
+    cachedPositions = null;
+    return data;
+  } catch (error) {
+    console.error('Erro em importPurchases:', error);
+    throw error;
+  }
+};
+
 export const fetchWalletPositions = async (forceRefresh = false) => {
   if (cachedPositions && !forceRefresh) {
     return cachedPositions;
