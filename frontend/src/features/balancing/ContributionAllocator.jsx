@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   ArrowRight,
-  Coins,
   Calculator,
   Target,
   Sparkles,
   PlusCircle,
   TrendingUp,
+  AlertCircle,
+  Banknote,
 } from 'lucide-react';
 
 const FormatCurrency = (value) =>
@@ -37,7 +38,6 @@ const ContributionAllocator = ({ tree, targets }) => {
       if (targetPct === 0) return;
 
       const currentPct = currentTotalValue > 0 ? (data.totalValue / currentTotalValue) * 100 : 0;
-
       const idealValue = projectedTotal * (targetPct / 100);
       const currentValue = data.totalValue;
       const deficit = idealValue - currentValue;
@@ -225,20 +225,36 @@ const ContributionAllocator = ({ tree, targets }) => {
                 {plan.breakdown.map((item, idx) => {
                   const isNewCategory = !item.assets || item.assets.length === 0;
 
+                  const cheapestAssetPrice =
+                    item.assets && item.assets.length > 0
+                      ? Math.min(...item.assets.map((a) => a.price))
+                      : 0;
+
+                  const isUnaffordable =
+                    !isNewCategory && cheapestAssetPrice > 0 && item.amount < cheapestAssetPrice;
+
+                  let cardStyle =
+                    'border-gray-200 dark:border-gray-700 hover:border-emerald-300 dark:hover:border-emerald-600 hover:shadow-lg hover:shadow-emerald-500/5 dark:hover:shadow-none bg-white dark:bg-gray-800';
+                  let valueColor = 'text-emerald-600 dark:text-emerald-400';
+
+                  if (isNewCategory) {
+                    cardStyle =
+                      'border-amber-200 dark:border-amber-800/50 hover:border-amber-300 shadow-amber-100/50 dark:shadow-none bg-white dark:bg-gray-800';
+                    valueColor = 'text-amber-600 dark:text-amber-500';
+                  } else if (isUnaffordable) {
+                    cardStyle =
+                      'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 opacity-90';
+                    valueColor = 'text-slate-500 dark:text-slate-400';
+                  }
+
                   return (
                     <div
                       key={idx}
                       className={`
                         relative flex flex-col justify-between p-5 rounded-2xl border transition-all duration-200
-                        bg-white dark:bg-gray-800
-                        ${
-                          isNewCategory
-                            ? 'border-amber-200 dark:border-amber-800/50 hover:border-amber-300 shadow-amber-100/50 dark:shadow-none'
-                            : 'border-gray-200 dark:border-gray-700 hover:border-emerald-300 dark:hover:border-emerald-600 hover:shadow-lg hover:shadow-emerald-500/5 dark:hover:shadow-none'
-                        }
+                        ${cardStyle}
                       `}
                     >
-                      {}
                       {isNewCategory && (
                         <div className="absolute -top-3 -right-2 bg-amber-100 dark:bg-amber-900 border border-amber-200 dark:border-amber-700 text-amber-700 dark:text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
                           <Sparkles className="w-3 h-3" />
@@ -246,49 +262,80 @@ const ContributionAllocator = ({ tree, targets }) => {
                         </div>
                       )}
 
-                      {}
                       <div>
                         <div className="flex justify-between items-start mb-1">
-                          {}
                           <h5
-                            className={`font-bold text-base truncate pr-2 ${isNewCategory ? 'text-amber-900 dark:text-amber-100' : 'text-gray-700 dark:text-gray-200'}`}
+                            className={`font-bold text-base truncate pr-2 ${
+                              isNewCategory
+                                ? 'text-amber-900 dark:text-amber-100'
+                                : isUnaffordable
+                                  ? 'text-slate-600 dark:text-slate-300'
+                                  : 'text-gray-700 dark:text-gray-200'
+                            }`}
                           >
                             {item.subType}
                           </h5>
                         </div>
 
-                        {}
                         <div className="flex items-center gap-2 mb-4">
-                          <div className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400 bg-gray-50 dark:bg-gray-700/50 px-2 py-0.5 rounded-md">
+                          <div
+                            className={`flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-md ${isUnaffordable ? 'bg-slate-200/50 dark:bg-slate-700/50 text-slate-500' : 'bg-gray-50 dark:bg-gray-700/50 text-gray-400'}`}
+                          >
                             <span>{FormatPercent(item.currentPct)}</span>
                             <ArrowRight className="w-3 h-3 text-gray-300" />
                             <span
-                              className={`${isNewCategory ? 'text-amber-600' : 'text-gray-600 dark:text-gray-300'}`}
+                              className={`${
+                                isNewCategory
+                                  ? 'text-amber-600'
+                                  : isUnaffordable
+                                    ? 'text-slate-500'
+                                    : 'text-gray-600 dark:text-gray-300'
+                              }`}
                             >
                               {FormatPercent(item.targetPct)}
                             </span>
                           </div>
                         </div>
 
-                        {}
-                        <div className="mb-6">
+                        <div className="mb-4">
                           <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">
                             Sugerido
                           </span>
-                          <span
-                            className={`text-2xl font-bold tracking-tight ${isNewCategory ? 'text-amber-600 dark:text-amber-500' : 'text-emerald-600 dark:text-emerald-400'}`}
-                          >
+                          <span className={`text-2xl font-bold tracking-tight ${valueColor}`}>
                             {FormatCurrency(item.amount)}
                           </span>
                         </div>
+
+                        {}
+                        {isUnaffordable && (
+                          <div className="mb-4 bg-slate-100 dark:bg-slate-700/50 rounded-lg p-2.5 flex items-start gap-2 border border-slate-200 dark:border-slate-600">
+                            <AlertCircle className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300 leading-tight">
+                                Aporte Insuficiente
+                              </p>
+                              <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                                O preço mínimo é{' '}
+                                <span className="font-mono font-bold">
+                                  {FormatCurrency(cheapestAssetPrice)}
+                                </span>
+                                . Acumule para o próximo mês.
+                              </p>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
-                      {}
                       <div
-                        className={`h-px w-full mb-4 ${isNewCategory ? 'bg-amber-100 dark:bg-amber-900/30' : 'bg-gray-100 dark:bg-gray-700'}`}
+                        className={`h-px w-full mb-4 ${
+                          isNewCategory
+                            ? 'bg-amber-100 dark:bg-amber-900/30'
+                            : isUnaffordable
+                              ? 'bg-slate-200 dark:bg-slate-700'
+                              : 'bg-gray-100 dark:bg-gray-700'
+                        }`}
                       ></div>
 
-                      {}
                       <div>
                         {isNewCategory ? (
                           <div className="group cursor-pointer rounded-lg border border-dashed border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 py-2.5 flex items-center justify-center gap-2 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors">
@@ -299,20 +346,38 @@ const ContributionAllocator = ({ tree, targets }) => {
                           </div>
                         ) : (
                           <div>
-                            <div className="flex items-center gap-1.5 mb-2 text-[10px] font-bold text-gray-400 uppercase">
+                            <div
+                              className={`flex items-center gap-1.5 mb-2 text-[10px] font-bold uppercase ${isUnaffordable ? 'text-slate-400' : 'text-gray-400'}`}
+                            >
                               <TrendingUp className="w-3 h-3" />
                               <span>Onde Alocar:</span>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              {item.assets.map((asset) => (
-                                <div
-                                  key={asset.ticker}
-                                  className="px-2.5 py-1.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-md text-xs font-bold text-gray-600 dark:text-gray-300 cursor-help hover:text-white hover:bg-emerald-500 hover:border-emerald-500 transition-all min-w-[60px] text-center shadow-sm"
-                                  title={`Preço Médio: ${FormatCurrency(asset.price)} | Qtd: ${asset.qty}`}
-                                >
-                                  {asset.ticker}
-                                </div>
-                              ))}
+                              {item.assets.map((asset) => {
+                                const assetIsTooExpensive = asset.price > item.amount;
+
+                                return (
+                                  <div
+                                    key={asset.ticker}
+                                    className={`
+                                    px-2.5 py-1.5 border rounded-md text-xs font-bold cursor-help transition-all min-w-[60px] text-center shadow-sm flex items-center gap-1.5
+                                    ${
+                                      assetIsTooExpensive && isUnaffordable
+                                        ? 'bg-slate-100 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 text-slate-400 dark:text-slate-500'
+                                        : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:text-white hover:bg-emerald-500 hover:border-emerald-500'
+                                    }
+                                  `}
+                                    title={`Preço Atual: ${FormatCurrency(asset.price)} | Qtd na Carteira: ${asset.qty}`}
+                                  >
+                                    {asset.ticker}
+                                    {assetIsTooExpensive && isUnaffordable && (
+                                      <span className="text-[9px] font-normal opacity-70 border-l border-slate-300 pl-1.5 ml-0.5">
+                                        {FormatCurrency(asset.price)}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         )}
