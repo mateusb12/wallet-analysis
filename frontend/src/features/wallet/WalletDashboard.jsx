@@ -173,40 +173,8 @@ const WalletSkeleton = () => {
   );
 };
 
-const AssetContributions = ({ ticker }) => {
-  const { user } = useAuth();
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-  useEffect(() => {
-    if (!user?.id || !ticker) return;
-
-    const fetchHistory = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch(`${API_URL}/wallet/purchases?user_id=${user.id}`);
-        if (response.ok) {
-          const data = await response.json();
-
-          const assetMoves = data
-            .filter((d) => d.ticker === ticker)
-            .sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
-          setHistory(assetMoves);
-        }
-      } catch (error) {
-        console.error('Erro ao buscar aportes', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchHistory();
-  }, [user, ticker]);
-
-  if (loading)
-    return <div className="p-4 text-center text-xs text-gray-500">Carregando histórico...</div>;
-  if (history.length === 0)
+const AssetContributions = ({ history = [], ticker }) => {
+  if (!history || history.length === 0)
     return <div className="p-4 text-center text-xs text-gray-500">Sem histórico registrado.</div>;
 
   return (
@@ -658,6 +626,7 @@ const PositionsTable = ({
   selectedAssetTicker,
   setSelectedAssetTicker,
   categoryLabel,
+  assetsHistoryMap,
 }) => {
   const [expandedTicker, setExpandedTicker] = useState(null);
 
@@ -713,6 +682,7 @@ const PositionsTable = ({
                 const rentabilityPercent = costBasis > 0 ? (variationValue / costBasis) * 100 : 0;
                 const share = totalValue > 0 ? (marketValue / totalValue) * 100 : 0;
                 const isExpanded = expandedTicker === row.ticker;
+                const assetHistory = assetsHistoryMap[row.ticker] || [];
 
                 return (
                   <React.Fragment key={row.ticker}>
@@ -788,12 +758,10 @@ const PositionsTable = ({
                           colSpan="8"
                           className="p-0 border-b border-gray-200 dark:border-gray-700 relative"
                         >
-                          {}
                           <div className="absolute left-[34px] top-0 bottom-0 w-[2px] bg-gray-200 dark:bg-gray-700 block"></div>
-
-                          {}
                           <div className="pl-12">
-                            <AssetContributions ticker={row.ticker} />
+                            {}
+                            <AssetContributions ticker={row.ticker} history={assetHistory} />
                           </div>
                         </td>
                       </tr>
@@ -832,6 +800,7 @@ const CustomPieTooltip = ({ active, payload }) => {
 
 function WalletDashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [positions, setPositions] = useState([]);
   const [fullHistoryData, setFullHistoryData] = useState({
@@ -854,15 +823,36 @@ function WalletDashboard() {
   const [highlightedDate, setHighlightedDate] = useState(null);
 
   const [debugShowEmpty, setDebugShowEmpty] = useState(false);
+  const [assetsHistoryMap, setAssetsHistoryMap] = useState({});
+
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [posData, histData] = await Promise.all([
+        const [posData, histData, purchasesResponse] = await Promise.all([
           fetchWalletPositions(),
           fetchWalletPerformanceHistory(),
+          fetch(`${API_URL}/wallet/purchases?user_id=${user.id}`),
         ]);
+
+        let purchasesMap = {};
+        if (purchasesResponse.ok) {
+          const purchasesData = await purchasesResponse.json();
+
+          purchasesData.forEach((move) => {
+            if (!purchasesMap[move.ticker]) {
+              purchasesMap[move.ticker] = [];
+            }
+            purchasesMap[move.ticker].push(move);
+          });
+
+          Object.keys(purchasesMap).forEach((ticker) => {
+            purchasesMap[ticker].sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
+          });
+        }
+        setAssetsHistoryMap(purchasesMap);
 
         const positionsWithRealPrices = await Promise.all(
           posData.map(async (p) => {
@@ -1234,6 +1224,7 @@ function WalletDashboard() {
               selectedAssetTicker={selectedAssetTicker}
               setSelectedAssetTicker={setSelectedAssetTicker}
               categoryLabel={CATEGORIES_CONFIG[activeTab].label}
+              assetsHistoryMap={assetsHistoryMap}
             />
 
             <SourceDataTable
