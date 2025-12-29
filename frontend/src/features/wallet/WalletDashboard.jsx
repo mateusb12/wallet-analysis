@@ -869,6 +869,40 @@ function WalletDashboard() {
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
   useEffect(() => {
+    const consolidatePositions = (rawData) => {
+      const map = {};
+
+      rawData.forEach((item) => {
+        const itemPrice = item.purchase_price || item.price || 0;
+
+        if (map[item.ticker]) {
+          const existing = map[item.ticker];
+
+          const totalQty = existing.qty + item.qty;
+
+          const totalCost = existing.purchase_price * existing.qty + itemPrice * item.qty;
+
+          map[item.ticker] = {
+            ...existing,
+            qty: totalQty,
+            purchase_price: totalCost / totalQty,
+
+            trade_date:
+              new Date(existing.trade_date) < new Date(item.trade_date)
+                ? existing.trade_date
+                : item.trade_date,
+          };
+        } else {
+          map[item.ticker] = {
+            ...item,
+            purchase_price: itemPrice,
+          };
+        }
+      });
+
+      return Object.values(map);
+    };
+
     const loadData = async () => {
       setLoading(true);
       try {
@@ -895,16 +929,20 @@ function WalletDashboard() {
         }
         setAssetsHistoryMap(purchasesMap);
 
+        const uniqueAssets = consolidatePositions(posData);
+
         const positionsWithRealPrices = await Promise.all(
-          posData.map(async (p) => {
+          uniqueAssets.map(async (p) => {
             try {
               const { data } = await fetchB3Prices(p.ticker, 1, 1);
               let currentPrice = p.purchase_price;
               let priceSource = 'compra';
+
               if (data && data.length > 0) {
                 currentPrice = parseFloat(data[0].close);
                 priceSource = 'b3_real';
               }
+
               return {
                 ...p,
                 current_price: currentPrice,
@@ -925,6 +963,7 @@ function WalletDashboard() {
 
         setPositions(positionsWithRealPrices);
         setFullHistoryData(histData);
+
         if (histData.warnings && histData.warnings.length > 0) setDataWarnings(histData.warnings);
         else setDataWarnings([]);
       } catch (error) {

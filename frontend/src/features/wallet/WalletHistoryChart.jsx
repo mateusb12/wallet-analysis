@@ -75,25 +75,59 @@ const CustomTooltip = ({ active, payload, label, isDark, selectedDate }) => {
     const purchaseEvents = payload[0].payload.purchaseEvents || [];
     const isSelected = label === selectedDate;
 
+    // --- CÁLCULOS ---
+    const totalPurchaseValue = purchaseEvents.reduce(
+      (acc, curr) => acc + curr.qty * curr.purchase_price,
+      0
+    );
+    const prePurchasePortfolio = portfolioVal - totalPurchaseValue;
+    const impactPercent = prePurchasePortfolio > 0 ? totalPurchaseValue / prePurchasePortfolio : 0;
+    // ----------------
+
     return (
       <div className={`${bgClass} border p-3 rounded-lg shadow-lg text-sm z-50`}>
         <p className="font-bold mb-2 border-b border-gray-500/20 pb-1">{formatChartDate(label)}</p>
 
         {purchaseEvents.length > 0 && (
           <div className="mb-3 pb-2 border-b border-gray-500/20 bg-blue-50 dark:bg-blue-900/20 -mx-3 px-3 py-2">
-            <p className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-1 flex items-center gap-1">
+            {/* Cabeçalho Limpo (sem o card de %) */}
+            <p className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-2 flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-blue-500"></span>
               Evento de Compra {purchaseEvents[0].isApproximate && '(Aprox.)'}
             </p>
-            {purchaseEvents.map((event, idx) => (
-              <div key={idx} className="text-xs text-gray-700 dark:text-gray-300 mb-0.5 last:mb-0">
-                <span className="font-bold">{event.ticker}</span>: {event.qty} un. @{' '}
-                {formatCurrency(event.purchase_price)}
-              </div>
-            ))}
+
+            {/* Lista de compras */}
+            {purchaseEvents.map((event, idx) => {
+              const itemTotal = event.qty * event.purchase_price;
+              return (
+                <div
+                  key={idx}
+                  className="text-xs text-gray-700 dark:text-gray-300 mb-1 last:mb-0 flex flex-col"
+                >
+                  <div>
+                    <span className="font-bold">{event.ticker}</span>: x{event.qty} por {''}
+                    {formatCurrency(event.purchase_price)}
+                  </div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 pl-2">
+                    ↳ Total: {formatCurrency(itemTotal)}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Rodapé com Total e Impacto (Sempre visível agora) */}
+            <div className="mt-2 pt-1 border-t border-blue-200 dark:border-blue-800 text-xs text-right text-blue-600 dark:text-blue-300">
+              <span className="font-bold">Total Aportado: </span>
+              {formatCurrency(totalPurchaseValue)}
+              <span className="ml-1 opacity-90 font-normal">
+                ({ratio >= 0 ? '+' : ''}
+                {formatPercent(impactPercent)} no Patr.)
+              </span>
+            </div>
           </div>
         )}
 
+        {/* Resto do Tooltip (Patrimônio vs Benchmark) */}
         <div className="flex flex-col gap-1">
           <div className="flex justify-between gap-6 items-center">
             <span style={{ color: '#eab308' }} className="font-medium text-xs">
@@ -119,7 +153,6 @@ const CustomTooltip = ({ active, payload, label, isDark, selectedDate }) => {
             </span>
           </div>
 
-          {/* New Instruction Section */}
           <div className="mt-2 pt-2 border-t border-gray-500/20 text-center animate-pulse">
             {isSelected ? (
               <p className="text-[10px] font-bold text-pink-600 dark:text-pink-400 uppercase tracking-wide">
