@@ -74,17 +74,29 @@ P_CRI = [re.compile(r"\bcri\b"), re.compile(r"\bcr[i|s]\b"), re.compile(r"certif
          re.compile(r"\brecebiveis?\s+imobiliarios?\b"), re.compile(r"\btitulos?\s+de\s+credito\b"),
          re.compile(r"\bipca\b"), re.compile(r"\bcdi\b"), re.compile(r"\bhigh\s+yield\b"),
          re.compile(r"\bhigh\s+grade\b")]
-P_FOF = [re.compile(r"\bfundo\s+de\s+fundos\b"), re.compile(r"\bfof\b"),
-         re.compile(r"\bcotas?\s+de\s+(outros\s+)?fundos?\b"), re.compile(r"\bquis\b")]
+P_FOF = [
+    re.compile(r"\bfundo\s+de\s+fundos\b"),
+    re.compile(r"\bfundo\s+fundos\b"), # <--- ADICIONAR ESTA LINHA (Padrão Kinea)
+    re.compile(r"\bfof\b"),
+    re.compile(r"\bfofs\b"),
+    re.compile(r"\bcotas?\s+de\s+(outros\s+)?(?:fundos?|fiis?|fundo\s+de\s+investimento)\b"),
+    re.compile(r"\baquisic\w*\s+de\s+cotas\b"),
+    re.compile(r"\binvest\w*\s+(?:em|de|proponderante\s+em)\s+cotas\b"),
+    re.compile(r"\balocac\w*\s+em\s+cotas\b"),
+    re.compile(r"\bcarteira\s+de\s+(?:fiis?|fundos?)\b"),
+]
 P_MULTI = [re.compile(r"\bmultiestrategi\w*\b"), re.compile(r"\bmultistrateg\w*\b"), re.compile(r"\bdiversificad\w*\b"),
            re.compile(r"\bgestao\s+ativa\b"), re.compile(r"\bhibrid\w*\b"), re.compile(r"\bmixed\b")]
-P_TIJOLO_GERAL = [re.compile(r"\blogistic\w*\b"), re.compile(r"\bgalpa\w*\b"), re.compile(r"\barmaz\w*\b"),
-                  re.compile(r"\bshopping\b"), re.compile(r"\bmall\w*\b"), re.compile(r"\bvarej\w*\b"),
-                  re.compile(r"\blajes?\b"), re.compile(r"\bescritor\w*\b"), re.compile(r"\bcorporativ\w*\b"),
-                  re.compile(r"\bcorporate\b"), re.compile(r"\boffice\b"), re.compile(r"\brenda\s+urbana\b"),
-                  re.compile(r"\bedifici\w*\b"), re.compile(r"\bimoveis?\b"), re.compile(r"\bimobiliari\w*\b"),
-                  re.compile(r"\breal\s+estate\b"), re.compile(r"\bpredio\b"), re.compile(r"\bhospital\b"),
-                  re.compile(r"\beducacional\b")]
+P_TIJOLO_GERAL = [
+    re.compile(r"\blogistic\w*\b"), re.compile(r"\bgalpa\w*\b"), re.compile(r"\barmaz\w*\b"),
+    re.compile(r"\bshopping\b"), re.compile(r"\bmall\w*\b"), re.compile(r"\bvarej\w*\b"),
+    re.compile(r"\blajes?\b"), re.compile(r"\bescritor\w*\b"), re.compile(r"\bcorporativ\w*\b"),
+    re.compile(r"\bcorporate\b"), re.compile(r"\boffice\b"), re.compile(r"\brenda\s+urbana\b"),
+    re.compile(r"\bedifici\w*\b"), re.compile(r"\bimoveis?\b"),
+    # re.compile(r"\bimobiliari\w*\b"),  <-- REMOVIDO: Causava o erro do KFOF
+    re.compile(r"\breal\s+estate\b"), re.compile(r"\bpredio\b"), re.compile(r"\bhospital\b"),
+    re.compile(r"\beducacional\b")
+]
 P_FIAGRO = [re.compile(r"\bfiagro\b"), re.compile(r"\bcra\b"), re.compile(r"\bagronegoc\w*\b"),
             re.compile(r"\bfarmland\b"), re.compile(r"\bterra\b")]
 
@@ -562,6 +574,14 @@ def classify_ticker(payload: TickerSync):
 
         # 3) YAHOO FETCH
         asset = yf.Ticker(yf_ticker)
+        asset_dict = {
+            "ticker": asset.ticker,
+            "info": asset.info,
+            "fast_info": dict(asset.fast_info) if asset.fast_info else None,
+            "dividends": asset.dividends.to_dict() if not asset.dividends.empty else None,
+            "actions": asset.actions.reset_index().to_dict("records") if not asset.actions.empty else None,
+        }
+
         info = asset.info or {}
 
         summary = str(info.get("longBusinessSummary") or "")

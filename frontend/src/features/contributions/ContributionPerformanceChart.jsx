@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { BarChart2, DollarSign, Percent, Clock, Activity } from 'lucide-react';
-
-import { getDetailedTimeElapsed, getTypeColor } from '../../utils/contributionUtils';
+import { getDetailedTimeElapsed, getTypeColor } from './contributionUtils.js';
 
 export default function AssetPerformanceChart({ purchases }) {
   const [performanceMode, setPerformanceMode] = useState('relative');
