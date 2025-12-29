@@ -224,50 +224,57 @@ def get_market_constants():
 
 @market_data_bp.post("/")
 def sync_ticker(payload: TickerSync):
-    """
-    Sincroniza histórico (OHLCV) via Yahoo Finance.
-    CORRIGIDO: Aponta para a tabela antiga 'b3_prices' e coluna 'trade_date'.
-    """
     ticker = payload.ticker
     if not ticker:
         raise HTTPException(status_code=400, detail="Ticker is required")
 
-    # Lógica de datas (5 anos)
     end_date = datetime.now() + timedelta(days=1)
-    start_date = end_date - timedelta(days=365 * 5)
+    start_date = end_date - timedelta(days=365 * 5)  # 5 anos
 
     yf_ticker = f"{ticker}.SA" if not ticker.endswith(".SA") else ticker
     clean_ticker = ticker.replace(".SA", "").upper()
 
-    print(f"📡 Downloading {yf_ticker}...", flush=True)
+    print(f"--- SYNC: {clean_ticker} ---")
+    supabase = get_supabase()
+
+    # 1. Checa data atual no banco
+    last_db_date = None
+    try:
+        last_row = supabase.table("b3_prices").select("trade_date").eq("ticker", clean_ticker).order("trade_date",
+                                                                                                     desc=True).limit(
+            1).execute()
+        if last_row.data:
+            last_db_date = last_row.data[0]['trade_date']
+    except Exception:
+        pass
 
     try:
-        # Download Yahoo
-        df_raw = yf.download(
-            yf_ticker,
-            start=start_date.strftime("%Y-%m-%d"),
-            end=end_date.strftime("%Y-%m-%d"),
-            auto_adjust=False,
-            progress=False
-        )
+        # 2. Download Yahoo
+        df_raw = yf.download(yf_ticker, start=start_date.strftime("%Y-%m-%d"), end=end_date.strftime("%Y-%m-%d"),
+                             auto_adjust=False, progress=False)
 
         if df_raw.empty:
-            raise HTTPException(status_code=404, detail="Yahoo returned no data")
+            # Não é erro 500, é apenas "sem dados"
+            return {"success": False, "action": "empty_source", "message": "Yahoo não retornou dados."}
 
         df_norm = normalize_yahoo_robust(df_raw)
-
         if df_norm.empty:
-            raise HTTPException(status_code=422, detail="Data downloaded but failed normalization.")
+            return {"success": False, "action": "parse_error", "message": "Falha ao ler dados do Yahoo."}
 
-        supabase = get_supabase()
+        # 3. Verifica se tem dados NOVOS
+        max_yahoo_date = df_norm['date'].max()
+
+        # Lógica de comparação de datas (String vs String ISO)
+        has_new_data = True
+        if last_db_date and str(max_yahoo_date) <= str(last_db_date):
+            has_new_data = False
 
         records = []
         current_time = datetime.now().isoformat()
-
         for _, row in df_norm.iterrows():
             records.append({
                 "ticker": clean_ticker,
-                "trade_date": row["date"],  # <--- VOLTOU PARA 'trade_date' (compatível com b3_prices)
+                "trade_date": row["date"],
                 "open": float(row["open"]),
                 "high": float(row["high"]),
                 "low": float(row["low"]),
@@ -276,22 +283,28 @@ def sync_ticker(payload: TickerSync):
                 "inserted_at": current_time
             })
 
-        # Batch Insert
+        # Sempre faz o upsert para garantir integridade, mas avisa o front o status real
         BATCH_SIZE = 1000
         for i in range(0, len(records), BATCH_SIZE):
             batch = records[i:i + BATCH_SIZE]
+            supabase.table("b3_prices").upsert(batch, on_conflict="ticker,trade_date").execute()
 
-            # <--- CORREÇÃO PRINCIPAL AQUI: Volta para 'b3_prices'
-            response = supabase.table("b3_prices").upsert(
-                batch,
-                on_conflict="ticker,trade_date"
-            ).execute()
-
-        return {
-            "success": True,
-            "count": len(records),
-            "message": f"Successfully synced {len(records)} records for {ticker}"
-        }
+        if has_new_data:
+            return {
+                "success": True,
+                "action": "updated",
+                "count": len(records),
+                "last_date": max_yahoo_date,
+                "message": f"Atualizado até {max_yahoo_date}"
+            }
+        else:
+            return {
+                "success": True,
+                "action": "up_to_date",
+                "count": 0,
+                "last_date": max_yahoo_date,
+                "message": f"Já atualizado (Último: {max_yahoo_date})"
+            }
 
     except Exception as e:
         print(f"❌ Error syncing ticker: {e}")
@@ -439,74 +452,56 @@ def sync_ibov():
 
 @market_data_bp.post("/cdi")
 def sync_cdi():
-    """
-    Syncs CDI history using BCB Series 11 (Daily Selic).
-    Lógica recuperada do código antigo (BCB API).
-    """
     BCB_BASE_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados"
-    print("📡 Downloading CDI (Selic) data from BCB...", flush=True)
+    print("📡 Downloading CDI...", flush=True)
 
     try:
         supabase = get_supabase()
-
-        # Check DB for most recent date
-        last_row = supabase.table("cdi_history") \
-            .select("trade_date") \
-            .order("trade_date", desc=True) \
-            .limit(1) \
-            .execute()
+        last_row = supabase.table("cdi_history").select("trade_date").order("trade_date", desc=True).limit(1).execute()
 
         today = datetime.now()
+        start_date_obj = today - timedelta(days=30)  # Default curto
 
         if last_row.data:
-            last_date_str = last_row.data[0]['trade_date']
-            last_date_obj = datetime.strptime(last_date_str, "%Y-%m-%d")
+            last_date_obj = datetime.strptime(last_row.data[0]['trade_date'], "%Y-%m-%d")
             start_date_obj = last_date_obj + timedelta(days=1)
-        else:
-            start_date_obj = today - timedelta(days=365 * 10)
+
+        if start_date_obj > today:
+            return {"success": True, "action": "up_to_date", "message": "CDI já atualizado."}
 
         data_inicial = start_date_obj.strftime("%d/%m/%Y")
         data_final = today.strftime("%d/%m/%Y")
 
-        if start_date_obj > today:
-            return {"success": True, "count": 0, "message": "CDI already up to date."}
-
         params = {"formato": "json", "dataInicial": data_inicial, "dataFinal": data_final}
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        headers = {"User-Agent": "Mozilla/5.0"}
 
-        print(f"   ↳ Requesting range: {data_inicial} to {data_final}")
         response = requests.get(BCB_BASE_URL, headers=headers, params=params)
+
+        # TRATAMENTO DE ERRO 404 (FIM DE SEMANA/FERIADO)
+        if response.status_code == 404:
+            return {"success": True, "action": "up_to_date", "message": "Sem dados no BCB (Feriado/Fim de semana)."}
+
         response.raise_for_status()
 
         data = response.json()
-        if isinstance(data, dict) and "error" in data:
-            raise HTTPException(status_code=400, detail=f"BCB API Error: {data['error']}")
-
         records = []
         for entry in data:
             if 'data' not in entry or 'valor' not in entry: continue
             day, month, year = entry['data'].split('/')
-            iso_date = f"{year}-{month}-{day}"
-            val_float = float(entry['valor'].replace(',', '.'))
-
-            records.append({"trade_date": iso_date, "value": val_float})
+            records.append({"trade_date": f"{year}-{month}-{day}", "value": float(entry['valor'].replace(',', '.'))})
 
         if not records:
-            return {"success": True, "count": 0, "message": "No new data found."}
+            return {"success": True, "action": "up_to_date", "message": "Sem novos registros."}
 
-        # Batch Insert
-        BATCH_SIZE = 1000
-        total_inserted = 0
-        for i in range(0, len(records), BATCH_SIZE):
-            batch = records[i:i + BATCH_SIZE]
-            supabase.table("cdi_history").upsert(batch, on_conflict="trade_date").execute()
-            total_inserted += len(batch)
+        for i in range(0, len(records), 1000):
+            supabase.table("cdi_history").upsert(records[i:i + 1000], on_conflict="trade_date").execute()
 
-        return {"success": True, "count": total_inserted, "message": f"Synced {total_inserted} records."}
+        return {"success": True, "action": "updated", "count": len(records), "message": "CDI Atualizado."}
 
     except Exception as e:
-        print(f"❌ Error syncing CDI: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"❌ Error CDI: {e}")
+        # Não quebrar o batch do front se o BCB falhar
+        return {"success": False, "error": str(e)}
 
 
 # ==============================================================================
