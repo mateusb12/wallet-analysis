@@ -173,6 +173,36 @@ const WalletSkeleton = () => {
   );
 };
 
+const RentabilityBar = ({ value, maxAbsValue }) => {
+  const absValue = Math.abs(value);
+  const isPositive = value >= 0;
+
+  const width = Math.min(100, (absValue / maxAbsValue) * 100);
+
+  const colorClass = isPositive ? 'bg-emerald-500' : 'bg-rose-500';
+  const textClass = isPositive
+    ? 'text-emerald-600 dark:text-emerald-400'
+    : 'text-rose-600 dark:text-rose-400';
+
+  return (
+    <div className="flex items-center w-full gap-2 min-w-[140px]">
+      {}
+      <div className={`w-14 text-right font-bold text-xs ${textClass}`}>
+        {isPositive ? '+' : ''}
+        {value.toFixed(2)}%
+      </div>
+
+      {}
+      <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex items-center">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${colorClass}`}
+          style={{ width: `${width}%` }}
+        />
+      </div>
+    </div>
+  );
+};
+
 const AssetContributions = ({ history = [], ticker }) => {
   if (!history || history.length === 0)
     return <div className="p-4 text-center text-xs text-gray-500">Sem histórico registrado.</div>;
@@ -635,6 +665,21 @@ const PositionsTable = ({
     setExpandedTicker((prev) => (prev === ticker ? null : ticker));
   };
 
+  const maxRentability = useMemo(() => {
+    if (!filteredPositions || filteredPositions.length === 0) return 0.1;
+
+    const maxVal = Math.max(
+      0.1,
+      ...filteredPositions.map((p) => {
+        const cost = p.purchase_price * p.qty;
+        const current = p.current_price * p.qty;
+        if (cost <= 0) return 0;
+        return Math.abs(((current - cost) / cost) * 100);
+      })
+    );
+    return maxVal;
+  }, [filteredPositions]);
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
       <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
@@ -648,7 +693,6 @@ const PositionsTable = ({
           <table className="w-full text-sm text-left border-collapse">
             <thead className="bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 uppercase font-medium">
               <tr>
-                {}
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700">Ativo</th>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
                   Quant.
@@ -665,7 +709,8 @@ const PositionsTable = ({
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
                   Variação (R$)
                 </th>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
+                {}
+                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-left min-w-[160px]">
                   Rentab. (%)
                 </th>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
@@ -696,10 +741,8 @@ const PositionsTable = ({
                         setSelectedAssetTicker(selectedAssetTicker === row.ticker ? '' : row.ticker)
                       }
                     >
-                      {}
                       <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">
                         <div className="flex items-center gap-3">
-                          {}
                           <button
                             onClick={(e) => toggleExpand(e, row.ticker)}
                             className="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-blue-500 transition-colors focus:outline-none"
@@ -708,12 +751,10 @@ const PositionsTable = ({
                             {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                           </button>
 
-                          {}
                           <span
                             className={`w-1 h-8 rounded-full ${row.type === 'stock' ? 'bg-blue-500' : row.type === 'fii' ? 'bg-yellow-500' : 'bg-purple-500'}`}
                           ></span>
 
-                          {}
                           <div className="flex flex-col">
                             <span className="font-bold">{row.ticker}</span>
                             <span className="text-xs text-gray-500 font-normal">
@@ -727,7 +768,6 @@ const PositionsTable = ({
                         {row.qty}
                       </td>
 
-                      {}
                       <td className="px-6 py-4 text-right font-mono text-gray-600 dark:text-gray-400">
                         {formatCurrency(row.purchase_price)}
                       </td>
@@ -741,9 +781,12 @@ const PositionsTable = ({
                       <td className="px-6 py-4">
                         <VariationBadge value={variationValue} />
                       </td>
+
+                      {}
                       <td className="px-6 py-4">
-                        <VariationBadge value={rentabilityPercent} isPercent />
+                        <RentabilityBar value={rentabilityPercent} maxAbsValue={maxRentability} />
                       </td>
+
                       <td className="px-6 py-4 text-center">
                         <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-semibold px-2.5 py-0.5 rounded">
                           {share.toFixed(1)}%
@@ -751,7 +794,6 @@ const PositionsTable = ({
                       </td>
                     </tr>
 
-                    {}
                     {isExpanded && (
                       <tr className="bg-gray-50 dark:bg-gray-900/30 animate-in fade-in slide-in-from-top-2 duration-300">
                         <td
@@ -760,7 +802,6 @@ const PositionsTable = ({
                         >
                           <div className="absolute left-[34px] top-0 bottom-0 w-[2px] bg-gray-200 dark:bg-gray-700 block"></div>
                           <div className="pl-12">
-                            {}
                             <AssetContributions ticker={row.ticker} history={assetHistory} />
                           </div>
                         </td>
