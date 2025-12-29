@@ -1,53 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useAuth } from '../features/auth/AuthContext';
-import {
-  TrendingUp,
-  Search,
-  Clock,
-  BarChart2,
-  DollarSign,
-  Percent,
-  Activity,
-  ChevronDown,
-  Check,
-  Layers,
-  List,
-  Tag,
-} from 'lucide-react';
-import { formatChartDate } from '../utils/dateUtils.js';
-import { fetchB3Prices, fetchPriceClosestToDate } from '../services/b3service.js';
-
-const getDetailedTimeElapsed = (dateString) => {
-  if (!dateString) return { short: '-', long: '-' };
-  const start = new Date(dateString);
-  const end = new Date();
-  start.setHours(0, 0, 0, 0);
-  end.setHours(0, 0, 0, 0);
-
-  let years = end.getFullYear() - start.getFullYear();
-  let months = end.getMonth() - start.getMonth();
-  let days = end.getDate() - start.getDate();
-
-  if (days < 0) {
-    months--;
-    const prevMonth = new Date(end.getFullYear(), end.getMonth(), 0);
-    days += prevMonth.getDate();
-  }
-  if (months < 0) {
-    years--;
-    months += 12;
-  }
-
-  const partsShort = [];
-  if (years > 0) partsShort.push(`${years}a`);
-  if (months > 0) partsShort.push(`${months}m`);
-  if (days > 0 && years === 0) partsShort.push(`${days}d`);
-  else if (days > 0 && years > 0 && months === 0) partsShort.push(`${days}d`);
-
-  if (partsShort.length === 0) return { short: 'Hoje', long: 'Menos de 24h' };
-
-  return { short: partsShort.join(' '), long: '' };
-};
+import { useAuth } from '../auth/AuthContext.jsx';
+import { TrendingUp, Search, Layers, List, Tag, ChevronDown, Check } from 'lucide-react';
+import { formatChartDate } from '../../utils/dateUtils.js';
+import { fetchB3Prices, fetchPriceClosestToDate } from '../../services/b3service.js';
+import { getDetailedTimeElapsed, getTypeColor } from './contributionUtils.js';
+import AssetPerformanceChart from './ContributionPerformanceChart.jsx';
 
 const calculateEquivalentRate = (totalProfitPercent, tradeDate, mode) => {
   if (mode === 'total' || !totalProfitPercent) return totalProfitPercent;
@@ -73,26 +30,12 @@ const getValueColor = (val) => {
   return 'text-gray-600 dark:text-gray-400';
 };
 
-const getTypeColor = (type) => {
-  switch (type) {
-    case 'stock':
-      return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
-    case 'fii':
-      return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300';
-    case 'etf':
-      return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300';
-    default:
-      return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
-  }
-};
-
 export default function Contributions() {
   const { user } = useAuth();
   const [purchases, setPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [performanceMode, setPerformanceMode] = useState('relative');
 
   const [rentabMode, setRentabMode] = useState('total');
   const [isRentabMenuOpen, setIsRentabMenuOpen] = useState(false);
@@ -249,55 +192,6 @@ export default function Contributions() {
     ad: { label: 'Ao Dia', suffix: 'a.d.' },
   };
 
-  const assetPerformance = useMemo(() => {
-    if (!purchases.length) return [];
-    const aggregation = {};
-    purchases.forEach((item) => {
-      if (!aggregation[item.ticker]) {
-        aggregation[item.ticker] = {
-          ticker: item.ticker,
-          type: item.type,
-          totalInvested: 0,
-          totalProfit: 0,
-          hasData: false,
-          firstTradeDate: item.trade_date,
-          asset1YGrowth: item.asset1YGrowth,
-        };
-      }
-      const cost = Number(item.price) * Number(item.qty);
-      aggregation[item.ticker].totalInvested += cost;
-      if (item.hasPriceData) {
-        aggregation[item.ticker].totalProfit += item.profitValue;
-        aggregation[item.ticker].hasData = true;
-      }
-      if (new Date(item.trade_date) < new Date(aggregation[item.ticker].firstTradeDate)) {
-        aggregation[item.ticker].firstTradeDate = item.trade_date;
-      }
-    });
-    return Object.values(aggregation)
-      .filter((a) => a.hasData)
-      .map((item) => {
-        const totalYieldPercent =
-          item.totalInvested > 0 ? (item.totalProfit / item.totalInvested) * 100 : 0;
-        const timeData = getDetailedTimeElapsed(item.firstTradeDate);
-        return { ...item, totalYieldPercent, timeData };
-      })
-      .sort((a, b) =>
-        performanceMode === 'relative'
-          ? b.totalYieldPercent - a.totalYieldPercent
-          : b.totalProfit - a.totalProfit
-      );
-  }, [purchases, performanceMode]);
-
-  const maxValue = useMemo(() => {
-    if (!assetPerformance.length) return 0;
-    return Math.max(
-      ...assetPerformance.map((a) =>
-        Math.abs(performanceMode === 'relative' ? a.totalYieldPercent : a.totalProfit)
-      )
-    );
-  }, [assetPerformance, performanceMode]);
-
   const ContributionRow = ({ item }) => {
     const timeData = getDetailedTimeElapsed(item.trade_date);
     const totalCurrentValue = item.hasPriceData
@@ -438,9 +332,9 @@ export default function Contributions() {
         {loading ? (
           <div className="p-8 text-center text-gray-500">Calculando dados...</div>
         ) : (
-          <div className="overflow-x-auto overflow-y-visible">
+          <div className="overflow-auto max-h-[75vh] relative scroll-smooth">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+              <thead className="sticky top-0 z-20 text-xs text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
                 <tr>
                   <th className="px-6 py-3 text-center">Data</th>
                   <th className="px-6 py-3 text-center">Ativo</th>
@@ -498,7 +392,6 @@ export default function Contributions() {
                     const group = groupedData[ticker];
                     return (
                       <React.Fragment key={ticker}>
-                        {}
                         <tr className="bg-gray-100 dark:bg-gray-900 border-y border-gray-300 dark:border-gray-600">
                           <td colSpan="10" className="px-6 py-2">
                             <div className="flex items-center justify-between">
@@ -546,7 +439,6 @@ export default function Contributions() {
                             </div>
                           </td>
                         </tr>
-                        {}
                         {group.items.map((item) => (
                           <ContributionRow key={item.id} item={item} />
                         ))}
@@ -566,48 +458,7 @@ export default function Contributions() {
         )}
       </div>
 
-      {assetPerformance.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <BarChart2 className="w-5 h-5 text-indigo-500" />
-            <h3 className="text-lg font-bold text-gray-800 dark:text-white">
-              Ranking de Performance (12m)
-            </h3>
-          </div>
-          {}
-          <div className="space-y-4">
-            {assetPerformance.map((asset, index) => {
-              const displayValue =
-                performanceMode === 'absolute' ? asset.totalProfit : asset.totalYieldPercent;
-              const isProfit = displayValue >= 0;
-              const rawPercentage = Math.abs(displayValue) / maxValue;
-              const widthPercentage = Math.max(1, rawPercentage * 100);
-              const formattedValue =
-                performanceMode === 'absolute'
-                  ? displayValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                  : `${displayValue > 0 ? '+' : ''}${displayValue.toFixed(2)}%`;
-
-              return (
-                <div key={asset.ticker} className="flex items-center gap-4 text-sm group">
-                  <div className="w-6 text-gray-400 font-mono text-xs">#{index + 1}</div>
-                  <div className="w-16 font-bold text-gray-700 dark:text-gray-300">
-                    {asset.ticker}
-                  </div>
-                  <div className="flex-1 h-8 bg-gray-50 dark:bg-gray-700/50 rounded overflow-hidden relative">
-                    <div
-                      className={`h-full ${isProfit ? 'bg-green-500/20 border-l-4 border-green-500' : 'bg-red-500/20 border-l-4 border-red-500'}`}
-                      style={{ width: `${widthPercentage}%` }}
-                    ></div>
-                    <span className="absolute inset-0 flex items-center pl-2 text-xs font-bold text-gray-600 dark:text-gray-300">
-                      {formattedValue}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <AssetPerformanceChart purchases={purchases} />
     </div>
   );
 }
