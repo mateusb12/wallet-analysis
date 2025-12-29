@@ -13,10 +13,12 @@ import {
   FileSpreadsheet,
   Bug,
   ArrowRight,
+  Plus,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import {
   getWalletPurchases,
+  createPurchase,
   updatePurchase,
   deletePurchase,
   importPurchases,
@@ -40,6 +42,7 @@ export default function AssetsManager() {
   const [purchases, setPurchases] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [isDeleting, setIsDeleting] = useState(null);
@@ -48,6 +51,16 @@ export default function AssetsManager() {
   const [importPreview, setImportPreview] = useState([]);
   const [fileName, setFileName] = useState('');
   const [isProcessingImport, setIsProcessingImport] = useState(false);
+
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addForm, setAddForm] = useState({
+    ticker: '',
+    date: new Date().toISOString().split('T')[0],
+    qty: '',
+    price: '',
+    type: 'stock',
+  });
+  const [isSavingManual, setIsSavingManual] = useState(false);
 
   const [debugShowEmpty, setDebugShowEmpty] = useState(false);
 
@@ -115,28 +128,22 @@ export default function AssetsManager() {
 
   const getDuplicateStatus = (row) => {
     if (!purchases.length) return 'new';
-
     const rowDateString = toStandardDate(row.date);
     const rowTicker = row.ticker.trim().toUpperCase();
 
     const match = purchases.find((dbItem) => {
       const dbTicker = dbItem.ticker.trim().toUpperCase();
       if (dbTicker !== rowTicker) return false;
-
       const sameQty = Number(dbItem.qty) === Number(row.qty);
       if (!sameQty) return false;
-
       const samePrice = Math.abs(Number(dbItem.price) - Number(row.price)) < 0.05;
       if (!samePrice) return false;
-
       const dbDateString = toStandardDate(dbItem.trade_date);
       if (dbDateString === rowDateString) return true;
-
       const d1 = new Date(dbDateString);
       const d2 = new Date(rowDateString);
       const diffTime = Math.abs(d2 - d1);
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
       return diffDays <= 6;
     });
 
@@ -180,7 +187,6 @@ export default function AssetsManager() {
         qty: Number(editForm.qty),
         type: editForm.type,
       });
-
       await fetchPurchases();
       setEditingId(null);
     } catch (error) {
@@ -198,6 +204,71 @@ export default function AssetsManager() {
       alert('Erro ao excluir.');
     } finally {
       setIsDeleting(null);
+    }
+  };
+
+  const parseCurrencyInput = (value) => {
+    if (!value) return 0;
+    const strVal = String(value);
+    if (strVal.includes(',')) {
+      const cleanValue = strVal.replace(/\./g, '').replace(',', '.');
+      return parseFloat(cleanValue);
+    }
+    return parseFloat(strVal);
+  };
+
+  const handlePriceChange = (e) => {
+    let value = e.target.value;
+
+    const cleanValue = value.replace(/\D/g, '');
+
+    const numberValue = Number(cleanValue) / 100;
+
+    const formatted = numberValue.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+    setAddForm({ ...addForm, price: formatted });
+  };
+
+  const handleManualSubmit = async (e) => {
+    e.preventDefault();
+    if (!addForm.ticker || !addForm.qty || !addForm.price || !addForm.date) {
+      alert('Preencha todos os campos obrigatórios.');
+      return;
+    }
+
+    setIsSavingManual(true);
+    try {
+      const finalPrice = parseCurrencyInput(addForm.price);
+
+      const payload = {
+        user_id: user.id,
+        ticker: addForm.ticker.toUpperCase(),
+        trade_date: addForm.date,
+        qty: Number(addForm.qty),
+        price: finalPrice,
+        type: addForm.type,
+        name: addForm.ticker.toUpperCase(),
+      };
+
+      await createPurchase(payload);
+
+      setAddForm({
+        ticker: '',
+        date: new Date().toISOString().split('T')[0],
+        qty: '',
+        price: '',
+        type: 'stock',
+      });
+      setIsAddModalOpen(false);
+      await fetchPurchases();
+    } catch (error) {
+      console.error(error);
+      alert(`Erro ao adicionar: ${error.message}`);
+    } finally {
+      setIsSavingManual(false);
     }
   };
 
@@ -325,14 +396,11 @@ export default function AssetsManager() {
 
   const handleConfirmImport = async () => {
     if (!user || !user.id) return;
-
     const newItems = importPreview.filter((row) => {
       const status = getDuplicateStatus(row);
       return status !== 'duplicate' && status !== 'potential';
     });
-
     if (newItems.length === 0) return;
-
     setIsProcessingImport(true);
     try {
       const payload = {
@@ -346,10 +414,8 @@ export default function AssetsManager() {
           trade_date: toStandardDate(item.date),
         })),
       };
-
       const data = await importPurchases(payload);
       alert(`Sucesso! ${data.count} novos ativos salvos.`);
-
       await fetchPurchases();
       handleCloseModal();
     } catch (error) {
@@ -364,7 +430,6 @@ export default function AssetsManager() {
     const s = getDuplicateStatus(r);
     return s !== 'duplicate' && s !== 'potential';
   }).length;
-
   const duplicateCount = importPreview.length - newItemsCount;
 
   const filteredPurchases = purchases
@@ -392,7 +457,6 @@ export default function AssetsManager() {
         </div>
 
         <div className="flex items-center gap-3 w-full md:w-auto">
-          {}
           {import.meta.env.DEV && (
             <button
               onClick={() => setDebugShowEmpty(!debugShowEmpty)}
@@ -420,6 +484,16 @@ export default function AssetsManager() {
             </div>
           )}
 
+          {}
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 text-gray-700 dark:text-white text-sm font-medium rounded-lg transition-all shadow-sm whitespace-nowrap"
+          >
+            <Plus className="w-4 h-4" />
+            Novo Manual
+          </button>
+
+          {}
           <button
             onClick={() => setIsImportModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-all shadow-sm whitespace-nowrap"
@@ -442,21 +516,30 @@ export default function AssetsManager() {
             </h2>
             <p className="text-gray-500 dark:text-gray-400 mb-6">
               Para começar a acompanhar sua rentabilidade, importe seus dados diretamente da Área do
-              Investidor da B3. É simples e rápido.
+              Investidor da B3 ou adicione manualmente.
             </p>
-            <button
-              onClick={() => setIsImportModalOpen(true)}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-all transform hover:scale-105"
-            >
-              <UploadCloud className="w-5 h-5" />
-              Realizar Primeira Importação
-            </button>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-all transform hover:scale-105"
+              >
+                <UploadCloud className="w-5 h-5" />
+                Importar B3
+              </button>
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-white border border-gray-300 hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 text-gray-700 dark:text-white font-semibold rounded-lg shadow-sm transition-all"
+              >
+                <Plus className="w-5 h-5" />
+                Manual
+              </button>
+            </div>
           </div>
 
           <div className="w-full max-w-6xl border-t border-gray-200 dark:border-gray-700 pt-8">
             <h3 className="text-center text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-6 flex items-center justify-center gap-2">
               <ArrowRight className="w-4 h-4" />
-              Passo a Passo da Importação
+              Passo a Passo da Importação B3
               <ArrowRight className="w-4 h-4" />
             </h3>
 
@@ -654,7 +737,6 @@ export default function AssetsManager() {
 
             {}
             <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-white dark:bg-gray-800">
-              {}
               <label
                 className={`relative flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-all duration-200 group
                         ${
@@ -673,8 +755,6 @@ export default function AssetsManager() {
                       <p className="text-xs text-green-600/70 dark:text-green-500/70 mt-1">
                         Arquivo carregado com sucesso
                       </p>
-
-                      {}
                       <button
                         onClick={handleClearImport}
                         className="absolute top-3 right-3 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all"
@@ -706,7 +786,6 @@ export default function AssetsManager() {
                 )}
               </label>
 
-              {}
               {importPreview.length > 0 && (
                 <div className="mt-8">
                   <div className="flex justify-between items-center mb-4 px-1">
@@ -743,7 +822,6 @@ export default function AssetsManager() {
                           {importPreview.map((row, idx) => {
                             const status = getDuplicateStatus(row);
                             const isDup = status === 'duplicate';
-
                             const rowClass = isDup
                               ? 'bg-amber-50/50 dark:bg-amber-900/10 text-gray-600 dark:text-gray-400'
                               : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 hover:bg-blue-50/50 dark:hover:bg-blue-900/10';
@@ -786,7 +864,6 @@ export default function AssetsManager() {
               )}
             </div>
 
-            {}
             <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex justify-end gap-3 items-center">
               <button
                 onClick={handleCloseModal}
@@ -820,6 +897,137 @@ export default function AssetsManager() {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+            <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-900/50">
+              <h3 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2">
+                <Plus className="text-blue-600 w-5 h-5" />
+                Novo Aporte Manual
+              </h3>
+              <button
+                onClick={() => setIsAddModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleManualSubmit} className="p-6 space-y-4">
+              {}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Ticker
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="EX: PETR4"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-900 dark:text-white uppercase focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={addForm.ticker}
+                    onChange={(e) =>
+                      setAddForm({ ...addForm, ticker: e.target.value.toUpperCase() })
+                    }
+                    required
+                  />
+                </div>
+                <div className="col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Data
+                  </label>
+                  <input
+                    type="date"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={addForm.date}
+                    onChange={(e) => setAddForm({ ...addForm, date: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+
+              {}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Tipo de Ativo
+                </label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={addForm.type}
+                  onChange={(e) => setAddForm({ ...addForm, type: e.target.value })}
+                >
+                  <option value="stock">Ação</option>
+                  <option value="fii">FII (Fundo Imobiliário)</option>
+                  <option value="etf">ETF</option>
+                  <option value="bdr">BDR</option>
+                </select>
+              </div>
+
+              {}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Quantidade
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={addForm.qty}
+                    onChange={(e) =>
+                      setAddForm({ ...addForm, qty: e.target.value.replace(/\D/g, '') })
+                    }
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Preço Unitário (R$)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0,00"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={addForm.price}
+                    onChange={handlePriceChange}
+                    required
+                  />
+                </div>
+              </div>
+
+              {}
+              <div className="pt-4 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingManual}
+                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm font-medium flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isSavingManual ? (
+                    <>
+                      <RefreshCw className="animate-spin w-4 h-4" /> Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" /> Salvar Aporte
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

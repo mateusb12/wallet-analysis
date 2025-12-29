@@ -2,7 +2,8 @@ from pydantic import BaseModel, ConfigDict
 from datetime import date
 from typing import List, Optional
 
-class AssetPurchaseCreate(BaseModel):
+# Base comum para reaproveitar campos
+class AssetPurchaseBase(BaseModel):
     ticker: str
     name: Optional[str] = None
     type: str
@@ -10,16 +11,21 @@ class AssetPurchaseCreate(BaseModel):
     price: float
     trade_date: date
 
+# Usado na lista do Import (que já existia, mas agora herda da Base)
+class AssetPurchaseCreate(AssetPurchaseBase):
+    pass
+
+# NOVO: Usado para criar/editar um único aporte (Frontend envia user_id junto)
+class AssetPurchaseInput(AssetPurchaseBase):
+    user_id: str
+
+# Request do Import em massa
 class ImportPurchasesRequest(BaseModel):
     user_id: str
     purchases: List[AssetPurchaseCreate]
 
-class AssetPurchaseResponse(BaseModel):
+# Resposta para o frontend
+class AssetPurchaseResponse(AssetPurchaseBase):
     id: int
-    ticker: str
-    type: str
-    qty: float
-    price: float
-    trade_date: date
 
     model_config = ConfigDict(from_attributes=True)

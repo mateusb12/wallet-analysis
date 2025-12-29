@@ -30,6 +30,27 @@ export const getWalletPurchases = async (userId) => {
   }
 };
 
+export const createPurchase = async (payload) => {
+  try {
+    const response = await fetch(`${API_BASE}/wallet/purchases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || 'Erro ao criar aporte manual');
+    }
+
+    cachedPositions = null;
+    return await response.json();
+  } catch (error) {
+    console.error('Erro em createPurchase:', error);
+    throw error;
+  }
+};
+
 export const updatePurchase = async (id, payload) => {
   try {
     const response = await fetch(`${API_BASE}/wallet/purchases/${id}`, {
