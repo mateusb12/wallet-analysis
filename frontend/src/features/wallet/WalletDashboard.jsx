@@ -23,6 +23,7 @@ import {
   ArrowRight,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   History as HistoryIcon,
 } from 'lucide-react';
 
@@ -678,14 +679,12 @@ const PositionsTable = ({
           <table className="w-full text-sm text-left border-collapse">
             <thead className="bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 uppercase font-medium">
               <tr>
+                {}
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700">Ativo</th>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
                   Quant.
                 </th>
-                <th
-                  className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-right cursor-help"
-                  title="Clique para ver histórico"
-                >
+                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-right">
                   Preço Médio
                 </th>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-right">
@@ -727,11 +726,24 @@ const PositionsTable = ({
                         setSelectedAssetTicker(selectedAssetTicker === row.ticker ? '' : row.ticker)
                       }
                     >
+                      {}
                       <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">
                         <div className="flex items-center gap-3">
+                          {}
+                          <button
+                            onClick={(e) => toggleExpand(e, row.ticker)}
+                            className="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-blue-500 transition-colors focus:outline-none"
+                            title="Ver histórico de aportes"
+                          >
+                            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          </button>
+
+                          {}
                           <span
                             className={`w-1 h-8 rounded-full ${row.type === 'stock' ? 'bg-blue-500' : row.type === 'fii' ? 'bg-yellow-500' : 'bg-purple-500'}`}
                           ></span>
+
+                          {}
                           <div className="flex flex-col">
                             <span className="font-bold">{row.ticker}</span>
                             <span className="text-xs text-gray-500 font-normal">
@@ -740,30 +752,15 @@ const PositionsTable = ({
                           </div>
                         </div>
                       </td>
+
                       <td className="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-mono">
                         {row.qty}
                       </td>
 
                       {}
-                      <td
-                        className="px-6 py-4 text-right font-mono cursor-pointer group relative"
-                        onClick={(e) => toggleExpand(e, row.ticker)}
-                      >
-                        <div className="flex items-center justify-end gap-2 px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
-                          <span className="text-gray-500 dark:text-gray-400 font-medium">
-                            {formatCurrency(row.purchase_price)}
-                          </span>
-                          {isExpanded ? (
-                            <ChevronUp size={14} className="text-blue-500" />
-                          ) : (
-                            <ChevronDown
-                              size={14}
-                              className="text-gray-400 group-hover:text-blue-500"
-                            />
-                          )}
-                        </div>
+                      <td className="px-6 py-4 text-right font-mono text-gray-600 dark:text-gray-400">
+                        {formatCurrency(row.purchase_price)}
                       </td>
-                      {}
 
                       <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white font-mono">
                         {formatCurrency(currentPrice)}
@@ -789,13 +786,18 @@ const PositionsTable = ({
                       <tr className="bg-gray-50 dark:bg-gray-900/30 animate-in fade-in slide-in-from-top-2 duration-300">
                         <td
                           colSpan="8"
-                          className="p-0 border-b border-gray-200 dark:border-gray-700"
+                          className="p-0 border-b border-gray-200 dark:border-gray-700 relative"
                         >
-                          <AssetContributions ticker={row.ticker} />
+                          {}
+                          <div className="absolute left-[34px] top-0 bottom-0 w-[2px] bg-gray-200 dark:bg-gray-700 block"></div>
+
+                          {}
+                          <div className="pl-12">
+                            <AssetContributions ticker={row.ticker} />
+                          </div>
                         </td>
                       </tr>
                     )}
-                    {}
                   </React.Fragment>
                 );
               })}
