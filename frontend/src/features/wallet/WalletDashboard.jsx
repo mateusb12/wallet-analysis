@@ -21,6 +21,9 @@ import {
   Bug,
   BarChart2,
   ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  History as HistoryIcon,
 } from 'lucide-react';
 
 import iconStocks from '../../assets/stocks.png';
@@ -28,6 +31,7 @@ import iconEtf from '../../assets/etf.png';
 import iconFiis from '../../assets/fiis.png';
 import iconTotal from '../../assets/all.png';
 import SourceDataTable from './SourceDataTable.jsx';
+import { useAuth } from '../auth/AuthContext.jsx';
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#6366f1'];
 
@@ -163,6 +167,100 @@ const WalletSkeleton = () => {
             <div key={row} className="h-10 w-full bg-gray-50 dark:bg-gray-900/30 rounded"></div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+};
+
+const AssetContributions = ({ ticker }) => {
+  const { user } = useAuth();
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+  useEffect(() => {
+    if (!user?.id || !ticker) return;
+
+    const fetchHistory = async () => {
+      setLoading(true);
+      try {
+        const response = await fetch(`${API_URL}/wallet/purchases?user_id=${user.id}`);
+        if (response.ok) {
+          const data = await response.json();
+
+          const assetMoves = data
+            .filter((d) => d.ticker === ticker)
+            .sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
+          setHistory(assetMoves);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar aportes', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchHistory();
+  }, [user, ticker]);
+
+  if (loading)
+    return <div className="p-4 text-center text-xs text-gray-500">Carregando histórico...</div>;
+  if (history.length === 0)
+    return <div className="p-4 text-center text-xs text-gray-500">Sem histórico registrado.</div>;
+
+  return (
+    <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-b-lg border-t border-gray-200 dark:border-gray-700 shadow-inner">
+      <h4 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2">
+        <HistoryIcon size={14} /> Histórico de Aportes: {ticker}
+      </h4>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-gray-500 border-b border-gray-200 dark:border-gray-700">
+              <th className="pb-2 text-left">Data</th>
+              <th className="pb-2 text-center">Tipo</th>
+              <th className="pb-2 text-center">Qtd</th>
+              <th className="pb-2 text-right">Preço Un.</th>
+              <th className="pb-2 text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            {history.map((move, idx) => (
+              <tr key={idx} className="hover:bg-gray-100 dark:hover:bg-gray-800/50">
+                <td className="py-2 text-gray-700 dark:text-gray-300">
+                  {new Date(move.trade_date).toLocaleDateString('pt-BR')}
+                </td>
+                <td className="py-2 text-center">
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase 
+                    ${
+                      move.type === 'stock'
+                        ? 'bg-blue-100 text-blue-800'
+                        : move.type === 'fii'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-orange-100 text-orange-800'
+                    }`}
+                  >
+                    {move.type}
+                  </span>
+                </td>
+                <td className="py-2 text-center font-mono text-gray-600 dark:text-gray-400">
+                  {move.qty}
+                </td>
+                <td className="py-2 text-right font-mono text-gray-600 dark:text-gray-400">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                    move.price
+                  )}
+                </td>
+                <td className="py-2 text-right font-mono font-medium text-gray-800 dark:text-gray-200">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                    move.price * move.qty
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -560,6 +658,13 @@ const PositionsTable = ({
   setSelectedAssetTicker,
   categoryLabel,
 }) => {
+  const [expandedTicker, setExpandedTicker] = useState(null);
+
+  const toggleExpand = (e, ticker) => {
+    e.stopPropagation();
+    setExpandedTicker((prev) => (prev === ticker ? null : ticker));
+  };
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
       <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
@@ -570,14 +675,17 @@ const PositionsTable = ({
       </div>
       <div className="overflow-x-auto">
         {filteredPositions.length > 0 ? (
-          <table className="w-full text-sm text-left">
+          <table className="w-full text-sm text-left border-collapse">
             <thead className="bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 uppercase font-medium">
               <tr>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700">Ativo</th>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
                   Quant.
                 </th>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-right">
+                <th
+                  className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-right cursor-help"
+                  title="Clique para ver histórico"
+                >
                   Preço Médio
                 </th>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-right">
@@ -605,52 +713,90 @@ const PositionsTable = ({
                 const variationValue = marketValue - costBasis;
                 const rentabilityPercent = costBasis > 0 ? (variationValue / costBasis) * 100 : 0;
                 const share = totalValue > 0 ? (marketValue / totalValue) * 100 : 0;
+                const isExpanded = expandedTicker === row.ticker;
 
                 return (
-                  <tr
-                    key={row.ticker}
-                    className={`transition-colors cursor-pointer ${selectedAssetTicker === row.ticker ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
-                    onClick={() =>
-                      setSelectedAssetTicker(selectedAssetTicker === row.ticker ? '' : row.ticker)
-                    }
-                  >
-                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`w-1 h-8 rounded-full ${row.type === 'stock' ? 'bg-blue-500' : row.type === 'fii' ? 'bg-yellow-500' : 'bg-purple-500'}`}
-                        ></span>
-                        <div className="flex flex-col">
-                          <span className="font-bold">{row.ticker}</span>
-                          <span className="text-xs text-gray-500 font-normal">
-                            {row.name.substring(0, 20)}
-                          </span>
+                  <React.Fragment key={row.ticker}>
+                    <tr
+                      className={`transition-colors cursor-pointer ${
+                        selectedAssetTicker === row.ticker
+                          ? 'bg-blue-50 dark:bg-blue-900/20'
+                          : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                      }`}
+                      onClick={() =>
+                        setSelectedAssetTicker(selectedAssetTicker === row.ticker ? '' : row.ticker)
+                      }
+                    >
+                      <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`w-1 h-8 rounded-full ${row.type === 'stock' ? 'bg-blue-500' : row.type === 'fii' ? 'bg-yellow-500' : 'bg-purple-500'}`}
+                          ></span>
+                          <div className="flex flex-col">
+                            <span className="font-bold">{row.ticker}</span>
+                            <span className="text-xs text-gray-500 font-normal">
+                              {row.name.substring(0, 20)}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-mono">
-                      {row.qty}
-                    </td>
-                    <td className="px-6 py-4 text-right text-gray-500 dark:text-gray-400 font-mono">
-                      {formatCurrency(row.purchase_price)}
-                    </td>
-                    <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white font-mono">
-                      {formatCurrency(currentPrice)}
-                    </td>
-                    <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-gray-100 font-mono">
-                      {formatCurrency(marketValue)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <VariationBadge value={variationValue} />
-                    </td>
-                    <td className="px-6 py-4">
-                      <VariationBadge value={rentabilityPercent} isPercent />
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-semibold px-2.5 py-0.5 rounded">
-                        {share.toFixed(1)}%
-                      </span>
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-mono">
+                        {row.qty}
+                      </td>
+
+                      {}
+                      <td
+                        className="px-6 py-4 text-right font-mono cursor-pointer group relative"
+                        onClick={(e) => toggleExpand(e, row.ticker)}
+                      >
+                        <div className="flex items-center justify-end gap-2 px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                          <span className="text-gray-500 dark:text-gray-400 font-medium">
+                            {formatCurrency(row.purchase_price)}
+                          </span>
+                          {isExpanded ? (
+                            <ChevronUp size={14} className="text-blue-500" />
+                          ) : (
+                            <ChevronDown
+                              size={14}
+                              className="text-gray-400 group-hover:text-blue-500"
+                            />
+                          )}
+                        </div>
+                      </td>
+                      {}
+
+                      <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white font-mono">
+                        {formatCurrency(currentPrice)}
+                      </td>
+                      <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-gray-100 font-mono">
+                        {formatCurrency(marketValue)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <VariationBadge value={variationValue} />
+                      </td>
+                      <td className="px-6 py-4">
+                        <VariationBadge value={rentabilityPercent} isPercent />
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-semibold px-2.5 py-0.5 rounded">
+                          {share.toFixed(1)}%
+                        </span>
+                      </td>
+                    </tr>
+
+                    {}
+                    {isExpanded && (
+                      <tr className="bg-gray-50 dark:bg-gray-900/30 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <td
+                          colSpan="8"
+                          className="p-0 border-b border-gray-200 dark:border-gray-700"
+                        >
+                          <AssetContributions ticker={row.ticker} />
+                        </td>
+                      </tr>
+                    )}
+                    {}
+                  </React.Fragment>
                 );
               })}
             </tbody>
