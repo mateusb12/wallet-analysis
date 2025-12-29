@@ -30,6 +30,29 @@ const FormatPercent = (value) =>
     value / 100
   );
 
+const FII_DESCRIPTIONS = {
+  Tijolo: {
+    title: 'Imóveis Físicos (Renda e Valorização)',
+    text: 'Fundos que detêm imóveis reais (logística, shoppings, lajes). São essenciais para proteção patrimonial contra inflação no longo prazo. Historicamente, suas cotas tendem a valorizar quando a taxa de juros (Selic) cai, tornando-se "fortes" em ciclos de baixa de juros.',
+  },
+  Papel: {
+    title: 'Recebíveis Imobiliários (Dívida/CRIs)',
+    text: 'Fundos que investem em títulos de dívida (crédito). Geralmente pagam dividendos mais altos (High Yield) e protegem o poder de compra no curto prazo, mas não costumam ter valorização patrimonial expressiva.',
+  },
+  'Fundos de Fundos': {
+    title: 'FOFs (Diversificação)',
+    text: 'Fundos que compram cotas de outros fundos. São ótimos para diversificar com pouco dinheiro e para aproveitar momentos de ineficiência do mercado, comprando cotas com desconto patrimonial.',
+  },
+  Híbrido: {
+    title: 'Estratégia Mista',
+    text: 'Fundos que possuem mandato flexível para investir tanto em imóveis físicos quanto em papéis, buscando equilibrar a constância dos dividendos com o potencial de valorização.',
+  },
+  Desenvolvimento: {
+    title: 'Construção para Venda',
+    text: 'Focam em construir imóveis para vender com lucro, funcionando como uma incorporadora. Possuem maior risco (obra, permuta), mas oferecem potencial de ganho de capital explosivo ao final do ciclo.',
+  },
+};
+
 async function fetchAssetConstants() {
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
   try {
@@ -835,6 +858,8 @@ const WalletBalancer = () => {
                       const isSubPriority = isPriority && priorityPath?.micro === subType;
                       const isUnclassified = subType === 'Indefinido' || assetClass === 'outros';
 
+                      const fiiInfo = assetClass === 'fii' ? FII_DESCRIPTIONS[subType] : null;
+
                       return (
                         <div
                           key={subType}
@@ -894,13 +919,34 @@ const WalletBalancer = () => {
                             />
                           </div>
 
+                          {}
                           {isSubExpanded && subData.assets && (
-                            <div className="px-4 pb-4 bg-gray-50/50 dark:bg-gray-900/20 border-t border-gray-100 dark:border-gray-700 pt-2 animate-in slide-in-from-top-2">
-                              <AssetListTable
-                                assets={subData.assets}
-                                totalValue={subData.value}
-                                isUnclassified={isUnclassified}
-                              />
+                            <div className="bg-gray-50/50 dark:bg-gray-900/20 border-t border-gray-100 dark:border-gray-700 animate-in slide-in-from-top-2">
+                              {}
+                              {fiiInfo && (
+                                <div className="mx-4 mt-4 p-4 rounded-lg bg-blue-50/80 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/30 flex gap-3 shadow-sm">
+                                  <div className="p-2 bg-blue-100 dark:bg-blue-800/30 rounded-full h-fit text-blue-600 dark:text-blue-400 shrink-0">
+                                    <Lightbulb className="w-4 h-4" />
+                                  </div>
+                                  <div>
+                                    <h5 className="text-sm font-bold text-blue-800 dark:text-blue-200 mb-1">
+                                      {fiiInfo.title}
+                                    </h5>
+                                    <p className="text-xs text-blue-700/80 dark:text-blue-300/80 leading-relaxed">
+                                      {fiiInfo.text}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                              {}
+
+                              <div className="px-4 pb-4 pt-4">
+                                <AssetListTable
+                                  assets={subData.assets}
+                                  totalValue={subData.value}
+                                  isUnclassified={isUnclassified}
+                                />
+                              </div>
                             </div>
                           )}
                         </div>
