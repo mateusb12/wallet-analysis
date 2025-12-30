@@ -5,10 +5,23 @@ import VariationBadge from './components/VariationBadge.jsx';
 const formatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
+const interpolateColor = (color1, color2, factor) => {
+  if (!color1 || !color2 || factor === undefined) return null;
+
+  const result = color1.slice().map((c, i) => {
+    return Math.round(c + factor * (color2[i] - c));
+  });
+  return `rgb(${result.join(',')})`;
+};
+
+const COLOR_SCALE = {
+  start: [226, 232, 240],
+  end: [251, 191, 36],
+};
+
 const RentabilityBar = ({ value, maxAbsValue }) => {
   const absValue = Math.abs(value);
   const isPositive = value >= 0;
-
   const safeMax = maxAbsValue === 0 ? 1 : maxAbsValue;
   const width = Math.min(100, (absValue / safeMax) * 100);
 
@@ -19,13 +32,10 @@ const RentabilityBar = ({ value, maxAbsValue }) => {
 
   return (
     <div className="flex items-center w-full gap-2 min-w-[140px]">
-      {}
       <div className={`w-14 text-right font-bold text-xs ${textClass}`}>
         {isPositive ? '+' : ''}
         {value.toFixed(2)}%
       </div>
-
-      {}
       <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex items-center">
         <div
           className={`h-full rounded-full transition-all duration-500 ${colorClass}`}
@@ -104,10 +114,21 @@ const PositionsTable = ({
 }) => {
   const [expandedTicker, setExpandedTicker] = useState(null);
 
-  const calculateAssetAge = (history) => {
+  const getDaysFromHistory = (history) => {
+    if (!history || history.length === 0) return 0;
+
+    const dates = history.map((h) => new Date(h.trade_date).getTime());
+    const oldest = Math.min(...dates);
+
+    const now = new Date().getTime();
+    const diffTime = Math.abs(now - oldest);
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  const calculateAssetAgeLabel = (history) => {
     if (!history || history.length === 0) return '-';
 
-    const dates = history.map((h) => new Date(h.trade_date + 'T12:00:00').getTime());
+    const dates = history.map((h) => new Date(h.trade_date).getTime());
     const oldest = new Date(Math.min(...dates));
     const now = new Date();
 
@@ -128,7 +149,10 @@ const PositionsTable = ({
     const parts = [];
     if (years > 0) parts.push(`${years}a`);
     if (months > 0) parts.push(`${months}m`);
-    if (days > 0) parts.push(`${days}d`);
+
+    if (years === 0 && days > 0) {
+      parts.push(`${days}d`);
+    }
 
     if (parts.length === 0) return '0d';
 
@@ -143,7 +167,7 @@ const PositionsTable = ({
   const maxRentability = useMemo(() => {
     if (!filteredPositions || filteredPositions.length === 0) return 0.1;
 
-    const maxVal = Math.max(
+    return Math.max(
       0.1,
       ...filteredPositions.map((p) => {
         const cost = p.purchase_price * p.qty;
@@ -152,7 +176,6 @@ const PositionsTable = ({
         return Math.abs(((current - cost) / cost) * 100);
       })
     );
-    return maxVal;
   }, [filteredPositions]);
 
   const sortedPositions = useMemo(() => {
@@ -168,6 +191,44 @@ const PositionsTable = ({
       return rentB - rentA;
     });
   }, [filteredPositions]);
+
+  const timeScaleData = useMemo(() => {
+    const ages = sortedPositions.map((p) => {
+      const history = assetsHistoryMap[p.ticker] || [];
+      return {
+        ticker: p.ticker,
+        days: getDaysFromHistory(history),
+      };
+    });
+
+    if (ages.length === 0) return { min: 0, max: 0, map: {} };
+
+    const daysValues = ages.map((a) => a.days);
+    const min = Math.min(...daysValues);
+    const max = Math.max(...daysValues);
+
+    const map = {};
+    ages.forEach((a) => {
+      map[a.ticker] = a.days;
+    });
+
+    return { min, max, map };
+  }, [sortedPositions, assetsHistoryMap]);
+
+  const getTimeBadgeStyle = (ticker) => {
+    const days = timeScaleData.map[ticker] || 0;
+    const { min, max } = timeScaleData;
+
+    if (max === min || max === 0) return {};
+
+    const factor = (days - min) / (max - min);
+    const bgColor = interpolateColor(COLOR_SCALE.start, COLOR_SCALE.end, factor);
+
+    return {
+      backgroundColor: bgColor,
+      transition: 'background-color 0.5s ease',
+    };
+  };
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -220,9 +281,12 @@ const PositionsTable = ({
                 const rentabilityPercent = costBasis > 0 ? (variationValue / costBasis) * 100 : 0;
                 const share = totalValue > 0 ? (marketValue / totalValue) * 100 : 0;
                 const isExpanded = expandedTicker === row.ticker;
+
                 const assetHistory = assetsHistoryMap[row.ticker] || [];
 
-                const assetAge = calculateAssetAge(assetHistory);
+                const assetAgeLabel = calculateAssetAgeLabel(assetHistory);
+                const dynamicStyle = getTimeBadgeStyle(row.ticker);
+                const hasDynamicColor = Object.keys(dynamicStyle).length > 0;
 
                 return (
                   <React.Fragment key={row.ticker}>
@@ -236,25 +300,21 @@ const PositionsTable = ({
                         setSelectedAssetTicker(selectedAssetTicker === row.ticker ? '' : row.ticker)
                       }
                     >
-                      {}
                       <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">
                         <div className="flex items-center gap-3">
                           <button
                             onClick={(e) => toggleExpand(e, row.ticker)}
                             className="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-blue-500 transition-colors focus:outline-none"
-                            title="Ver histórico de aportes"
                           >
                             {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                           </button>
-
                           <span
                             className={`w-1 h-8 rounded-full ${row.type === 'stock' ? 'bg-blue-500' : row.type === 'fii' ? 'bg-yellow-500' : 'bg-purple-500'}`}
                           ></span>
-
                           <div className="flex flex-col">
                             <span className="font-bold">{row.ticker}</span>
                             <span className="text-xs text-gray-500 font-normal">
-                              {row.name.substring(0, 20)}
+                              {row.name?.substring(0, 20)}
                             </span>
                           </div>
                         </div>
@@ -263,22 +323,31 @@ const PositionsTable = ({
                       {}
                       <td className="px-6 py-4 text-center">
                         <div className="flex justify-center">
-                          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-mono font-medium bg-gray-100 dark:bg-gray-700/60 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600/50 whitespace-nowrap">
-                            <Clock size={10} className="text-gray-400" />
-                            {assetAge}
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-mono font-medium whitespace-nowrap
+                                ${!hasDynamicColor ? 'bg-gray-100 dark:bg-gray-700/60 text-gray-600 dark:text-gray-300' : 'text-gray-800 dark:text-gray-900 shadow-sm'}
+                            `}
+                            style={hasDynamicColor ? dynamicStyle : {}}
+                          >
+                            <Clock
+                              size={10}
+                              className={
+                                hasDynamicColor
+                                  ? 'text-gray-700 dark:text-gray-800'
+                                  : 'text-gray-400'
+                              }
+                            />
+                            {assetAgeLabel}
                           </span>
                         </div>
                       </td>
 
-                      {}
                       <td className="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-mono">
                         {row.qty}
                       </td>
-
                       <td className="px-6 py-4 text-right font-mono text-gray-600 dark:text-gray-400">
                         {formatCurrency(row.purchase_price)}
                       </td>
-
                       <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white font-mono">
                         {formatCurrency(currentPrice)}
                       </td>
@@ -288,11 +357,9 @@ const PositionsTable = ({
                       <td className="px-6 py-4">
                         <VariationBadge value={variationValue} />
                       </td>
-
                       <td className="px-6 py-4">
                         <RentabilityBar value={rentabilityPercent} maxAbsValue={maxRentability} />
                       </td>
-
                       <td className="px-6 py-4 text-center">
                         <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-semibold px-2.5 py-0.5 rounded">
                           {share.toFixed(1)}%
@@ -300,7 +367,6 @@ const PositionsTable = ({
                       </td>
                     </tr>
 
-                    {}
                     {isExpanded && (
                       <tr className="bg-gray-50 dark:bg-gray-900/30 animate-in fade-in slide-in-from-top-2 duration-300">
                         <td
