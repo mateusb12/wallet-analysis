@@ -662,10 +662,45 @@ const PositionsTable = ({
 }) => {
   const [expandedTicker, setExpandedTicker] = useState(null);
 
+  const calculateAssetAge = (history) => {
+    if (!history || history.length === 0) return '-';
+
+    const dates = history.map((h) => new Date(h.trade_date + 'T12:00:00').getTime());
+    const oldest = new Date(Math.min(...dates));
+    const now = new Date();
+
+    let years = now.getFullYear() - oldest.getFullYear();
+    let months = now.getMonth() - oldest.getMonth();
+    let days = now.getDate() - oldest.getDate();
+
+    if (days < 0) {
+      months -= 1;
+
+      const prevMonthLastDay = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
+      days += prevMonthLastDay;
+    }
+    if (months < 0) {
+      years -= 1;
+      months += 12;
+    }
+
+    const parts = [];
+    if (years > 0) parts.push(`${years}a`);
+    if (months > 0) parts.push(`${months}m`);
+    if (days > 0) parts.push(`${days}d`);
+
+    if (parts.length === 0) return '0d';
+
+    return parts.join(' ');
+  };
+
   const toggleExpand = (e, ticker) => {
     e.stopPropagation();
     setExpandedTicker((prev) => (prev === ticker ? null : ticker));
   };
+
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
   const maxRentability = useMemo(() => {
     if (!filteredPositions || filteredPositions.length === 0) return 0.1;
@@ -695,28 +730,34 @@ const PositionsTable = ({
           <table className="w-full text-sm text-left border-collapse">
             <thead className="bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 uppercase font-medium">
               <tr>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700">Ativo</th>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
-                  Quant.
+                  Ativo
                 </th>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-right">
+                {}
+                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
+                  Tempo
+                </th>
+
+                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
+                  Qtd
+                </th>
+                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
                   Preço Médio
                 </th>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-right">
+                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
                   Preço Atual
                 </th>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-right">
+                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
                   Total
                 </th>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
                   Variação (R$)
                 </th>
-                {}
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-left min-w-[160px]">
-                  Rentab. (%)
+                  Rentabilidade (%)
                 </th>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
-                  % Cart.
+                  % Carteira
                 </th>
               </tr>
             </thead>
@@ -730,6 +771,8 @@ const PositionsTable = ({
                 const share = totalValue > 0 ? (marketValue / totalValue) * 100 : 0;
                 const isExpanded = expandedTicker === row.ticker;
                 const assetHistory = assetsHistoryMap[row.ticker] || [];
+
+                const assetAge = calculateAssetAge(assetHistory);
 
                 return (
                   <React.Fragment key={row.ticker}>
@@ -766,6 +809,17 @@ const PositionsTable = ({
                         </div>
                       </td>
 
+                      {}
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex justify-center">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-mono font-medium bg-gray-100 dark:bg-gray-700/60 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600/50 whitespace-nowrap">
+                            {}
+                            <Clock size={10} className="text-gray-400" />
+                            {assetAge}
+                          </span>
+                        </div>
+                      </td>
+
                       <td className="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-mono">
                         {row.qty}
                       </td>
@@ -784,7 +838,6 @@ const PositionsTable = ({
                         <VariationBadge value={variationValue} />
                       </td>
 
-                      {}
                       <td className="px-6 py-4">
                         <RentabilityBar value={rentabilityPercent} maxAbsValue={maxRentability} />
                       </td>
@@ -799,7 +852,7 @@ const PositionsTable = ({
                     {isExpanded && (
                       <tr className="bg-gray-50 dark:bg-gray-900/30 animate-in fade-in slide-in-from-top-2 duration-300">
                         <td
-                          colSpan="8"
+                          colSpan="9"
                           className="p-0 border-b border-gray-200 dark:border-gray-700 relative"
                         >
                           <div className="absolute left-[34px] top-0 bottom-0 w-[2px] bg-gray-200 dark:bg-gray-700 block"></div>
