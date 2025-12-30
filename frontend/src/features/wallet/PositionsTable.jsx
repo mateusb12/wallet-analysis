@@ -155,6 +155,20 @@ const PositionsTable = ({
     return maxVal;
   }, [filteredPositions]);
 
+  const sortedPositions = useMemo(() => {
+    return [...filteredPositions].sort((a, b) => {
+      const costA = a.purchase_price * a.qty;
+      const currentA = a.current_price * a.qty;
+      const rentA = costA > 0 ? ((currentA - costA) / costA) * 100 : 0;
+
+      const costB = b.purchase_price * b.qty;
+      const currentB = b.current_price * b.qty;
+      const rentB = costB > 0 ? ((currentB - costB) / costB) * 100 : 0;
+
+      return rentB - rentA;
+    });
+  }, [filteredPositions]);
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
       <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
@@ -198,7 +212,7 @@ const PositionsTable = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {filteredPositions.map((row) => {
+              {sortedPositions.map((row) => {
                 const currentPrice = row.current_price;
                 const costBasis = row.purchase_price * row.qty;
                 const marketValue = currentPrice * row.qty;
