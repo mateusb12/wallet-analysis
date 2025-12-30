@@ -156,7 +156,8 @@ const getPriceFromRecord = (record) => {
 
 const detectAnomalies = (data, assetName) => {
   const warnings = [];
-  if (!data || data.length === 0) return [`${assetName}: Sem histórico de dados`];
+
+  if (!data || data.length === 0) return [`${assetName} (Sem histórico - Atualize os preços)`];
 
   const today = new Date();
   const dayOfWeek = today.getDay();
@@ -181,15 +182,11 @@ const detectAnomalies = (data, assetName) => {
     );
 
     const todayNoTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0);
-
     const diffTime = todayNoTime - lastDateNoTime;
-
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
     if (diffDays > tolerance) {
-      warnings.push(
-        `${assetName}: Desatualizado (${diffDays} dias de atraso - Último: ${lastDateStr})`
-      );
+      warnings.push(`${assetName} (Dados atrasados em ${diffDays} dias - Último: ${lastDateStr})`);
     }
   }
 
@@ -205,7 +202,8 @@ const detectAnomalies = (data, assetName) => {
       const variation = Math.abs((curr - prev) / prev);
       if (variation > THRESHOLD) {
         const type = curr < prev ? 'QUEDA' : 'ALTA';
-        const msg = `[ALERTA DADOS] ${assetName}: ${type} de ${(variation * 100).toFixed(0)}% em ${date} (${prev.toFixed(2)} -> ${curr.toFixed(2)}).`;
+
+        const msg = `${assetName} (Anomalia: ${type} de ${(variation * 100).toFixed(0)}% em ${date})`;
 
         warnings.push(msg);
       }
@@ -352,36 +350,54 @@ const fetchRealAssetPerformance = async (months, assetType) => {
           ticker: asset.ticker,
           initialQty: asset.qty,
           purchaseDate: asset.purchaseDate,
+          purchasePrice: asset.purchase_price,
           data: data ? data.sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date)) : [],
         };
       })
     );
 
-    const validHistories = histories.filter((h) => h.data.length > 0);
-    if (validHistories.length === 0) return { chartData: [], warnings: [] };
+    const validHistories = histories;
 
     let assetWarnings = [];
     validHistories.forEach((hist) => {
-      const w = detectAnomalies(hist.data, hist.ticker);
-      if (w.length > 0) assetWarnings = [...assetWarnings, ...w];
+      if (hist.data.length > 0) {
+        const w = detectAnomalies(hist.data, hist.ticker);
+        if (w.length > 0) assetWarnings = [...assetWarnings, ...w];
+      } else {
+        assetWarnings.push(`${hist.ticker} (Novo ativo sem histórico - Usando preço pago)`);
+      }
     });
 
-    const allDates = validHistories.flatMap((h) => h.data.map((d) => d.trade_date));
+    const allDates = validHistories.flatMap((h) => {
+      const dates = h.data.map((d) => d.trade_date);
+
+      if (h.purchaseDate && !dates.includes(h.purchaseDate)) {
+        dates.push(h.purchaseDate);
+      }
+      return dates;
+    });
+
     const uniqueDates = [...new Set(allDates)].sort();
     if (uniqueDates.length === 0) return { chartData: [], warnings: assetWarnings };
 
     const portfolioState = validHistories.map((h) => {
-      const purchaseRecord = h.data.find((d) => d.trade_date >= h.purchaseDate);
-      const referencePrice = purchaseRecord
-        ? getPriceFromRecord(purchaseRecord)
-        : getPriceFromRecord(h.data[0]);
+      let referencePrice = h.purchasePrice;
+
+      if (h.data && h.data.length > 0) {
+        const purchaseRecord = h.data.find((d) => d.trade_date >= h.purchaseDate);
+        if (purchaseRecord) {
+          referencePrice = getPriceFromRecord(purchaseRecord);
+        } else {
+          referencePrice = getPriceFromRecord(h.data[0]);
+        }
+      }
 
       return {
         ticker: h.ticker,
         qty: h.initialQty,
         lastPrice: referencePrice,
         purchaseDate: h.purchaseDate,
-        initialCost: referencePrice * h.initialQty,
+        initialCost: h.purchasePrice * h.initialQty,
       };
     });
 
@@ -392,16 +408,19 @@ const fetchRealAssetPerformance = async (months, assetType) => {
 
         portfolioState.forEach((asset, idx) => {
           const historyData = validHistories[idx].data;
-          const dayRecord = historyData.find((d) => d.trade_date === date);
 
-          if (dayRecord) {
-            const price = getPriceFromRecord(dayRecord);
-            const div = parseFloat(dayRecord.dividend_value || 0);
-            if (price > 0) asset.lastPrice = price;
+          if (historyData && historyData.length > 0) {
+            const dayRecord = historyData.find((d) => d.trade_date === date);
 
-            if (date >= asset.purchaseDate) {
-              if (div > 0 && asset.lastPrice > 0) {
-                asset.qty += (div * asset.qty) / asset.lastPrice;
+            if (dayRecord) {
+              const price = getPriceFromRecord(dayRecord);
+              const div = parseFloat(dayRecord.dividend_value || 0);
+              if (price > 0) asset.lastPrice = price;
+
+              if (date >= asset.purchaseDate) {
+                if (div > 0 && asset.lastPrice > 0) {
+                  asset.qty += (div * asset.qty) / asset.lastPrice;
+                }
               }
             }
           }
@@ -431,6 +450,7 @@ const fetchRealAssetPerformance = async (months, assetType) => {
 
     const benchName =
       assetType === 'fii' ? 'IFIX' : assetType === 'etf' ? 'S&P 500 (IVVB11)' : 'IBOV';
+
     const benchWarnings = detectAnomalies(benchmarkData, benchName);
 
     const finalResult = calculateBenchmarkCurve(filteredDailyData, benchmarkData, false);
