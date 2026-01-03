@@ -38,6 +38,8 @@ import { useAuth } from '../auth/AuthContext.jsx';
 import PositionsTable from './PositionsTable.jsx';
 import VariationBadge from './components/VariationBadge.jsx';
 
+import { classifyAsset } from '../balancing/balancingUtils.js';
+
 const COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#6366f1'];
 
 const CATEGORIES_CONFIG = {
@@ -648,11 +650,31 @@ function WalletDashboard() {
                 priceSource = 'b3_real';
               }
 
+              const cls = await classifyAsset(p.ticker);
+              let specificType = 'Indefinido';
+
+              if (p.type === 'fii' || cls.detected_type?.includes('FII')) {
+                const sectorStr = cls.sector || 'Indefinido';
+                if (
+                  sectorStr &&
+                  sectorStr.toLowerCase() !== 'outros' &&
+                  sectorStr !== 'Indefinido'
+                ) {
+                  specificType = sectorStr
+                    .split(' ')
+                    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                    .join(' ');
+                } else {
+                  specificType = cls.detected_type?.includes('Tijolo') ? 'Tijolo' : 'Papel';
+                }
+              }
+
               return {
                 ...p,
                 current_price: currentPrice,
                 total_value_current: currentPrice * p.qty,
                 price_source: priceSource,
+                asset_subtype: specificType,
               };
             } catch (err) {
               console.error(`Erro ao buscar preço para ${p.ticker}`, err);
@@ -661,6 +683,7 @@ function WalletDashboard() {
                 current_price: p.purchase_price,
                 total_value_current: p.purchase_price * p.qty,
                 price_source: 'erro_fallback',
+                asset_subtype: 'Indefinido',
               };
             }
           })

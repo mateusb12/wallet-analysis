@@ -30,6 +30,7 @@ import desenvolvimento from '../../assets/desenvolvimento.png';
 import fiis from '../../assets/fiis.png';
 import etf from '../../assets/etf.png';
 import stocks from '../../assets/stocks.png';
+import { classifyAsset } from './balancingUtils.js';
 
 const FormatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -98,29 +99,6 @@ async function fetchAssetConstants() {
   } catch (error) {
     console.error('Usando fallback de constantes:', error);
     return null;
-  }
-}
-
-async function classifyAsset(ticker) {
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-  try {
-    const response = await fetch(`${API_URL}/sync/classify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticker }),
-    });
-
-    if (!response.ok) throw new Error('Falha na requisição');
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`Erro ao classificar ${ticker}:`, error);
-    return {
-      ticker,
-      detected_type: 'Indefinido',
-      reasoning: 'Erro de conexão ou ativo não encontrado',
-    };
   }
 }
 

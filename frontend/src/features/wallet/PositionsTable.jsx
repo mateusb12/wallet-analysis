@@ -2,6 +2,21 @@ import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronRight, Clock, History as HistoryIcon } from 'lucide-react';
 import VariationBadge from './components/VariationBadge.jsx';
 
+import tijolo from '../../assets/tijolo.png';
+import papel from '../../assets/papel.png';
+import hibrido from '../../assets/hibrido.png';
+import fundosFundos from '../../assets/fundos-fundos.png';
+import desenvolvimento from '../../assets/desenvolvimento.png';
+
+const FII_SUBTYPE_ICONS = {
+  Tijolo: tijolo,
+  Papel: papel,
+  Híbrido: hibrido,
+  'Fundos de Fundos': fundosFundos,
+  'Fundos De Fundos': fundosFundos,
+  Desenvolvimento: desenvolvimento,
+};
+
 const formatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
@@ -104,6 +119,18 @@ const AssetContributions = ({ history = [], ticker }) => {
   );
 };
 
+const getFiiTypeStyle = (type) => {
+  const t = type?.toLowerCase() || '';
+  if (t.includes('tijolo')) return 'bg-orange-100 text-orange-800 border-orange-200';
+  if (t.includes('papel') || t.includes('recebíveis'))
+    return 'bg-blue-100 text-blue-800 border-blue-200';
+  if (t.includes('híbrido')) return 'bg-purple-100 text-purple-800 border-purple-200';
+  if (t.includes('fundo de fundos') || t.includes('fof'))
+    return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+  if (t.includes('desenvolvimento')) return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+  return 'bg-gray-100 text-gray-600 border-gray-200';
+};
+
 const PositionsTable = ({
   filteredPositions,
   totalValue,
@@ -113,6 +140,9 @@ const PositionsTable = ({
   assetsHistoryMap,
 }) => {
   const [expandedTicker, setExpandedTicker] = useState(null);
+  const isFiiTable =
+    categoryLabel === 'FIIs' ||
+    (filteredPositions.length > 0 && filteredPositions[0].type === 'fii');
 
   const getDaysFromHistory = (history) => {
     if (!history || history.length === 0) return 0;
@@ -238,14 +268,24 @@ const PositionsTable = ({
         </h3>
         <span className="text-xs text-gray-500">*Cotações atualizadas via B3/Supabase</span>
       </div>
-      <div className="overflow-x-auto">
+
+      {}
+      <div className="overflow-x-auto relative custom-scrollbar">
         {filteredPositions.length > 0 ? (
           <table className="w-full text-sm text-left border-collapse">
             <thead className="bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 uppercase font-medium">
               <tr>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
+                {}
+                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-left sticky left-0 z-20 bg-gray-100 dark:bg-gray-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                   Ativo
                 </th>
+
+                {isFiiTable && (
+                  <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center whitespace-nowrap">
+                    TIPO
+                  </th>
+                )}
+                {}
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
                   Tempo
                 </th>
@@ -264,7 +304,8 @@ const PositionsTable = ({
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
                   Variação (R$)
                 </th>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-left min-w-[160px]">
+                {}
+                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-left min-w-[140px]">
                   Rentabilidade (%)
                 </th>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
@@ -283,7 +324,6 @@ const PositionsTable = ({
                 const isExpanded = expandedTicker === row.ticker;
 
                 const assetHistory = assetsHistoryMap[row.ticker] || [];
-
                 const assetAgeLabel = calculateAssetAgeLabel(assetHistory);
                 const dynamicStyle = getTimeBadgeStyle(row.ticker);
                 const hasDynamicColor = Object.keys(dynamicStyle).length > 0;
@@ -291,7 +331,7 @@ const PositionsTable = ({
                 return (
                   <React.Fragment key={row.ticker}>
                     <tr
-                      className={`transition-colors cursor-pointer ${
+                      className={`transition-colors cursor-pointer group ${
                         selectedAssetTicker === row.ticker
                           ? 'bg-blue-50 dark:bg-blue-900/20'
                           : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
@@ -300,7 +340,16 @@ const PositionsTable = ({
                         setSelectedAssetTicker(selectedAssetTicker === row.ticker ? '' : row.ticker)
                       }
                     >
-                      <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">
+                      {}
+                      <td
+                        className={`px-6 py-4 font-medium text-gray-900 dark:text-gray-100 sticky left-0 z-10 border-r border-gray-200 dark:border-gray-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]
+                          ${
+                            selectedAssetTicker === row.ticker
+                              ? 'bg-blue-50 dark:bg-blue-900/20'
+                              : 'bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-700/50'
+                          }
+                      `}
+                      >
                         <div className="flex items-center gap-3">
                           <button
                             onClick={(e) => toggleExpand(e, row.ticker)}
@@ -312,16 +361,47 @@ const PositionsTable = ({
                             className={`w-1 h-8 rounded-full ${row.type === 'stock' ? 'bg-blue-500' : row.type === 'fii' ? 'bg-yellow-500' : 'bg-purple-500'}`}
                           ></span>
                           <div className="flex flex-col">
-                            <span className="font-bold">{row.ticker}</span>
-                            <span className="text-xs text-gray-500 font-normal">
-                              {row.name?.substring(0, 20)}
+                            {}
+                            <span className="font-bold whitespace-nowrap">{row.ticker}</span>
+                            <span className="text-xs text-gray-500 font-normal whitespace-nowrap">
+                              {row.name?.substring(0, 15)}
+                              {row.name?.length > 15 ? '...' : ''}
                             </span>
                           </div>
                         </div>
                       </td>
 
-                      {}
-                      <td className="px-6 py-4 text-center">
+                      {isFiiTable && (
+                        <td className="px-6 py-4 text-center whitespace-nowrap">
+                          <div className="flex justify-center items-center">
+                            {FII_SUBTYPE_ICONS[row.asset_subtype] ? (
+                              <div className="group relative flex justify-center items-center">
+                                <div className="w-10 h-10 p-1.5 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-500 transition-colors">
+                                  <img
+                                    src={FII_SUBTYPE_ICONS[row.asset_subtype]}
+                                    alt={row.asset_subtype}
+                                    className="w-full h-full object-contain opacity-90 group-hover:opacity-100"
+                                  />
+                                </div>
+                                <div className="absolute bottom-full mb-2 hidden group-hover:block z-50">
+                                  <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 whitespace-nowrap shadow-lg">
+                                    {row.asset_subtype}
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <span
+                                className={`px-2 py-1 rounded-md text-xs font-bold border ${getFiiTypeStyle(row.asset_subtype)}`}
+                              >
+                                {row.asset_subtype || 'Indefinido'}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      )}
+
+                      <td className="px-6 py-4 text-center whitespace-nowrap">
                         <div className="flex justify-center">
                           <span
                             className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-mono font-medium whitespace-nowrap
@@ -342,25 +422,27 @@ const PositionsTable = ({
                         </div>
                       </td>
 
-                      <td className="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-mono">
+                      {}
+                      <td className="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-mono whitespace-nowrap">
                         {row.qty}
                       </td>
-                      <td className="px-6 py-4 text-right font-mono text-gray-600 dark:text-gray-400">
+                      <td className="px-6 py-4 text-right font-mono text-gray-600 dark:text-gray-400 whitespace-nowrap">
                         {formatCurrency(row.purchase_price)}
                       </td>
-                      <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white font-mono">
+                      <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white font-mono whitespace-nowrap">
                         {formatCurrency(currentPrice)}
                       </td>
-                      <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-gray-100 font-mono">
+                      <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-gray-100 font-mono whitespace-nowrap">
                         {formatCurrency(marketValue)}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <VariationBadge value={variationValue} />
                       </td>
-                      <td className="px-6 py-4">
+                      {}
+                      <td className="px-6 py-4 whitespace-nowrap min-w-[140px]">
                         <RentabilityBar value={rentabilityPercent} maxAbsValue={maxRentability} />
                       </td>
-                      <td className="px-6 py-4 text-center">
+                      <td className="px-6 py-4 text-center whitespace-nowrap">
                         <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-semibold px-2.5 py-0.5 rounded">
                           {share.toFixed(1)}%
                         </span>
@@ -370,11 +452,11 @@ const PositionsTable = ({
                     {isExpanded && (
                       <tr className="bg-gray-50 dark:bg-gray-900/30 animate-in fade-in slide-in-from-top-2 duration-300">
                         <td
-                          colSpan="9"
-                          className="p-0 border-b border-gray-200 dark:border-gray-700 relative"
+                          colSpan={isFiiTable ? '10' : '9'}
+                          className="p-0 border-b border-gray-200 dark:border-gray-700 relative sticky left-0"
                         >
                           <div className="absolute left-[34px] top-0 bottom-0 w-[2px] bg-gray-200 dark:bg-gray-700 block"></div>
-                          <div className="pl-12">
+                          <div className="pl-12 w-screen max-w-[calc(100vw-60px)] md:max-w-4xl">
                             <AssetContributions ticker={row.ticker} history={assetHistory} />
                           </div>
                         </td>
