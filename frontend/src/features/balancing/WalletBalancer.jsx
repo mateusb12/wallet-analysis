@@ -21,6 +21,15 @@ import TargetConfigModal from './TargetConfigModal';
 import { useAuth } from '../auth/AuthContext';
 import { userService } from '../../services/userService.js';
 import ContributionAllocator from './ContributionAllocator.jsx';
+import iconEtf from '../../assets/etf.png';
+import tijolo from '../../assets/tijolo.png';
+import papel from '../../assets/papel.png';
+import hibrido from '../../assets/hibrido.png';
+import fundosFundos from '../../assets/fundos-fundos.png';
+import desenvolvimento from '../../assets/desenvolvimento.png';
+import fiis from '../../assets/fiis.png';
+import etf from '../../assets/etf.png';
+import stocks from '../../assets/stocks.png';
 
 const FormatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -29,6 +38,33 @@ const FormatPercent = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'percent', minimumFractionDigits: 1 }).format(
     value / 100
   );
+
+export const MACRO_ICONS = {
+  fii: fiis,
+  acoes: stocks,
+  etf: etf,
+};
+
+export const FII_SUBTYPE_ICONS = {
+  Tijolo: tijolo,
+  Papel: papel,
+  Híbrido: hibrido,
+  'Fundos de Fundos': fundosFundos,
+  Desenvolvimento: desenvolvimento,
+};
+
+const AssetIcon = ({ src, alt, className = '' }) => {
+  if (!src) return null;
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={`w-3/4 h-3/4 object-contain opacity-90 group-hover:opacity-100 transition ${className}`}
+      loading="lazy"
+    />
+  );
+};
 
 const FII_DESCRIPTIONS = {
   Tijolo: {
@@ -860,6 +896,12 @@ const WalletBalancer = () => {
                       const isUnclassified = subType === 'Indefinido' || assetClass === 'outros';
 
                       const fiiInfo = assetClass === 'fii' ? FII_DESCRIPTIONS[subType] : null;
+                      const typeIcon =
+                        assetClass === 'fii'
+                          ? FII_SUBTYPE_ICONS[subType]
+                          : assetClass === 'etf'
+                            ? iconEtf
+                            : null;
 
                       return (
                         <div
@@ -884,7 +926,12 @@ const WalletBalancer = () => {
 
                           <div className="p-4 pl-5 transition-all duration-200 group-hover/sub:pl-6">
                             <div className="flex items-center justify-between mb-3">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-3">
+                                {typeIcon && (
+                                  <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-600">
+                                    <AssetIcon src={typeIcon} alt={subType} size={20} />
+                                  </div>
+                                )}
                                 <span
                                   className={`font-bold text-base transition-colors ${
                                     isSubPriority
