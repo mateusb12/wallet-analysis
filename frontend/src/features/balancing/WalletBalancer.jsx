@@ -732,7 +732,8 @@ const WalletBalancer = () => {
         onReset={handleResetTargets}
       />
 
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 max-w-2xl mx-auto">
+      {}
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 max-w-4xl mx-auto">
         <div className="flex items-center gap-3 mb-8">
           <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl shadow-sm">
             <Target className="w-6 h-6 text-blue-600 dark:text-blue-400" />

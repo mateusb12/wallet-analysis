@@ -8,6 +8,8 @@ import {
   TrendingUp,
   AlertCircle,
   Banknote,
+  Maximize,
+  Sliders,
 } from 'lucide-react';
 
 const FormatCurrency = (value) =>
@@ -20,17 +22,44 @@ const FormatPercent = (value) => {
 };
 
 const ContributionAllocator = ({ tree, targets }) => {
+  const [mode, setMode] = useState('smart');
   const [amount, setAmount] = useState(1000);
+  const [calculatedTopUpAmount, setCalculatedTopUpAmount] = useState(0);
   const [allocationPlan, setAllocationPlan] = useState([]);
 
   const calculatePlan = () => {
-    if (!tree || !targets || amount <= 0) return;
+    if (!tree || !targets) return;
+
+    const currentTotalValue = Object.values(tree).reduce((acc, curr) => acc + curr.totalValue, 0);
+
+    let projectedTotal = 0;
+    let effectiveAmount = 0;
+
+    if (mode === 'smart') {
+      effectiveAmount = amount <= 0 ? 0 : parseFloat(amount);
+      projectedTotal = currentTotalValue + effectiveAmount;
+    } else {
+      let maxImpliedTotal = currentTotalValue;
+
+      Object.entries(tree).forEach(([macroKey, data]) => {
+        const targetPct =
+          targets.macro && targets.macro[macroKey] ? parseFloat(targets.macro[macroKey]) / 100 : 0;
+        if (targetPct > 0 && data.totalValue > 0) {
+          const impliedForThisMacro = data.totalValue / targetPct;
+          if (impliedForThisMacro > maxImpliedTotal) {
+            maxImpliedTotal = impliedForThisMacro;
+          }
+        }
+      });
+
+      projectedTotal = maxImpliedTotal;
+      effectiveAmount = projectedTotal - currentTotalValue;
+
+      setCalculatedTopUpAmount(effectiveAmount);
+    }
 
     let macroDeficits = [];
     let totalMacroDeficit = 0;
-
-    const currentTotalValue = Object.values(tree).reduce((acc, curr) => acc + curr.totalValue, 0);
-    const projectedTotal = currentTotalValue + parseFloat(amount);
 
     Object.entries(tree).forEach(([macroKey, data]) => {
       const targetPct =
@@ -38,11 +67,13 @@ const ContributionAllocator = ({ tree, targets }) => {
       if (targetPct === 0) return;
 
       const currentPct = currentTotalValue > 0 ? (data.totalValue / currentTotalValue) * 100 : 0;
+
       const idealValue = projectedTotal * (targetPct / 100);
       const currentValue = data.totalValue;
+
       const deficit = idealValue - currentValue;
 
-      if (deficit > 0) {
+      if (deficit > 0.01) {
         macroDeficits.push({
           key: macroKey,
           deficit,
@@ -60,8 +91,14 @@ const ContributionAllocator = ({ tree, targets }) => {
     }
 
     const plan = macroDeficits.map((macroItem) => {
-      const allocationShare = macroItem.deficit / totalMacroDeficit;
-      const moneyForMacro = parseFloat(amount) * allocationShare;
+      let moneyForMacro = 0;
+
+      if (mode === 'topup') {
+        moneyForMacro = macroItem.deficit;
+      } else {
+        const allocationShare = macroItem.deficit / totalMacroDeficit;
+        moneyForMacro = effectiveAmount * allocationShare;
+      }
 
       const existingSubTypes = macroItem.data.subTypes || {};
       const targetSubTypes =
@@ -74,19 +111,21 @@ const ContributionAllocator = ({ tree, targets }) => {
       let microDeficits = [];
       let totalMicroDeficit = 0;
 
+      const projectedMacroTotal = macroItem.data.totalValue + moneyForMacro;
+
       allSubKeys.forEach((subKey) => {
         const microTargetPct = targetSubTypes[subKey] ? parseFloat(targetSubTypes[subKey]) : 0;
         const subData = existingSubTypes[subKey] || { value: 0, assets: [] };
+
         const parentTotal = macroItem.data.totalValue;
         const currentMicroPct = parentTotal > 0 ? (subData.value / parentTotal) * 100 : 0;
 
         if (microTargetPct === 0) return;
 
-        const projectedMacroTotal = parentTotal + moneyForMacro;
         const idealMicroVal = projectedMacroTotal * (microTargetPct / 100);
         const microDeficit = idealMicroVal - subData.value;
 
-        if (microDeficit > 0) {
+        if (microDeficit > 0.01) {
           microDeficits.push({
             key: subKey,
             deficit: microDeficit,
@@ -111,7 +150,7 @@ const ContributionAllocator = ({ tree, targets }) => {
         })
         .filter((m) => m.amount > 1);
 
-      if (microAllocations.length === 0 && moneyForMacro > 0) {
+      if (microAllocations.length === 0 && moneyForMacro > 1) {
         microAllocations.push({
           subType: 'Rebalanceamento Geral',
           amount: moneyForMacro,
@@ -135,7 +174,7 @@ const ContributionAllocator = ({ tree, targets }) => {
 
   useEffect(() => {
     calculatePlan();
-  }, [amount, tree, targets]);
+  }, [amount, tree, targets, mode]);
 
   const handleAmountChange = (e) => {
     const val = parseFloat(e.target.value);
@@ -147,35 +186,95 @@ const ContributionAllocator = ({ tree, targets }) => {
   return (
     <div className="mt-8 bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm animate-in fade-in slide-in-from-bottom-8 duration-500">
       {}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 border-b border-gray-100 dark:border-gray-700 pb-6">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-emerald-100 dark:bg-emerald-900/30 rounded-2xl text-emerald-600 dark:text-emerald-400 ring-4 ring-emerald-50 dark:ring-emerald-900/10">
-            <Calculator className="w-6 h-6" />
+      <div className="flex flex-col gap-6 mb-8 border-b border-gray-100 dark:border-gray-700 pb-6">
+        {}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div
+              className={`p-3 rounded-2xl ring-4 transition-colors ${
+                mode === 'smart'
+                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 ring-emerald-50 dark:ring-emerald-900/10'
+                  : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 ring-indigo-50 dark:ring-indigo-900/10'
+              }`}
+            >
+              {mode === 'smart' ? (
+                <Calculator className="w-6 h-6" />
+              ) : (
+                <Maximize className="w-6 h-6" />
+              )}
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">
+                {mode === 'smart' ? 'Simulador Inteligente' : 'Completar Carteira (Top-up)'}
+              </h3>
+              <p className="text-sm text-gray-500">
+                {mode === 'smart'
+                  ? 'Distribui seu aporte para equilibrar as porcentagens.'
+                  : 'Calcula quanto aportar para atingir os alvos sem vender.'}
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">
-              Simulador Inteligente
-            </h3>
-            <p className="text-sm text-gray-500">
-              Rebalanceamento matemático baseado nos seus alvos.
-            </p>
+
+          {}
+          <div className="flex p-1 bg-gray-100 dark:bg-gray-900 rounded-xl">
+            <button
+              onClick={() => setMode('smart')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                mode === 'smart'
+                  ? 'bg-white dark:bg-gray-800 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              <Sliders className="w-4 h-4" />
+              Simular
+            </button>
+            <button
+              onClick={() => setMode('topup')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                mode === 'topup'
+                  ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              <TrendingUp className="w-4 h-4" />
+              Top-up
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-bold uppercase text-gray-400 tracking-wider">
-            Valor do Aporte
-          </label>
-          <div className="relative group">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-emerald-500 transition-colors font-medium">
-              R$
-            </span>
-            <input
-              type="number"
-              value={amount}
-              onChange={handleAmountChange}
-              className="pl-9 pr-4 py-2.5 w-48 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-100 font-bold text-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all shadow-sm"
-            />
+        {}
+        <div className="flex justify-end">
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-bold uppercase text-gray-400 tracking-wider text-right">
+              {mode === 'smart' ? 'Valor do Aporte' : 'Necessário para Equilíbrio'}
+            </label>
+            <div className="relative group">
+              <span
+                className={`absolute left-3 top-1/2 -translate-y-1/2 font-medium transition-colors ${
+                  mode === 'smart'
+                    ? 'text-gray-400 group-focus-within:text-emerald-500'
+                    : 'text-indigo-400'
+                }`}
+              >
+                R$
+              </span>
+              <input
+                type="number"
+                value={mode === 'smart' ? amount : calculatedTopUpAmount.toFixed(2)}
+                onChange={handleAmountChange}
+                disabled={mode === 'topup'}
+                className={`pl-9 pr-4 py-2.5 w-48 border rounded-xl font-bold text-lg outline-none transition-all shadow-sm ${
+                  mode === 'smart'
+                    ? 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500'
+                    : 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 cursor-not-allowed'
+                }`}
+              />
+            </div>
+            {mode === 'topup' && (
+              <span className="text-[10px] text-indigo-500/70 text-right font-medium">
+                Cálculo automático baseado nos desvios
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -190,7 +289,9 @@ const ContributionAllocator = ({ tree, targets }) => {
               Carteira Equilibrada
             </p>
             <p className="text-sm text-gray-400 mt-1">
-              Nenhum desequilíbrio crítico encontrado para o valor informado.
+              {mode === 'smart'
+                ? 'Nenhum desequilíbrio crítico para o valor informado.'
+                : 'Suas porcentagens atuais já respeitam os alvos mínimos.'}
             </p>
           </div>
         ) : (
@@ -199,7 +300,11 @@ const ContributionAllocator = ({ tree, targets }) => {
               {}
               <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-gray-700">
                 <div className="flex items-center gap-3">
-                  <span className="w-2 h-8 bg-emerald-500 rounded-r-full"></span>
+                  <span
+                    className={`w-2 h-8 rounded-r-full ${
+                      mode === 'smart' ? 'bg-emerald-500' : 'bg-indigo-500'
+                    }`}
+                  ></span>
                   <div>
                     <span className="capitalize font-bold text-xl text-gray-800 dark:text-gray-100 block leading-none">
                       {plan.macro === 'acoes' ? 'Ações' : plan.macro}
@@ -214,7 +319,13 @@ const ContributionAllocator = ({ tree, targets }) => {
                   <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-0.5">
                     Alocar nesta classe
                   </span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-bold text-xl">
+                  <span
+                    className={`font-bold text-xl ${
+                      mode === 'smart'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-indigo-600 dark:text-indigo-400'
+                    }`}
+                  >
                     {FormatCurrency(plan.totalAllocated)}
                   </span>
                 </div>
@@ -234,8 +345,14 @@ const ContributionAllocator = ({ tree, targets }) => {
                     !isNewCategory && cheapestAssetPrice > 0 && item.amount < cheapestAssetPrice;
 
                   let cardStyle =
-                    'border-gray-200 dark:border-gray-700 hover:border-emerald-300 dark:hover:border-emerald-600 hover:shadow-lg hover:shadow-emerald-500/5 dark:hover:shadow-none bg-white dark:bg-gray-800';
-                  let valueColor = 'text-emerald-600 dark:text-emerald-400';
+                    mode === 'smart'
+                      ? 'border-gray-200 dark:border-gray-700 hover:border-emerald-300 dark:hover:border-emerald-600 hover:shadow-lg hover:shadow-emerald-500/5 dark:hover:shadow-none bg-white dark:bg-gray-800'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-lg hover:shadow-indigo-500/5 dark:hover:shadow-none bg-white dark:bg-gray-800';
+
+                  let valueColor =
+                    mode === 'smart'
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-indigo-600 dark:text-indigo-400';
 
                   if (isNewCategory) {
                     cardStyle =
@@ -356,6 +473,11 @@ const ContributionAllocator = ({ tree, targets }) => {
                               {item.assets.map((asset) => {
                                 const assetIsTooExpensive = asset.price > item.amount;
 
+                                const activeClass =
+                                  mode === 'smart'
+                                    ? 'hover:text-white hover:bg-emerald-500 hover:border-emerald-500'
+                                    : 'hover:text-white hover:bg-indigo-500 hover:border-indigo-500';
+
                                 return (
                                   <div
                                     key={asset.ticker}
@@ -364,7 +486,7 @@ const ContributionAllocator = ({ tree, targets }) => {
                                     ${
                                       assetIsTooExpensive && isUnaffordable
                                         ? 'bg-slate-100 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 text-slate-400 dark:text-slate-500'
-                                        : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:text-white hover:bg-emerald-500 hover:border-emerald-500'
+                                        : `bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 ${activeClass}`
                                     }
                                   `}
                                     title={`Preço Atual: ${FormatCurrency(asset.price)} | Qtd na Carteira: ${asset.qty}`}
