@@ -1,0 +1,28 @@
+# Migrations & DB plumbing
+alembic/
+alembic.ini
+
+# Python cache / noise
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache/
+
+# Init-only modules
+**/__init__.py
+
+# Infra / deployment
+Dockerfile
+fly.toml
+
+# Local / debug helpers
+debugger.py
+
+# Repomix output & config
+repomix-output.*
+repomix.config.json
+
+# Venvs
+.venv/
+venv/
