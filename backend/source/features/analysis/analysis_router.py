@@ -287,7 +287,7 @@ def get_investment_opportunities(user_id: str = Depends(get_current_user)):
     while True:
         try:
             response = supabase.table("b3_prices") \
-                .select("ticker,trade_date,close") \
+                .select("ticker,trade_date,close,adjusted_close") \
                 .gte("trade_date", start_date) \
                 .in_("ticker", my_tickers) \
                 .range(offset, offset + batch_size - 1) \
@@ -382,12 +382,23 @@ def get_investment_opportunities(user_id: str = Depends(get_current_user)):
 
             lookback = 252 if len(df_ticker) >= 252 else len(df_ticker) - 1
 
+            df_ticker['close'] = pd.to_numeric(df_ticker['close'])
+            if 'adjusted_close' in df_ticker.columns:
+                df_ticker['adjusted_close'] = pd.to_numeric(df_ticker['adjusted_close'])
+            else:
+                df_ticker['adjusted_close'] = df_ticker['close'] # Fallback
+
             # Pega o registro inicial e final da janela de cálculo
             row_start = df_ticker.iloc[-lookback]
             row_end = df_ticker.iloc[-1]
 
             price_start = float(row_start['close'])
             price_end = float(row_end['close'])
+
+            start_adjusted = float(row_start['adjusted_close']) if row_start.get('adjusted_close', 0) > 0 else price_start
+            end_adjusted = float(row_end['adjusted_close']) if row_end.get('adjusted_close', 0) > 0 else price_end
+
+            adjusted_cagr = ((end_adjusted / start_adjusted) - 1) * 100
 
             # Captura as datas exatas (string YYYY-MM-DD)
             date_start_str = row_start['trade_date'].strftime('%Y-%m-%d')
@@ -400,11 +411,13 @@ def get_investment_opportunities(user_id: str = Depends(get_current_user)):
                 "ticker": ticker,
                 "type": asset_type,
                 "price": round(current_price, 2),
+                "adjusted_price": round(float(end_adjusted), 2),
                 "mm200": round(float(mm200), 2),
                 "cagr": round(cagr, 2),
+                "adjusted_cagr": round(adjusted_cagr, 2),
                 "sharpe": round(sharpe, 2),
-                "tag": tag,  # Nova propriedade enviada ao Frontend
-                "data_points": data_points,  # Útil para mostrar "Dados: 45 dias" no front
+                "tag": tag,
+                "data_points": data_points,
                 "calc_window": {
                     "start": date_start_str,
                     "end": date_end_str,

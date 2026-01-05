@@ -193,7 +193,7 @@ def normalize_yahoo_robust(df: pd.DataFrame) -> pd.DataFrame:
     rename_map = {}
     for col in list(df.columns):
         col_str = str(col).lower()
-        if "adj" in col_str: continue
+        if "adj" in col_str and "close" in col_str: rename_map[col] = "adjusted_close"
         if "open" in col_str: rename_map[col] = "open"
         if "high" in col_str: rename_map[col] = "high"
         if "low" in col_str: rename_map[col] = "low"
@@ -289,6 +289,9 @@ def sync_ticker(payload: TickerSync):
         records = []
         current_time = datetime.now().isoformat()
         for _, row in df_norm.iterrows():
+            adjusted_value = row.get("adjusted_close", row["close"])
+            if pd.isna(adjusted_value):
+                adjusted_value = row["close"]
             records.append({
                 "ticker": clean_ticker,
                 "trade_date": row["date"],
@@ -296,6 +299,7 @@ def sync_ticker(payload: TickerSync):
                 "high": float(row["high"]),
                 "low": float(row["low"]),
                 "close": float(row["close"]),
+                "adjusted_close": float(adjusted_value),
                 "volume": float(row["volume"]),
                 "inserted_at": current_time
             })

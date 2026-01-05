@@ -24,6 +24,7 @@ class B3Price(Base):
     high = Column(Numeric)
     low = Column(Numeric)
     close = Column(Numeric)
+    adjusted_close = Column(Numeric)
     volume = Column(Numeric)
 
     name = Column(Text)
