@@ -7,6 +7,7 @@ import {
   Activity,
   Calendar,
   AlertCircle,
+  Wallet,
 } from 'lucide-react';
 import { getDetailedTimeElapsed, getTypeColor } from './contributionUtils.js';
 import { fetchPriceClosestToDate } from '../../services/b3service.js';
@@ -123,14 +124,110 @@ export default function AssetPerformanceChart({ purchases }) {
       );
   }, [purchases, performanceMode, benchmarkData]);
 
+  const portfolioStats = useMemo(() => {
+    if (!assetPerformance.length) return null;
+
+    let totalInvested = 0;
+    let totalProfit = 0;
+
+    let weightedBenchmarkSum = 0;
+    let totalWeightForBenchmark = 0;
+
+    let oldestDate = new Date();
+
+    assetPerformance.forEach((asset) => {
+      totalInvested += asset.totalInvested;
+      totalProfit += asset.totalProfit;
+
+      if (new Date(asset.firstTradeDate) < oldestDate) {
+        oldestDate = new Date(asset.firstTradeDate);
+      }
+
+      const currentAssetValue = asset.totalInvested + asset.totalProfit;
+      const assetBenchmark = asset.benchmarkGrowth;
+
+      if (currentAssetValue > 0 && assetBenchmark !== null && assetBenchmark !== undefined) {
+        weightedBenchmarkSum += assetBenchmark * currentAssetValue;
+        totalWeightForBenchmark += currentAssetValue;
+      }
+    });
+
+    const totalYieldPercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
+
+    const portfolioBenchmark =
+      totalWeightForBenchmark > 0 ? weightedBenchmarkSum / totalWeightForBenchmark : null;
+
+    return {
+      ticker: 'CARTEIRA',
+      type: 'TOTAL',
+      totalProfit,
+      totalYieldPercent,
+      timeData: getDetailedTimeElapsed(oldestDate),
+      benchmarkGrowth: portfolioBenchmark,
+    };
+  }, [assetPerformance]);
+
   const maxValue = useMemo(() => {
     if (!assetPerformance.length) return 0;
-    return Math.max(
+
+    const assetsMax = Math.max(
       ...assetPerformance.map((a) =>
         Math.abs(performanceMode === 'relative' ? a.totalYieldPercent : a.totalProfit)
       )
     );
-  }, [assetPerformance, performanceMode]);
+
+    if (portfolioStats) {
+      const portfolioVal = Math.abs(
+        performanceMode === 'relative'
+          ? portfolioStats.totalYieldPercent
+          : portfolioStats.totalProfit
+      );
+      return Math.max(assetsMax, portfolioVal);
+    }
+
+    return assetsMax;
+  }, [assetPerformance, performanceMode, portfolioStats]);
+
+  const renderBar = (item, isPortfolio = false) => {
+    const displayValue = performanceMode === 'absolute' ? item.totalProfit : item.totalYieldPercent;
+    const isProfit = displayValue >= 0;
+    const rawPercentage = maxValue > 0 ? Math.abs(displayValue) / maxValue : 0;
+    const widthPercentage = Math.max(1, rawPercentage * 100);
+    const formattedValue =
+      performanceMode === 'absolute'
+        ? displayValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+        : `${displayValue > 0 ? '+' : ''}${displayValue.toFixed(2)}%`;
+
+    return (
+      <div
+        className={`flex-1 h-9 rounded-lg relative overflow-hidden flex items-center ${isPortfolio ? 'bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-900 shadow-sm' : 'bg-gray-50 dark:bg-gray-700/50'}`}
+      >
+        <div
+          className={`h-full transition-all duration-500 ease-out rounded-r-lg ${
+            isProfit
+              ? isPortfolio
+                ? 'bg-indigo-500/20 border-r-4 border-indigo-500'
+                : 'bg-green-500/20 border-r-4 border-green-500'
+              : 'bg-red-500/20 border-r-4 border-red-500'
+          }`}
+          style={{ width: `${widthPercentage}%` }}
+        />
+        <div className="absolute inset-0 flex items-center pl-3">
+          <span
+            className={`font-medium ${
+              isProfit
+                ? isPortfolio
+                  ? 'text-indigo-700 dark:text-indigo-300 font-bold'
+                  : 'text-green-700 dark:text-green-300'
+                : 'text-red-700 dark:text-red-300'
+            }`}
+          >
+            {formattedValue}
+          </span>
+        </div>
+      </div>
+    );
+  };
 
   if (assetPerformance.length === 0) return null;
 
@@ -179,16 +276,6 @@ export default function AssetPerformanceChart({ purchases }) {
 
       <div className="space-y-4">
         {assetPerformance.map((asset, index) => {
-          const displayValue =
-            performanceMode === 'absolute' ? asset.totalProfit : asset.totalYieldPercent;
-          const isProfit = displayValue >= 0;
-          const rawPercentage = maxValue > 0 ? Math.abs(displayValue) / maxValue : 0;
-          const widthPercentage = Math.max(1, rawPercentage * 100);
-          const formattedValue =
-            performanceMode === 'absolute'
-              ? displayValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-              : `${displayValue > 0 ? '+' : ''}${displayValue.toFixed(2)}%`;
-
           const hasBenchmark =
             asset.benchmarkGrowth !== null && asset.benchmarkGrowth !== undefined;
           const benchmarkVal = asset.benchmarkGrowth || 0;
@@ -215,21 +302,10 @@ export default function AssetPerformanceChart({ purchases }) {
                 </div>
               </div>
 
-              <div className="flex-1 h-9 bg-gray-50 dark:bg-gray-700/50 rounded-lg relative overflow-hidden flex items-center">
-                <div
-                  className={`h-full transition-all duration-500 ease-out rounded-r-lg ${isProfit ? 'bg-green-500/20 border-r-4 border-green-500' : 'bg-red-500/20 border-r-4 border-red-500'}`}
-                  style={{ width: `${widthPercentage}%` }}
-                />
-
-                <div className="absolute inset-0 flex items-center pl-3">
-                  <span
-                    className={`font-medium ${isProfit ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}
-                  >
-                    {formattedValue}
-                  </span>
-                </div>
-
-                <div className="absolute right-3 flex flex-col items-end justify-center cursor-help group/bench z-10">
+              <div className="flex-1 relative">
+                {renderBar(asset)}
+                {}
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-end justify-center cursor-help group/bench z-10">
                   {loadingBenchmark ? (
                     <span className="text-[10px] text-gray-400 animate-pulse">Calc...</span>
                   ) : hasBenchmark ? (
@@ -251,7 +327,7 @@ export default function AssetPerformanceChart({ purchases }) {
                   ) : (
                     <div
                       className="flex items-center gap-1.5 opacity-70 group-hover/bench:opacity-100 transition-opacity"
-                      title={`Dados históricos insuficientes. O ativo pode não existir há ${timeframe} anos ou os dados ainda não foram importados.`}
+                      title={`Dados históricos insuficientes.`}
                     >
                       <span className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase">
                         Sem Histórico
@@ -264,6 +340,73 @@ export default function AssetPerformanceChart({ purchases }) {
             </div>
           );
         })}
+
+        {}
+        {portfolioStats && (
+          <>
+            <div className="my-4 border-t border-gray-200 dark:border-gray-700 border-dashed" />
+
+            <div className="flex items-center gap-4 text-sm group p-2 -mx-2 rounded-lg bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/30">
+              <div className="w-6 text-indigo-400 flex justify-center">
+                <Wallet size={16} />
+              </div>
+
+              <div className="w-24 flex-shrink-0">
+                <div className="font-black text-indigo-900 dark:text-indigo-100 tracking-tight">
+                  CARTEIRA
+                </div>
+                <div className="text-[10px] uppercase font-bold w-fit px-1.5 rounded bg-indigo-200 text-indigo-800 dark:bg-indigo-800 dark:text-indigo-200">
+                  GERAL
+                </div>
+              </div>
+
+              <div className="w-24 text-right hidden sm:flex flex-col items-end mr-2 border-r border-indigo-200 dark:border-indigo-800/50 pr-4">
+                <div className="flex items-center gap-1 text-[10px] text-indigo-400 uppercase tracking-wide mb-0.5">
+                  <Clock className="w-3 h-3" /> Início
+                </div>
+                <div className="font-mono font-bold text-indigo-700 dark:text-indigo-300">
+                  {portfolioStats.timeData.short}
+                </div>
+              </div>
+
+              <div className="flex-1 relative">
+                {renderBar(portfolioStats, true)}
+
+                {}
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-end justify-center cursor-help group/bench z-10">
+                  {loadingBenchmark ? (
+                    <span className="text-[10px] text-indigo-400 animate-pulse">Calc...</span>
+                  ) : portfolioStats.benchmarkGrowth !== null ? (
+                    <>
+                      <div className="flex items-center gap-1 opacity-60 group-hover/bench:opacity-100 transition-opacity">
+                        <Activity className="w-3 h-3 text-indigo-400" />
+                        <span className="text-[9px] text-indigo-500 dark:text-indigo-400 uppercase font-bold">
+                          Média {timeframe === 1 ? '12m' : `${timeframe}Y (a.a.)`}
+                        </span>
+                      </div>
+                      <span
+                        className={`text-xs font-bold ${portfolioStats.benchmarkGrowth >= 0 ? 'text-indigo-600 dark:text-indigo-300' : 'text-indigo-400'}`}
+                        title={`Média Ponderada da performance histórica dos ativos que possuem dados (${timeframe} anos): ${portfolioStats.benchmarkGrowth.toFixed(2)}%`}
+                      >
+                        {portfolioStats.benchmarkGrowth > 0 ? '+' : ''}
+                        {portfolioStats.benchmarkGrowth.toFixed(1)}%
+                      </span>
+                    </>
+                  ) : (
+                    <div
+                      className="flex items-center gap-1.5 opacity-60"
+                      title="Dados insuficientes para calcular média ponderada."
+                    >
+                      <span className="text-[9px] font-bold text-indigo-300 uppercase">
+                        S/ Dados
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
