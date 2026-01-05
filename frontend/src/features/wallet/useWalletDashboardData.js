@@ -115,7 +115,7 @@ export const useWalletDashboardData = (user) => {
   const [assetsHistoryMap, setAssetsHistoryMap] = useState({});
   const [transactionsMap, setTransactionsMap] = useState({});
   const [debugShowEmpty, setDebugShowEmpty] = useState(false);
-  const [apiDebug, setApiDebug] = useState(null); // <--- NOVO STATE
+  const [apiDebug, setApiDebug] = useState(null);
 
   useEffect(() => {
     const consolidatePositions = (rawData) => {
@@ -153,13 +153,12 @@ export const useWalletDashboardData = (user) => {
       try {
         const histDataResponse = await fetchWalletPerformanceHistory(user.id);
 
-        // Extrair e salvar debug info
         if (histDataResponse.debug) {
           setApiDebug(histDataResponse.debug);
         }
         const [posData, histData, purchasesResponse] = await Promise.all([
           fetchWalletPositions(),
-          // CORREÇÃO PRINCIPAL: Passando user.id para o backend calcular o histórico
+
           fetchWalletPerformanceHistory(user.id),
           fetch(`${API_URL}/wallet/purchases?user_id=${user.id}`),
         ]);
@@ -167,10 +166,9 @@ export const useWalletDashboardData = (user) => {
         console.log('📦 Dados recebidos:', {
           posDataLength: posData?.length,
           histDataLength: histData?.length,
-          histDataRaw: histData, // Veja se é [] ou null
+          histDataRaw: histData,
         });
 
-        // 1. Processa Transações (para as bolinhas azuis no gráfico)
         let purchasesMap = {};
         if (purchasesResponse.ok) {
           const purchasesData = await purchasesResponse.json();
@@ -184,7 +182,6 @@ export const useWalletDashboardData = (user) => {
         }
         setTransactionsMap(purchasesMap);
 
-        // 2. Consolida Posições Atuais e Busca Preços B3 (Para a tabela e total atual)
         const uniqueAssets = consolidatePositions(posData);
 
         const positionsWithRealPrices = await Promise.all(
@@ -243,23 +240,15 @@ export const useWalletDashboardData = (user) => {
         );
         setPositions(positionsWithRealPrices);
 
-        // 3. Define o Histórico Global (Vem pronto do backend agora)
         if (histData && histData.total && Array.isArray(histData.total)) {
-          // Se veio o formato novo (Objeto com chaves), pegamos o total
           setFullHistoryData(histData.total);
-
-          // DICA: Se quiser suportar filtragem por categoria no gráfico futuro,
-          // você pode salvar o objeto inteiro 'histData' em um novo state.
         } else if (Array.isArray(histData)) {
-          // Fallback para o formato antigo (apenas lista)
           setFullHistoryData(histData);
         } else {
           setFullHistoryData([]);
         }
 
-        // 4. Carrega CDI (Fallback para visão de ativo específico)
         try {
-          // Buscamos CDI apenas para ter no assetsHistoryMap caso precise cruzar dados
           const cdiData = await fetchSpecificAssetHistory('CDI', 999);
           const processedCDI = processBenchmarkData(cdiData);
           setAssetsHistoryMap({ CDI: processedCDI });
@@ -529,6 +518,7 @@ export const useWalletDashboardData = (user) => {
     earliestPurchaseDate,
     showEmptyState,
     assetsHistoryMap,
+    transactionsMap,
     setActiveTab,
     setAllocationView,
     setTimeRange,

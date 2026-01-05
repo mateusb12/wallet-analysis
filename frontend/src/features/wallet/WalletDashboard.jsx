@@ -378,9 +378,9 @@ const PerformanceSection = ({
   selectedAssetTicker,
   setSelectedAssetTicker,
   activeTab,
-  filteredPositions, // Lista de ativos da aba atual
-  positions, // Lista completa (caso precise de fallback)
-  assetsHistoryMap, // O mapa com o histórico de todos os ativos
+  filteredPositions,
+  positions,
+  assetsHistoryMap,
   timeRange,
   setTimeRange,
   loadingSpecific,
@@ -390,11 +390,7 @@ const PerformanceSection = ({
   chartEvents,
   onChartClick,
 }) => {
-  // Lógica para renderizar o estado de erro com diagnóstico
   const renderErrorState = () => {
-    // Define quais ativos analisar:
-    // Se tiver um ativo selecionado no dropdown, analisa só ele.
-    // Se não, analisa todos os ativos da aba atual (Ações, FIIs, ou Todos).
     const targetPositions = selectedAssetTicker
       ? filteredPositions.filter((p) => p.ticker === selectedAssetTicker)
       : filteredPositions;
@@ -695,6 +691,7 @@ function WalletDashboard() {
     earliestPurchaseDate,
     showEmptyState,
     assetsHistoryMap,
+    transactionsMap,
   } = useWalletDashboardData(user);
 
   const handleCopyDashboard = () => {
@@ -712,7 +709,7 @@ function WalletDashboard() {
         currentPrice: p.current_price,
         total: p.total_value_current,
         type: p.type,
-        transactions: assetsHistoryMap[p.ticker] || [],
+        transactions: transactionsMap[p.ticker] || [],
       })),
     };
 
