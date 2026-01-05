@@ -38,6 +38,35 @@ export const PROFIT_PERIODS = [
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+const calculateDetailedAge = (startDateStr) => {
+  if (!startDateStr) return '';
+  const start = new Date(startDateStr);
+  const now = new Date();
+
+  let years = now.getFullYear() - start.getFullYear();
+  let months = now.getMonth() - start.getMonth();
+  let days = now.getDate() - start.getDate();
+
+  if (days < 0) {
+    months--;
+
+    const prevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    days += prevMonth.getDate();
+  }
+
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+
+  const parts = [];
+  if (years > 0) parts.push(`${years}a`);
+  if (months > 0) parts.push(`${months}m`);
+  if (days > 0) parts.push(`${days}d`);
+
+  return parts.length > 0 ? parts.join(' ') : '0d';
+};
+
 export const useWalletDashboardData = (user) => {
   const [positions, setPositions] = useState([]);
   const [fullHistoryData, setFullHistoryData] = useState({
@@ -308,12 +337,22 @@ export const useWalletDashboardData = (user) => {
   }, [earliestPurchaseDate]);
 
   const availablePeriods = useMemo(() => {
+    const ageString = calculateDetailedAge(earliestPurchaseDate);
+
     return PROFIT_PERIODS.filter((period) => {
       if (period.id === 'year' && walletAgeInDays < 90) return false;
       if (period.id === 'month' && walletAgeInDays < 7) return false;
       return true;
+    }).map((period) => {
+      if (period.id === 'total') {
+        return {
+          ...period,
+          label: earliestPurchaseDate ? `Acumulado (${ageString})` : 'Total (Acumulado)',
+        };
+      }
+      return period;
     });
-  }, [walletAgeInDays]);
+  }, [walletAgeInDays, earliestPurchaseDate]);
 
   useEffect(() => {
     const currentIsAvailable = availablePeriods.find((p) => p.id === profitPeriod);
@@ -325,15 +364,24 @@ export const useWalletDashboardData = (user) => {
   const periodStats = useMemo(() => {
     const profit = totalValue - totalInvested;
     const yieldVal = totalInvested > 0 ? (profit / totalInvested) * 100 : 0;
+
     if (profitPeriod === 'total') {
-      return { profit, yield: yieldVal, labelSuffix: '(Acumulado)' };
+      const ageString = calculateDetailedAge(earliestPurchaseDate);
+      return {
+        profit,
+        yield: yieldVal,
+        labelSuffix: earliestPurchaseDate ? `em ${ageString}` : '(Acumulado)',
+      };
     }
+
     if (!earliestPurchaseDate) {
       return { profit: 0, yield: 0, labelSuffix: '(Sem data)' };
     }
+
     const diffDays = walletAgeInDays;
     let divider = 1;
     let suffix = '';
+
     if (profitPeriod === 'day') {
       divider = diffDays;
       suffix = '(Média/Dia)';
@@ -344,7 +392,9 @@ export const useWalletDashboardData = (user) => {
       divider = diffDays / 365;
       suffix = '(Média/Ano)';
     }
+
     if (divider === 0) divider = 1;
+
     return {
       profit: profit / divider,
       yield: yieldVal / divider,
