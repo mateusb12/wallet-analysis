@@ -673,19 +673,26 @@ function WalletDashboard() {
                 Resumo Financeiro
               </h3>
 
-              <div className="flex items-center gap-2 bg-white dark:bg-gray-800 p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm hover:border-blue-400 transition-colors">
-                <Clock className="w-4 h-4 text-blue-500 ml-2" />
-                <select
-                  value={profitPeriod}
-                  onChange={(e) => setProfitPeriod(e.target.value)}
-                  className="bg-transparent border-none text-sm font-medium text-gray-700 dark:text-gray-200 focus:ring-0 cursor-pointer py-1 pr-8 outline-none"
-                >
-                  {availablePeriods.map((period) => (
-                    <option key={period.id} value={period.id}>
+              <div className="bg-gray-100 dark:bg-gray-800 p-1 rounded-lg inline-flex items-center border border-gray-200 dark:border-gray-700">
+                {availablePeriods.map((period) => {
+                  const isActive = profitPeriod === period.id;
+                  return (
+                    <button
+                      key={period.id}
+                      onClick={() => setProfitPeriod(period.id)}
+                      className={`
+          relative px-4 py-1.5 text-xs font-medium rounded-md transition-all duration-200
+          ${
+            isActive
+              ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-300 shadow-sm ring-1 ring-black/5 dark:ring-white/10'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-700/50'
+          }
+        `}
+                    >
                       {period.label}
-                    </option>
-                  ))}
-                </select>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
