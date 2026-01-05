@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import {
+  AlertTriangle,
   ArrowRight,
   BarChart2,
   Bug,
   Check,
   Clock,
+  Info,
   Copy,
   DollarSign,
   Percent,
@@ -33,6 +35,7 @@ import iconStocks from '../../assets/stocks.png';
 import iconEtf from '../../assets/etf.png';
 import iconFiis from '../../assets/fiis.png';
 import iconTotal from '../../assets/all.png';
+import { diagnoseChartIssues } from '../../utils/walletDiagnostics.js';
 
 const formatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -43,6 +46,69 @@ const formatPercent = (value) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value / 100);
+
+const DebugPanel = ({ debugInfo }) => {
+  if (!debugInfo) return null;
+
+  return (
+    <div className="mt-10 p-6 bg-gray-900 rounded-lg border-2 border-red-500/50 shadow-2xl overflow-hidden">
+      <h3 className="text-red-400 font-bold text-lg mb-4 flex items-center gap-2">
+        🐛 DEBUG DE REDE (API)
+      </h3>
+
+      <div className="space-y-4">
+        <div>
+          <label className="text-xs text-gray-400 uppercase font-bold">Endpoint Chamado:</label>
+          <div className="bg-black p-2 rounded text-green-400 font-mono text-xs break-all border border-gray-700">
+            {debugInfo.url}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-400 uppercase font-bold">
+            Comando CURL Equivalente:
+          </label>
+          <div className="bg-black p-3 rounded text-yellow-300 font-mono text-xs overflow-x-auto whitespace-pre border border-gray-700">
+            {debugInfo.curl}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs text-gray-400 uppercase font-bold">Status HTTP:</label>
+            <div
+              className={`font-mono font-bold ${debugInfo.status === 200 ? 'text-green-500' : 'text-red-500'}`}
+            >
+              {debugInfo.status}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 uppercase font-bold">Erro Capturado:</label>
+            <div className="text-red-400 text-xs">{debugInfo.error || 'Nenhum'}</div>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-400 uppercase font-bold">
+            Resposta JSON (Primeiros 3 itens):
+          </label>
+          <pre className="bg-black p-3 rounded text-blue-300 font-mono text-xs overflow-auto max-h-60 border border-gray-700">
+            {JSON.stringify(
+              Array.isArray(debugInfo.rawResponse)
+                ? debugInfo.rawResponse.slice(0, 3)
+                : debugInfo.rawResponse,
+              null,
+              2
+            )}
+            {Array.isArray(debugInfo.rawResponse) &&
+              debugInfo.rawResponse.length > 3 &&
+              `\n... (+${debugInfo.rawResponse.length - 3} itens)`}
+          </pre>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const WalletSkeleton = () => {
   return (
@@ -312,7 +378,9 @@ const PerformanceSection = ({
   selectedAssetTicker,
   setSelectedAssetTicker,
   activeTab,
-  filteredPositions,
+  filteredPositions, // Lista de ativos da aba atual
+  positions, // Lista completa (caso precise de fallback)
+  assetsHistoryMap, // O mapa com o histórico de todos os ativos
   timeRange,
   setTimeRange,
   loadingSpecific,
@@ -322,8 +390,85 @@ const PerformanceSection = ({
   chartEvents,
   onChartClick,
 }) => {
+  // Lógica para renderizar o estado de erro com diagnóstico
+  const renderErrorState = () => {
+    // Define quais ativos analisar:
+    // Se tiver um ativo selecionado no dropdown, analisa só ele.
+    // Se não, analisa todos os ativos da aba atual (Ações, FIIs, ou Todos).
+    const targetPositions = selectedAssetTicker
+      ? filteredPositions.filter((p) => p.ticker === selectedAssetTicker)
+      : filteredPositions;
+
+    const issues = diagnoseChartIssues(
+      targetPositions,
+      assetsHistoryMap,
+      benchmarkName,
+      earliestPurchaseDate
+    );
+
+    return (
+      <div className="h-full min-h-[300px] flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900/50 rounded border border-dashed border-gray-300 dark:border-gray-700 animate-in fade-in duration-500">
+        <div className="text-center mb-6">
+          <AlertTriangle className="w-12 h-12 text-orange-400 mx-auto mb-2" />
+          <h4 className="text-lg font-bold text-gray-700 dark:text-gray-300">
+            Não foi possível gerar o gráfico
+          </h4>
+          <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+            Identificamos inconsistências nos dados históricos que impedem o cálculo preciso da
+            rentabilidade para este período.
+          </p>
+        </div>
+
+        <div className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="bg-gray-100 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600 flex items-center gap-2">
+            <Info size={16} className="text-blue-500" />
+            <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase">
+              Diagnóstico Técnico
+            </span>
+          </div>
+          <ul className="divide-y divide-gray-100 dark:divide-gray-700 max-h-60 overflow-y-auto custom-scrollbar">
+            {issues.length > 0 ? (
+              issues.map((issue, idx) => (
+                <li
+                  key={idx}
+                  className="px-4 py-3 text-xs sm:text-sm flex items-start gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                >
+                  <span className="mt-0.5 text-base" role="img" aria-label="status">
+                    {issue.includes('🔴') || issue.includes('❌')
+                      ? '🛑'
+                      : issue.includes('ℹ️')
+                        ? 'ℹ️'
+                        : '⚠️'}
+                  </span>
+                  <span
+                    className={`flex-1 leading-relaxed ${issue.includes('🔴') ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-600 dark:text-gray-300'}`}
+                  >
+                    {issue.replace(/🔴|⚠️|❌|ℹ️/g, '').trim()}
+                  </span>
+                </li>
+              ))
+            ) : (
+              <li className="px-4 py-3 text-sm text-gray-500 italic">
+                Os dados dos ativos parecem corretos. O problema pode estar no histórico do índice
+                de referência ({benchmarkName}) ou na conexão com o servidor.
+              </li>
+            )}
+          </ul>
+        </div>
+
+        <div className="mt-6 text-xs text-gray-400 text-center">
+          <strong>Dica:</strong> Vá em "Gerenciar Ativos" e use o botão{' '}
+          <span className="inline-flex items-center px-1 py-0.5 rounded border border-gray-300 bg-gray-100 text-gray-600 mx-1">
+            Reparar Histórico
+          </span>{' '}
+          para corrigir automaticamente.
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+    <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700 flex flex-col h-full">
       <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
         <div className="flex flex-col gap-1 w-full sm:w-auto">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
@@ -366,23 +511,23 @@ const PerformanceSection = ({
         </div>
       </div>
 
-      {loadingSpecific ? (
-        <div className="h-64 flex items-center justify-center text-gray-500 bg-gray-50 dark:bg-gray-900/50 rounded">
-          Carregando dados de {selectedAssetTicker}...
-        </div>
-      ) : displayedHistory.length > 0 ? (
-        <WalletHistoryChart
-          data={displayedHistory}
-          benchmarkName={benchmarkName}
-          purchaseDate={earliestPurchaseDate}
-          purchaseEvents={chartEvents}
-          onPointClick={onChartClick}
-        />
-      ) : (
-        <div className="h-64 flex items-center justify-center text-gray-500 bg-gray-50 dark:bg-gray-900/50 rounded">
-          Dados insuficientes para este período
-        </div>
-      )}
+      <div className="flex-1 min-h-[300px]">
+        {loadingSpecific ? (
+          <div className="h-full flex items-center justify-center text-gray-500 bg-gray-50 dark:bg-gray-900/50 rounded animate-pulse">
+            Carregando dados {selectedAssetTicker ? `de ${selectedAssetTicker}` : ''}...
+          </div>
+        ) : displayedHistory.length > 0 ? (
+          <WalletHistoryChart
+            data={displayedHistory}
+            benchmarkName={benchmarkName}
+            purchaseDate={earliestPurchaseDate}
+            purchaseEvents={chartEvents}
+            onPointClick={onChartClick}
+          />
+        ) : (
+          renderErrorState()
+        )}
+      </div>
     </div>
   );
 };
@@ -519,6 +664,7 @@ function WalletDashboard() {
 
   const {
     activeTab,
+    apiDebug,
     setActiveTab,
     allocationView,
     setAllocationView,
@@ -739,6 +885,8 @@ function WalletDashboard() {
                 earliestPurchaseDate={earliestPurchaseDate}
                 chartEvents={chartEvents}
                 onChartClick={setHighlightedDate}
+                positions={positions}
+                assetsHistoryMap={assetsHistoryMap}
               />
               <AllocationSection
                 currentPieData={currentPieData}
@@ -771,6 +919,7 @@ function WalletDashboard() {
           </div>
         </>
       )}
+      <DebugPanel debugInfo={apiDebug} />
     </div>
   );
 }

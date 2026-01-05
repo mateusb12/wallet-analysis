@@ -42,39 +42,66 @@ const calculateDetailedAge = (startDateStr) => {
   if (!startDateStr) return '';
   const start = new Date(startDateStr);
   const now = new Date();
-
   let years = now.getFullYear() - start.getFullYear();
   let months = now.getMonth() - start.getMonth();
   let days = now.getDate() - start.getDate();
-
   if (days < 0) {
     months--;
-
     const prevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
     days += prevMonth.getDate();
   }
-
   if (months < 0) {
     years--;
     months += 12;
   }
-
   const parts = [];
   if (years > 0) parts.push(`${years}a`);
   if (months > 0) parts.push(`${months}m`);
   if (days > 0) parts.push(`${days}d`);
-
   return parts.length > 0 ? parts.join(' ') : '0d';
+};
+
+const normalizeHistory = (data) => {
+  if (!Array.isArray(data)) return [];
+  return data.map((item) => {
+    let val =
+      item.asset_price_raw ??
+      item.close ??
+      item.adjusted_close ??
+      item.price ??
+      item.value ??
+      item.valor ??
+      0;
+    let finalValue = parseFloat(val);
+    if (isNaN(finalValue)) finalValue = 0;
+    return {
+      ...item,
+      close: finalValue,
+      trade_date: item.trade_date || item.date,
+    };
+  });
+};
+
+const processBenchmarkData = (data) => {
+  if (!data || data.length === 0) return [];
+  if (data[0].close > 1 || data[0].adjusted_close > 1) return normalizeHistory(data);
+  let accumulated = 100.0;
+  return data.map((item) => {
+    const rawRate = item.value ?? item.close ?? 0;
+    const rate = parseFloat(rawRate);
+    accumulated = accumulated * (1 + rate / 100);
+    return {
+      trade_date: item.trade_date || item.date,
+      close: accumulated,
+      adjusted_close: accumulated,
+      original_rate: rate,
+    };
+  });
 };
 
 export const useWalletDashboardData = (user) => {
   const [positions, setPositions] = useState([]);
-  const [fullHistoryData, setFullHistoryData] = useState({
-    stock: [],
-    etf: [],
-    fii: [],
-    total: [],
-  });
+  const [fullHistoryData, setFullHistoryData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('total');
   const [allocationView, setAllocationView] = useState('specific');
@@ -86,7 +113,9 @@ export const useWalletDashboardData = (user) => {
   const [profitPeriod, setProfitPeriod] = useState('total');
   const [highlightedDate, setHighlightedDate] = useState(null);
   const [assetsHistoryMap, setAssetsHistoryMap] = useState({});
+  const [transactionsMap, setTransactionsMap] = useState({});
   const [debugShowEmpty, setDebugShowEmpty] = useState(false);
+  const [apiDebug, setApiDebug] = useState(null); // <--- NOVO STATE
 
   useEffect(() => {
     const consolidatePositions = (rawData) => {
@@ -114,15 +143,34 @@ export const useWalletDashboardData = (user) => {
     };
 
     const loadData = async () => {
-      if (!user?.id) return;
+      console.log('🔄 Iniciando carga de dados. User ID:', user?.id);
+      if (!user?.id) {
+        console.warn('⚠️ User ID indefinido. Abortando carga.');
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
+        const histDataResponse = await fetchWalletPerformanceHistory(user.id);
+
+        // Extrair e salvar debug info
+        if (histDataResponse.debug) {
+          setApiDebug(histDataResponse.debug);
+        }
         const [posData, histData, purchasesResponse] = await Promise.all([
           fetchWalletPositions(),
-          fetchWalletPerformanceHistory(),
+          // CORREÇÃO PRINCIPAL: Passando user.id para o backend calcular o histórico
+          fetchWalletPerformanceHistory(user.id),
           fetch(`${API_URL}/wallet/purchases?user_id=${user.id}`),
         ]);
 
+        console.log('📦 Dados recebidos:', {
+          posDataLength: posData?.length,
+          histDataLength: histData?.length,
+          histDataRaw: histData, // Veja se é [] ou null
+        });
+
+        // 1. Processa Transações (para as bolinhas azuis no gráfico)
         let purchasesMap = {};
         if (purchasesResponse.ok) {
           const purchasesData = await purchasesResponse.json();
@@ -134,9 +182,11 @@ export const useWalletDashboardData = (user) => {
             purchasesMap[ticker].sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
           });
         }
-        setAssetsHistoryMap(purchasesMap);
+        setTransactionsMap(purchasesMap);
 
+        // 2. Consolida Posições Atuais e Busca Preços B3 (Para a tabela e total atual)
         const uniqueAssets = consolidatePositions(posData);
+
         const positionsWithRealPrices = await Promise.all(
           uniqueAssets.map(async (p) => {
             try {
@@ -145,8 +195,12 @@ export const useWalletDashboardData = (user) => {
               let priceSource = 'compra';
 
               if (data && data.length > 0) {
-                currentPrice = parseFloat(data[0].close);
-                priceSource = 'b3_real';
+                const rawPrice =
+                  data[0].close ?? data[0].adjusted_close ?? data[0].price ?? data[0].value;
+                if (rawPrice) {
+                  currentPrice = parseFloat(rawPrice);
+                  priceSource = 'b3_real';
+                }
               }
 
               const cls = await classifyAsset(p.ticker);
@@ -187,11 +241,33 @@ export const useWalletDashboardData = (user) => {
             }
           })
         );
-
         setPositions(positionsWithRealPrices);
-        setFullHistoryData(histData);
-        if (histData.warnings && histData.warnings.length > 0) setDataWarnings(histData.warnings);
-        else setDataWarnings([]);
+
+        // 3. Define o Histórico Global (Vem pronto do backend agora)
+        if (histData && histData.total && Array.isArray(histData.total)) {
+          // Se veio o formato novo (Objeto com chaves), pegamos o total
+          setFullHistoryData(histData.total);
+
+          // DICA: Se quiser suportar filtragem por categoria no gráfico futuro,
+          // você pode salvar o objeto inteiro 'histData' em um novo state.
+        } else if (Array.isArray(histData)) {
+          // Fallback para o formato antigo (apenas lista)
+          setFullHistoryData(histData);
+        } else {
+          setFullHistoryData([]);
+        }
+
+        // 4. Carrega CDI (Fallback para visão de ativo específico)
+        try {
+          // Buscamos CDI apenas para ter no assetsHistoryMap caso precise cruzar dados
+          const cdiData = await fetchSpecificAssetHistory('CDI', 999);
+          const processedCDI = processBenchmarkData(cdiData);
+          setAssetsHistoryMap({ CDI: processedCDI });
+        } catch (e) {
+          console.warn('CDI Fetch falhou, usando fallback local se necessario');
+        }
+
+        if (histData.warnings) setDataWarnings(histData.warnings);
       } catch (error) {
         console.error('Failed to load wallet data', error);
       } finally {
@@ -210,9 +286,13 @@ export const useWalletDashboardData = (user) => {
       setLoadingSpecific(true);
       try {
         const data = await fetchSpecificAssetHistory(selectedAssetTicker, 60);
-        setSpecificAssetHistory(data);
+        if (selectedAssetTicker === 'CDI') {
+          setSpecificAssetHistory(processBenchmarkData(data));
+        } else {
+          setSpecificAssetHistory(normalizeHistory(data));
+        }
       } catch (error) {
-        console.error('Failed to fetch specific asset history', error);
+        console.error('Failed fetch specific', error);
       } finally {
         setLoadingSpecific(false);
       }
@@ -243,9 +323,9 @@ export const useWalletDashboardData = (user) => {
   }, [positions, activeTab]);
 
   const summaryPositions = useMemo(() => {
-    if (selectedAssetTicker)
-      return filteredPositions.filter((p) => p.ticker === selectedAssetTicker);
-    return filteredPositions;
+    return selectedAssetTicker
+      ? filteredPositions.filter((p) => p.ticker === selectedAssetTicker)
+      : filteredPositions;
   }, [filteredPositions, selectedAssetTicker]);
 
   const generalAllocationData = useMemo(() => {
@@ -266,14 +346,11 @@ export const useWalletDashboardData = (user) => {
 
   const chartEvents = useMemo(() => {
     let relevantTransactions = [];
-    let targetTickers = [];
-    if (selectedAssetTicker) {
-      targetTickers = [selectedAssetTicker];
-    } else {
-      targetTickers = filteredPositions.map((p) => p.ticker);
-    }
+    let targetTickers = selectedAssetTicker
+      ? [selectedAssetTicker]
+      : filteredPositions.map((p) => p.ticker);
     targetTickers.forEach((ticker) => {
-      const history = assetsHistoryMap[ticker] || [];
+      const history = transactionsMap[ticker] || [];
       relevantTransactions = [...relevantTransactions, ...history];
     });
     return relevantTransactions.map((t) => ({
@@ -281,7 +358,7 @@ export const useWalletDashboardData = (user) => {
       purchaseDate: t.trade_date,
       purchase_price: t.price !== undefined ? t.price : t.purchase_price || 0,
     }));
-  }, [selectedAssetTicker, filteredPositions, assetsHistoryMap]);
+  }, [selectedAssetTicker, filteredPositions, transactionsMap]);
 
   const earliestPurchaseDate = useMemo(() => {
     if (selectedAssetTicker) {
@@ -295,21 +372,61 @@ export const useWalletDashboardData = (user) => {
   }, [filteredPositions, selectedAssetTicker, positions]);
 
   const displayedHistory = useMemo(() => {
-    const rawData = selectedAssetTicker ? specificAssetHistory : fullHistoryData[activeTab] || [];
+    let rawData = [];
+
+    if (selectedAssetTicker) {
+      rawData = specificAssetHistory;
+    } else {
+      rawData = Array.isArray(fullHistoryData) ? fullHistoryData : [];
+    }
+
     if (rawData.length === 0) return [];
-    let processedData = rawData;
+
+    let filteredData = rawData;
     const anchorDateString = earliestPurchaseDate;
-    if (anchorDateString) {
+    if (anchorDateString && filteredData.length > 0) {
       const purchaseDateObj = new Date(anchorDateString);
       const rangeConfig = TIME_RANGES.find((r) => r.id === timeRange);
-      if (timeRange === 'MAX') return processedData;
-      let startDate = new Date(purchaseDateObj);
-      if (rangeConfig && rangeConfig.offsetMonths > 0) {
-        startDate.setMonth(startDate.getMonth() - rangeConfig.offsetMonths);
+      if (timeRange !== 'MAX') {
+        let startDate = new Date(purchaseDateObj);
+        if (rangeConfig && rangeConfig.offsetMonths > 0) {
+          startDate.setMonth(startDate.getMonth() - rangeConfig.offsetMonths);
+        }
+        filteredData = rawData.filter((item) => new Date(item.trade_date) >= startDate);
       }
-      return processedData.filter((item) => new Date(item.trade_date) >= startDate);
     }
-    return processedData;
+
+    return filteredData.map((item) => {
+      if (!selectedAssetTicker && item.portfolio_value !== undefined) {
+        return item;
+      }
+
+      const asset = positions.find((p) => p.ticker === selectedAssetTicker);
+      const qty = asset ? asset.qty : 1;
+      const pVal = (item.close || 0) * qty;
+
+      let bVal = item.benchmark_value || 0;
+      if (!bVal) {
+        const globalCDI = assetsHistoryMap['CDI'] || [];
+        const match = globalCDI.find((b) => b.trade_date === item.trade_date);
+        const firstItem = filteredData[0];
+        const startCDI =
+          globalCDI.find((b) => b.trade_date === firstItem?.trade_date)?.close || 100;
+        const startVal = (firstItem?.close || 0) * qty;
+
+        if (match && startCDI > 0 && startVal > 0) {
+          bVal = (match.close / startCDI) * startVal;
+        } else if (match) {
+          bVal = match.close;
+        }
+      }
+
+      return {
+        ...item,
+        portfolio_value: pVal,
+        benchmark_value: bVal,
+      };
+    });
   }, [
     fullHistoryData,
     activeTab,
@@ -317,6 +434,8 @@ export const useWalletDashboardData = (user) => {
     selectedAssetTicker,
     specificAssetHistory,
     earliestPurchaseDate,
+    assetsHistoryMap,
+    positions,
   ]);
 
   const totalValue = summaryPositions.reduce(
@@ -330,15 +449,12 @@ export const useWalletDashboardData = (user) => {
 
   const walletAgeInDays = useMemo(() => {
     if (!earliestPurchaseDate) return 0;
-    const start = new Date(earliestPurchaseDate);
-    const now = new Date();
-    const diffTime = Math.abs(now - start);
+    const diffTime = Math.abs(new Date() - new Date(earliestPurchaseDate));
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
   }, [earliestPurchaseDate]);
 
   const availablePeriods = useMemo(() => {
     const ageString = calculateDetailedAge(earliestPurchaseDate);
-
     return PROFIT_PERIODS.filter((period) => {
       if (period.id === 'year' && walletAgeInDays < 90) return false;
       if (period.id === 'month' && walletAgeInDays < 7) return false;
@@ -355,50 +471,34 @@ export const useWalletDashboardData = (user) => {
   }, [walletAgeInDays, earliestPurchaseDate]);
 
   useEffect(() => {
-    const currentIsAvailable = availablePeriods.find((p) => p.id === profitPeriod);
-    if (!currentIsAvailable) {
-      setProfitPeriod('total');
-    }
+    if (!availablePeriods.find((p) => p.id === profitPeriod)) setProfitPeriod('total');
   }, [availablePeriods, profitPeriod]);
 
   const periodStats = useMemo(() => {
     const profit = totalValue - totalInvested;
     const yieldVal = totalInvested > 0 ? (profit / totalInvested) * 100 : 0;
-
-    if (profitPeriod === 'total') {
-      const ageString = calculateDetailedAge(earliestPurchaseDate);
+    if (profitPeriod === 'total')
       return {
         profit,
         yield: yieldVal,
-        labelSuffix: earliestPurchaseDate ? `em ${ageString}` : '(Acumulado)',
+        labelSuffix: earliestPurchaseDate
+          ? `em ${calculateDetailedAge(earliestPurchaseDate)}`
+          : '(Acumulado)',
       };
-    }
-
-    if (!earliestPurchaseDate) {
-      return { profit: 0, yield: 0, labelSuffix: '(Sem data)' };
-    }
-
+    if (!earliestPurchaseDate) return { profit: 0, yield: 0, labelSuffix: '(Sem data)' };
     const diffDays = walletAgeInDays;
-    let divider = 1;
-    let suffix = '';
-
-    if (profitPeriod === 'day') {
-      divider = diffDays;
-      suffix = '(Média/Dia)';
-    } else if (profitPeriod === 'month') {
-      divider = diffDays / 30;
-      suffix = '(Média/Mês)';
-    } else if (profitPeriod === 'year') {
-      divider = diffDays / 365;
-      suffix = '(Média/Ano)';
-    }
-
+    let divider =
+      profitPeriod === 'day' ? diffDays : profitPeriod === 'month' ? diffDays / 30 : diffDays / 365;
     if (divider === 0) divider = 1;
-
     return {
       profit: profit / divider,
       yield: yieldVal / divider,
-      labelSuffix: suffix,
+      labelSuffix:
+        profitPeriod === 'day'
+          ? '(Média/Dia)'
+          : profitPeriod === 'month'
+            ? '(Média/Mês)'
+            : '(Média/Ano)',
     };
   }, [profitPeriod, totalValue, totalInvested, earliestPurchaseDate, walletAgeInDays]);
 
@@ -406,6 +506,7 @@ export const useWalletDashboardData = (user) => {
 
   return {
     activeTab,
+    apiDebug,
     allocationView,
     timeRange,
     selectedAssetTicker,
@@ -415,7 +516,6 @@ export const useWalletDashboardData = (user) => {
     profitPeriod,
     highlightedDate,
     debugShowEmpty,
-
     positions,
     categoryTotals,
     filteredPositions,
@@ -429,7 +529,6 @@ export const useWalletDashboardData = (user) => {
     earliestPurchaseDate,
     showEmptyState,
     assetsHistoryMap,
-
     setActiveTab,
     setAllocationView,
     setTimeRange,

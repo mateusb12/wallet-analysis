@@ -27,5 +27,9 @@ class ImportPurchasesRequest(BaseModel):
 # Resposta para o frontend
 class AssetPurchaseResponse(AssetPurchaseBase):
     id: int
-
     model_config = ConfigDict(from_attributes=True)
+
+class HistoryPoint(BaseModel):
+    trade_date: str
+    portfolio_value: float
+    benchmark_value: float

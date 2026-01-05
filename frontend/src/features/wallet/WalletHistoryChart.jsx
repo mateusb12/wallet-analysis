@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -181,6 +181,40 @@ function WalletHistoryChart({
   const [selectedDate, setSelectedDate] = useState(null);
 
   const hasData = Array.isArray(data) && data.length > 0;
+
+  // --- DEBUGGING LOGS ---
+  useEffect(() => {
+    console.group('🔍 DEBUG CHART DATA (WalletHistoryChart)');
+    console.log('1. Raw Data received (len):', data?.length);
+
+    if (data && data.length > 0) {
+      const firstItem = data[0];
+      const lastItem = data[data.length - 1];
+
+      console.log('2. Sample Item (First):', firstItem);
+      console.log('3. Sample Item (Last):', lastItem);
+      console.log('4. Fields found in object:', Object.keys(firstItem));
+
+      // Verificação crucial: O gráfico espera 'portfolio_value' e 'benchmark_value'.
+      // Vamos avisar se eles não existirem.
+      if (firstItem.portfolio_value === undefined && firstItem.close !== undefined) {
+        console.warn(
+          '⚠️ ALERTA: O objeto tem "close" mas o gráfico espera "portfolio_value". O gráfico ficará vazio.'
+        );
+      }
+      if (firstItem.benchmark_value === undefined) {
+        console.warn('⚠️ ALERTA: O campo "benchmark_value" está ausente.');
+      }
+    } else {
+      console.warn('❌ Data is empty or undefined');
+    }
+
+    if (purchaseEvents && purchaseEvents.length > 0) {
+      console.log('5. Purchase Events:', purchaseEvents);
+    }
+    console.groupEnd();
+  }, [data, purchaseEvents]);
+  // ----------------------
 
   const processedData = useMemo(() => {
     if (!hasData) return [];

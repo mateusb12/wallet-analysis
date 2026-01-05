@@ -184,15 +184,18 @@ def _upsert_cache(supabase, row: Dict[str, Any]) -> None:
 
 def normalize_yahoo_robust(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Versão robusta do código antigo para normalizar dados do Yahoo.
+    Versão robusta: Garante Adjusted Close se disponível, mas não quebra se faltar.
     """
     df = df.copy()
     df.reset_index(inplace=True)
+
+    # Normaliza nomes de colunas (remove espaços, minusculas)
     df.columns = [str(col).lower().strip().replace(" ", "") for col in df.columns]
 
     rename_map = {}
     for col in list(df.columns):
         col_str = str(col).lower()
+        # Mapeia variantes de Adjusted Close
         if "adj" in col_str and "close" in col_str: rename_map[col] = "adjusted_close"
         if "open" in col_str: rename_map[col] = "open"
         if "high" in col_str: rename_map[col] = "high"
@@ -206,10 +209,11 @@ def normalize_yahoo_robust(df: pd.DataFrame) -> pd.DataFrame:
     if "date" not in df.columns and "index" in df.columns:
         df.rename(columns={'index': 'date'}, inplace=True)
 
-    # Trata MultiIndex do Yahoo
+    # Trata MultiIndex do Yahoo (se houver)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
+    # Remove duplicatas de colunas
     df = df.loc[:, ~df.columns.duplicated()]
 
     try:
@@ -217,16 +221,28 @@ def normalize_yahoo_robust(df: pd.DataFrame) -> pd.DataFrame:
     except Exception:
         pass
 
-    required = {"date", "open", "high", "low", "close", "volume"}
-    for req in required:
-        if req not in df.columns:
-            if req == 'volume':
-                df['volume'] = 0
-            else:
-                # Se faltar coluna essencial, não serve
-                return pd.DataFrame()
+    # --- A CORREÇÃO ESTÁ AQUI ---
+    # 1. Definimos o que é OBRIGATÓRIO (Se faltar, o dado é inútil)
+    essentials = {"date", "open", "high", "low", "close"}
 
-    return df[list(required)]
+    # 2. Definimos o que queremos NO FINAL (Incluindo opcionais)
+    desired_columns = {"date", "open", "high", "low", "close", "volume", "adjusted_close"}
+
+    # Verificação de segurança apenas nos essenciais
+    for req in essentials:
+        if req not in df.columns:
+            print(f"❌ Falta coluna essencial: {req}")
+            return pd.DataFrame() # Retorna vazio se faltar dado crítico
+
+    # Garante que volume existe (opcional, defaults to 0)
+    if 'volume' not in df.columns:
+        df['volume'] = 0
+
+    # Filtra apenas as colunas que realmente existem no DataFrame
+    # Isso impede o erro de chave se 'adjusted_close' não tiver sido encontrado
+    final_cols = [c for c in desired_columns if c in df.columns]
+
+    return df[final_cols]
 
 
 # ==============================================================================
@@ -242,24 +258,25 @@ def get_market_constants():
 @market_data_bp.post("/")
 def sync_ticker(payload: TickerSync):
     ticker = payload.ticker
+    force_mode = payload.force
     if not ticker:
         raise HTTPException(status_code=400, detail="Ticker is required")
 
+    # Configura datas
     end_date = datetime.now() + timedelta(days=1)
-    start_date = end_date - timedelta(days=365 * 5)  # 5 anos
+    days_back = 365 * 15 if force_mode else 365 * 5
+    start_date = end_date - timedelta(days=days_back)
 
     yf_ticker = f"{ticker}.SA" if not ticker.endswith(".SA") else ticker
     clean_ticker = ticker.replace(".SA", "").upper()
 
-    print(f"--- SYNC: {clean_ticker} ---")
+    print(f"--- 🕵️‍♂️ SYNC DEBUG: {clean_ticker} ---")
     supabase = get_supabase()
 
     # 1. Checa data atual no banco
     last_db_date = None
     try:
-        last_row = supabase.table("b3_prices").select("trade_date").eq("ticker", clean_ticker).order("trade_date",
-                                                                                                     desc=True).limit(
-            1).execute()
+        last_row = supabase.table("b3_prices").select("trade_date").eq("ticker", clean_ticker).order("trade_date", desc=True).limit(1).execute()
         if last_row.data:
             last_db_date = last_row.data[0]['trade_date']
     except Exception:
@@ -268,64 +285,85 @@ def sync_ticker(payload: TickerSync):
     try:
         # 2. Download Yahoo
         df_raw = yf.download(yf_ticker, start=start_date.strftime("%Y-%m-%d"), end=end_date.strftime("%Y-%m-%d"),
-                             auto_adjust=False, progress=False)
+                             auto_adjust=False, progress=False, threads=False)
 
         if df_raw.empty:
-            # Não é erro 500, é apenas "sem dados"
             return {"success": False, "action": "empty_source", "message": "Yahoo não retornou dados."}
 
         df_norm = normalize_yahoo_robust(df_raw)
         if df_norm.empty:
             return {"success": False, "action": "parse_error", "message": "Falha ao ler dados do Yahoo."}
 
-        # 3. Verifica se tem dados NOVOS
-        max_yahoo_date = df_norm['date'].max()
-
-        # Lógica de comparação de datas (String vs String ISO)
-        has_new_data = True
-        if last_db_date and str(max_yahoo_date) <= str(last_db_date):
-            has_new_data = False
-
+        # 3. Processamento com DEBUG DE DADOS RUINS
         records = []
         current_time = datetime.now().isoformat()
+
+        # Datas malditas que queremos monitorar
+        problem_dates = ['2025-11-21', '2025-12-29', '2025-12-30']
+
         for _, row in df_norm.iterrows():
-            adjusted_value = row.get("adjusted_close", row["close"])
-            if pd.isna(adjusted_value):
-                adjusted_value = row["close"]
+            str_date = str(row["date"])
+            raw_close = row["close"]
+
+            # --- DEBUGGER ESPIÃO ---
+            # Se a data for uma das problemáticas, imprime o que veio do Yahoo
+            if any(d in str_date for d in problem_dates):
+                print(f"👀 {clean_ticker} [{str_date}] RAW YAHOO: {raw_close} | Tipo: {type(raw_close)}")
+
+            # --- FILTRO BLINDADO (CORREÇÃO) ---
+
+            # 1. Verifica se é NaN (O Pandas.isna pega tanto np.nan quanto None)
+            if pd.isna(raw_close):
+                if any(d in str_date for d in problem_dates):
+                    print(f"🚫 {clean_ticker} [{str_date}] PULADO: Valor é NaN")
+                continue
+
+            # 2. Converte para float seguro
+            try:
+                close_price = float(raw_close)
+            except:
+                print(f"🚫 {clean_ticker} [{str_date}] PULADO: Erro de conversão float")
+                continue
+
+            # 3. Verifica se é zero ou negativo
+            if close_price <= 0.01:
+                if any(d in str_date for d in problem_dates):
+                    print(f"🚫 {clean_ticker} [{str_date}] PULADO: Preço zerado ({close_price})")
+                continue
+
+            # --- SE PASSOU DAQUI, VAI SER SALVO ---
+
+            # Recupera open/high/low com fallback
+            open_price = float(row["open"]) if not pd.isna(row["open"]) and float(row["open"]) > 0 else close_price
+            high_price = float(row["high"]) if not pd.isna(row["high"]) and float(row["high"]) > 0 else close_price
+            low_price = float(row["low"]) if not pd.isna(row["low"]) and float(row["low"]) > 0 else close_price
+
+            adjusted_value = row.get("adjusted_close", close_price)
+            if pd.isna(adjusted_value) or float(adjusted_value) <= 0:
+                adjusted_value = close_price
+
             records.append({
                 "ticker": clean_ticker,
                 "trade_date": row["date"],
-                "open": float(row["open"]),
-                "high": float(row["high"]),
-                "low": float(row["low"]),
-                "close": float(row["close"]),
+                "open": open_price,
+                "high": high_price,
+                "low": low_price,
+                "close": close_price,
                 "adjusted_close": float(adjusted_value),
                 "volume": float(row["volume"]),
                 "inserted_at": current_time
             })
 
-        # Sempre faz o upsert para garantir integridade, mas avisa o front o status real
+        print(f"✅ {clean_ticker}: {len(records)} registros válidos processados.")
+
+        # Batch upsert
         BATCH_SIZE = 1000
         for i in range(0, len(records), BATCH_SIZE):
             batch = records[i:i + BATCH_SIZE]
             supabase.table("b3_prices").upsert(batch, on_conflict="ticker,trade_date").execute()
 
-        if has_new_data:
-            return {
-                "success": True,
-                "action": "updated",
-                "count": len(records),
-                "last_date": max_yahoo_date,
-                "message": f"Atualizado até {max_yahoo_date}"
-            }
-        else:
-            return {
-                "success": True,
-                "action": "up_to_date",
-                "count": 0,
-                "last_date": max_yahoo_date,
-                "message": f"Já atualizado (Último: {max_yahoo_date})"
-            }
+        max_date = df_norm['date'].max()
+        return {"success": True, "count": len(records), "last_date": max_date}
 
     except Exception as e:
         print(f"❌ Error syncing ticker: {e}")

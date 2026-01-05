@@ -33,7 +33,7 @@ export async function fetchUniqueStockTickers() {
 export async function fetchFullStockHistory(ticker) {
   const { data, error } = await supabase
     .from('b3_prices')
-    .select('trade_date, close')
+    .select('trade_date, close, adjusted_close')
     .eq('ticker', ticker.toUpperCase())
     .order('trade_date', { ascending: true })
     .limit(1300);
@@ -43,10 +43,15 @@ export async function fetchFullStockHistory(ticker) {
   return data.map((item) => {
     const dateObj = new Date(item.trade_date);
 
+    const val =
+      item.adjusted_close && item.adjusted_close > 0
+        ? parseFloat(item.adjusted_close)
+        : parseFloat(item.close);
+
     return {
       date: dateObj.getTime(),
       dateStr: item.trade_date,
-      close: parseFloat(item.close),
+      close: val,
     };
   });
 }
@@ -196,7 +201,7 @@ export async function syncTickerHistory(ticker) {
 export async function fetchPriceClosestToDate(ticker, targetDate) {
   const { data, error } = await supabase
     .from('b3_prices')
-    .select('close, trade_date')
+    .select('close, adjusted_close, trade_date')
     .eq('ticker', ticker.toUpperCase())
     .lte('trade_date', targetDate)
     .order('trade_date', { ascending: false })
@@ -208,5 +213,10 @@ export async function fetchPriceClosestToDate(ticker, targetDate) {
     return null;
   }
 
-  return data ? parseFloat(data.close) : null;
+  if (!data) return null;
+
+  const finalPrice =
+    data.adjusted_close && data.adjusted_close > 0 ? data.adjusted_close : data.close;
+
+  return parseFloat(finalPrice);
 }

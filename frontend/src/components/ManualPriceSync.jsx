@@ -12,6 +12,7 @@ import {
   Clock,
   Activity,
   AlertOctagon,
+  Wrench
 } from 'lucide-react';
 import { syncService } from '../services/api.js';
 import { syncIpcaHistory } from '../services/ipcaService.js';
@@ -27,6 +28,60 @@ export default function ManualPriceSync() {
 
   const [syncReport, setSyncReport] = useState(null);
   const [batchProgress, setBatchProgress] = useState(null);
+
+  const handleRepairHistory = async () => {
+    if (
+      !confirm(
+        'Isso vai baixar 15 anos de histórico para TODOS os ativos da carteira. Pode levar alguns minutos. Deseja continuar?'
+      )
+    ) {
+      return;
+    }
+
+    setLoading(true);
+    resetStates();
+    setBatchProgress({ current: 0, total: 0, ticker: 'Iniciando reparo...' });
+
+    try {
+      const positions = await fetchWalletPositions(true);
+      const uniqueTickers = [...new Set(positions.map((p) => p.ticker))];
+
+      const totalTasks = uniqueTickers.length;
+      setBatchProgress({ current: 0, total: totalTasks, ticker: '' });
+
+      let stats = { updated: 0, unchanged: 0, errors: 0, errorList: [] };
+      let currentStep = 0;
+
+      for (const currentTicker of uniqueTickers) {
+        currentStep++;
+        setBatchProgress({ current: currentStep, total: totalTasks, ticker: currentTicker });
+
+        try {
+          // AQUI ESTÁ O SEGREDOS: force: true
+          const res = await syncService.syncTicker(currentTicker, true);
+
+          if (res.success) {
+            stats.updated++;
+          } else {
+            stats.errors++;
+            stats.errorList.push(`${currentTicker}: Erro API`);
+          }
+        } catch (err) {
+          stats.errors++;
+          stats.errorList.push(`${currentTicker}: ${err.message}`);
+        }
+      }
+      setSyncReport(stats);
+      setMsg('Reparo de histórico concluído!');
+      setStatus('success');
+    } catch (error) {
+      setStatus('error');
+      setMsg(error.message || 'Erro no reparo.');
+    } finally {
+      setLoading(false);
+      setBatchProgress(null);
+    }
+  };
 
   const resetStates = () => {
     setStatus(null);
@@ -168,14 +223,28 @@ export default function ManualPriceSync() {
         </div>
 
         {!batchProgress && (
-          <button
-            onClick={handleSyncAll}
-            disabled={loading}
-            className="hidden sm:flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
-          >
-            <Layers className="w-4 h-4" />
-            Sincronizar Carteira Completa
-          </button>
+          <div className="hidden sm:flex items-center gap-2">
+            {/* Botão Novo de Reparo */}
+            <button
+              onClick={handleRepairHistory}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-200 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
+              title="Baixa 15 anos de histórico e corrige preços ajustados"
+            >
+              <Wrench className="w-4 h-4" />
+              Reparar Histórico
+            </button>
+
+            {/* Botão Original */}
+            <button
+              onClick={handleSyncAll}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
+            >
+              <Layers className="w-4 h-4" />
+              Sincronizar Carteira Completa
+            </button>
+          </div>
         )}
       </div>
 

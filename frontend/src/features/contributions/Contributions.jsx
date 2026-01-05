@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { TrendingUp, Search, Layers, List, Tag, ChevronDown, Check } from 'lucide-react';
+import { TrendingUp, Search, Layers, List, Tag, ChevronDown, Check, Copy } from 'lucide-react';
 import { formatChartDate } from '../../utils/dateUtils.js';
 import { fetchB3Prices, fetchPriceClosestToDate } from '../../services/b3service.js';
 import { getDetailedTimeElapsed, getTypeColor } from './contributionUtils.js';
@@ -76,11 +76,15 @@ export default function Contributions() {
         uniqueTickers.map(async (ticker) => {
           try {
             const { data: priceData } = await fetchB3Prices(ticker, 1, 1);
-            const priceOld = await fetchPriceClosestToDate(ticker, dateOneYearAgoStr);
+
+            const priceOldAdjusted = await fetchPriceClosestToDate(ticker, dateOneYearAgoStr);
+
             if (priceData && priceData.length > 0) {
               marketDataMap[ticker] = {
-                current: parseFloat(priceData[0].close),
-                oneYearAgo: priceOld,
+                currentNominal: parseFloat(priceData[0].close),
+
+                currentAdjusted: parseFloat(priceData[0].adjusted_close || priceData[0].close),
+                oneYearAgoAdjusted: priceOldAdjusted,
               };
             }
           } catch (err) {
@@ -91,8 +95,9 @@ export default function Contributions() {
 
       const enrichedData = data.map((item) => {
         const marketData = marketDataMap[item.ticker];
-        const currentPrice = marketData?.current || null;
-        const priceOneYearAgo = marketData?.oneYearAgo || null;
+        const currentPrice = marketData?.currentNominal || null;
+        const currentPriceAdj = marketData?.currentAdjusted || null;
+        const priceOneYearAgoAdj = marketData?.oneYearAgoAdjusted || null;
 
         let profitValue = 0;
         let profitPercent = 0;
@@ -101,17 +106,23 @@ export default function Contributions() {
         if (currentPrice) {
           const totalPaid = Number(item.price) * Number(item.qty);
           const totalCurrent = currentPrice * Number(item.qty);
+
           profitValue = totalCurrent - totalPaid;
+
           profitPercent = ((currentPrice - Number(item.price)) / Number(item.price)) * 100;
-          if (priceOneYearAgo) {
-            asset1YGrowth = ((currentPrice - priceOneYearAgo) / priceOneYearAgo) * 100;
+
+          if (priceOneYearAgoAdj && currentPriceAdj) {
+            asset1YGrowth = ((currentPriceAdj - priceOneYearAgoAdj) / priceOneYearAgoAdj) * 100;
+          } else if (marketData?.oneYearAgoNominal) {
+            asset1YGrowth =
+              ((currentPrice - marketData.oneYearAgoNominal) / marketData.oneYearAgoNominal) * 100;
           }
         }
 
         return {
           ...item,
           currentPrice,
-          priceOneYearAgo,
+          priceOneYearAgo: priceOneYearAgoAdj,
           asset1YGrowth,
           profitValue,
           profitPercent,
@@ -192,6 +203,22 @@ export default function Contributions() {
     ad: { label: 'Ao Dia', suffix: 'a.d.' },
   };
 
+  const handleCopyDebug = () => {
+    const debugInfo = {
+      timestamp: new Date().toISOString(),
+      totalRecords: purchases.length,
+      // Pega o primeiro item completo para vermos a estrutura dos campos (adjusted, etc)
+      structureSample: purchases.length > 0 ? purchases[0] : null,
+      // Envia todos os dados
+      data: purchases,
+    };
+
+    navigator.clipboard
+      .writeText(JSON.stringify(debugInfo, null, 2))
+      .then(() => alert('Dados copiados! Cole no chat.'))
+      .catch((err) => console.error('Erro ao copiar:', err));
+  };
+
   const ContributionRow = ({ item }) => {
     const timeData = getDetailedTimeElapsed(item.trade_date);
     const totalCurrentValue = item.hasPriceData
@@ -209,6 +236,8 @@ export default function Contributions() {
     const barColorClass = isDisplayProfit
       ? 'bg-emerald-500 dark:bg-emerald-500'
       : 'bg-rose-500 dark:bg-rose-500';
+
+
 
     return (
       <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors border-b border-gray-100 dark:border-gray-800 last:border-0">
@@ -288,6 +317,14 @@ export default function Contributions() {
         </div>
 
         <div className="flex gap-2">
+          <button
+            onClick={handleCopyDebug}
+            className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium transition-colors shadow-sm"
+            title="Copiar JSON para Debug"
+          >
+            <Copy size={16} />
+            <span className="hidden sm:inline">Debug</span>
+          </button>
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input

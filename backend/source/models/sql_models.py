@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, UniqueConstraint, Date, Boolean, Numeric, Text, \
-    BigInteger, Identity, UUID, ForeignKey, Table, JSON
+    BigInteger, Identity, UUID, ForeignKey, Table, JSON, CheckConstraint
 from sqlalchemy.sql import func
 from backend.source.core.database import Base
 
@@ -43,6 +43,7 @@ class B3Price(Base):
 
     __table_args__ = (
         UniqueConstraint('ticker', 'trade_date', name='uq_ticker_trade_date'),
+        CheckConstraint('close > 0.01', name='check_price_positive'),
     )
 
 
@@ -133,3 +134,17 @@ class User(Base):
             "full_name": self.full_name,
             "avatar_url": self.avatar_url,
         }
+
+class AssetClassificationCache(Base):
+    __tablename__ = "asset_classification_cache"
+
+    ticker = Column(Text, primary_key=True)
+    detected_type = Column(Text)
+    sector = Column(Text)
+    reasoning = Column(Text)
+    quote_type = Column(Text)
+    confidence = Column(Integer)
+    raw_info_sample = Column(Text)
+    source = Column(Text)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
+    inserted_at = Column(DateTime(timezone=True), server_default=func.now())
