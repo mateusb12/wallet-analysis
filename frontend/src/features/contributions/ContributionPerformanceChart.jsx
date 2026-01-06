@@ -1,691 +1,627 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useAuth } from '../auth/AuthContext.jsx';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
-  TrendingUp,
-  Search,
-  Layers,
-  List,
-  Tag,
+  BarChart2,
+  DollarSign,
+  Percent,
+  Clock,
+  Activity,
+  Calendar,
+  AlertCircle,
+  AlertTriangle,
   ChevronDown,
-  Check,
-  Copy,
-  Sprout,
-  Timer,
-  Leaf,
-  Info,
-  HelpCircle,
-  Lock,
-  Unlock,
+  ChevronUp,
+  ArrowRight,
+  TrendingUp,
 } from 'lucide-react';
-import { formatChartDate } from '../../utils/dateUtils.js';
-import { fetchDashboardData } from '../../services/walletDataService.js';
 import { getDetailedTimeElapsed, getTypeColor } from './contributionUtils.js';
-import AssetPerformanceChart from './ContributionPerformanceChart.jsx';
+import { fetchPriceClosestToDate } from '../../services/b3service.js';
 
-const getMaturationInfo = (tradeDate) => {
-  const now = new Date();
-  const start = new Date(tradeDate);
-  const diffTime = Math.abs(now - start);
-  const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  const TARGET_DAYS = 180;
+export default function AssetPerformanceChart({ purchases, positions = [] }) {
+  const [performanceMode, setPerformanceMode] = useState('relative');
+  const [timeframe, setTimeframe] = useState(1);
+  const [benchmarkData, setBenchmarkData] = useState({});
+  const [loadingBenchmark, setLoadingBenchmark] = useState(false);
+  const [isPortfolioExpanded, setIsPortfolioExpanded] = useState(false);
 
-  const progressPercent = Math.min(100, (days / TARGET_DAYS) * 100);
-  const isMature = days >= TARGET_DAYS;
+  const [tooltipState, setTooltipState] = useState({
+    visible: false,
+    x: 0,
+    y: 0,
+    data: null,
+  });
 
-  let stage = {
-    label: 'Maturado',
-    barClass: '',
-    textClass: '',
-  };
+  const uniqueAssetsInfo = useMemo(() => {
+    if (!purchases || !purchases.length) return {};
+    const assets = {};
 
-  if (!isMature) {
-    if (days < 60) {
-      stage = {
-        label: 'Semente',
-        colorData: 'slate',
-        icon: <Sprout size={14} />,
-        barClass: 'bg-slate-400 dark:bg-slate-500',
-        textClass: 'text-slate-600 dark:text-slate-400',
-      };
-    } else if (days < 120) {
-      stage = {
-        label: 'Enraizando',
-        colorData: 'blue',
-        icon: <Leaf size={14} />,
-        barClass: 'bg-blue-400 dark:bg-blue-500',
-        textClass: 'text-blue-600 dark:text-blue-400',
-      };
-    } else {
-      stage = {
-        label: 'Consolidando',
-        colorData: 'indigo',
-        icon: <Timer size={14} />,
-        barClass: 'bg-indigo-400 dark:bg-indigo-500',
-        textClass: 'text-indigo-600 dark:text-indigo-400',
-      };
-    }
-  }
-
-  return { days, progressPercent, isMature, stage };
-};
-
-const getOldSystemValueColor = (val) => {
-  if (val > 0) return 'text-emerald-600 dark:text-emerald-400';
-  if (val < 0) return 'text-rose-600 dark:text-rose-400';
-  return 'text-gray-600 dark:text-gray-400';
-};
-
-const calculateEquivalentRate = (totalProfitPercent, tradeDate, mode) => {
-  if (mode === 'total' || !totalProfitPercent) return totalProfitPercent;
-  const start = new Date(tradeDate);
-  const now = new Date();
-  const diffTime = Math.abs(now - start);
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  if (diffDays < 1) return totalProfitPercent;
-
-  const multiplier = 1 + totalProfitPercent / 100;
-  let exponent = 1;
-  if (mode === 'aa') exponent = 365 / diffDays;
-  if (mode === 'am') exponent = 30 / diffDays;
-  if (mode === 'ad') exponent = 1 / diffDays;
-
-  const adjusted = Math.pow(multiplier, exponent) - 1;
-  return adjusted * 100;
-};
-
-export default function Contributions() {
-  const { user } = useAuth();
-  const [purchases, setPurchases] = useState([]);
-
-  const [positions, setPositions] = useState([]);
-
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
-
-  const [rentabMode, setRentabMode] = useState('total');
-  const [isRentabMenuOpen, setIsRentabMenuOpen] = useState(false);
-  const rentabMenuRef = useRef(null);
-
-  const [viewMode, setViewMode] = useState('flat');
-
-  const [isProtectionMode, setIsProtectionMode] = useState(true);
-  const [showMaturationInfo, setShowMaturationInfo] = useState(false);
-
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (rentabMenuRef.current && !rentabMenuRef.current.contains(event.target)) {
-        setIsRentabMenuOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    if (user?.id) fetchAllData();
-  }, [user]);
-
-  const fetchAllData = async () => {
-    setLoading(true);
-    try {
-      const dashboardData = await fetchDashboardData();
-
-      const rawPositions = dashboardData.positions || [];
-      const transactions = dashboardData.transactions || [];
-
-      setPositions(rawPositions);
-
-      const priceMap = {};
-
-      rawPositions.forEach((pos) => {
-        let price = pos.close || pos.current_price || pos.price_close;
-
-        if (!price && pos.total_value_current && pos.qty) {
-          price = pos.total_value_current / pos.qty;
-        }
-
-        if (price) {
-          priceMap[pos.ticker] = parseFloat(price);
-        }
-      });
-
-      const enrichedData = transactions.map((item) => {
-        const currentPrice = priceMap[item.ticker] || null;
-
-        let profitValue = 0;
-        let profitPercent = 0;
-        let asset1YGrowth = null;
-
-        if (currentPrice) {
-          const totalPaid = Number(item.price) * Number(item.qty);
-          const totalCurrent = currentPrice * Number(item.qty);
-          profitValue = totalCurrent - totalPaid;
-          profitPercent = ((currentPrice - Number(item.price)) / Number(item.price)) * 100;
-        }
-
-        return {
-          ...item,
-          currentPrice,
-
-          asset1YGrowth,
-          profitValue,
-          profitPercent,
-          hasPriceData: !!currentPrice,
+    purchases.forEach((p) => {
+      if (!assets[p.ticker]) {
+        assets[p.ticker] = {
+          currentPrice: p.currentPrice,
+          firstTradeDate: p.trade_date,
         };
-      });
+      }
 
-      const sorted = enrichedData.sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
-      setPurchases(sorted);
-    } catch (error) {
-      console.error('Erro ao buscar aportes unificados:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (new Date(p.trade_date) < new Date(assets[p.ticker].firstTradeDate)) {
+        assets[p.ticker].firstTradeDate = p.trade_date;
+      }
+    });
+    return assets;
+  }, [purchases]);
 
-  const filteredPurchases = purchases.filter((item) => {
-    const matchesSearch =
-      item.ticker.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.name && item.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesType = typeFilter === 'all' || item.type === typeFilter;
-    return matchesSearch && matchesType;
-  });
+  useEffect(() => {
+    const fetchBenchmarks = async () => {
+      const assetKeys = Object.keys(uniqueAssetsInfo);
+      if (assetKeys.length === 0) return;
 
-  const processedPurchases = filteredPurchases.map((item) => {
-    const displayPercent = calculateEquivalentRate(item.profitPercent, item.trade_date, rentabMode);
-    return { ...item, displayPercent };
-  });
+      setLoadingBenchmark(true);
+      const newBenchmarks = {};
 
-  const groupedData = useMemo(() => {
-    if (viewMode === 'flat') return null;
-    const groups = {};
-    processedPurchases.forEach((item) => {
-      if (!groups[item.ticker]) {
-        groups[item.ticker] = {
+      const now = new Date();
+      const targetDate = new Date();
+      targetDate.setFullYear(targetDate.getFullYear() - timeframe);
+      const targetDateStr = targetDate.toISOString().split('T')[0];
+
+      await Promise.all(
+        assetKeys.map(async (ticker) => {
+          try {
+            const { currentPrice, firstTradeDate } = uniqueAssetsInfo[ticker];
+
+            let historicalPrice = await fetchPriceClosestToDate(ticker, targetDateStr);
+            let usedDate = targetDate;
+            let isPartial = false;
+
+            if (!historicalPrice && firstTradeDate) {
+              historicalPrice = await fetchPriceClosestToDate(ticker, firstTradeDate);
+              usedDate = new Date(firstTradeDate);
+              isPartial = true;
+            }
+
+            if (historicalPrice && currentPrice) {
+              const diffTime = Math.abs(now - usedDate);
+              const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365.25);
+
+              if (diffYears < 0.001) {
+                newBenchmarks[ticker] = null;
+                return;
+              }
+
+              let finalValue;
+              let isSimpleReturn = false;
+
+              if (diffYears < 1) {
+                const totalReturn = (currentPrice - historicalPrice) / historicalPrice;
+                finalValue = totalReturn * 100;
+                isSimpleReturn = true;
+              } else {
+                const cagr = Math.pow(currentPrice / historicalPrice, 1 / diffYears) - 1;
+                finalValue = cagr * 100;
+              }
+
+              newBenchmarks[ticker] = {
+                value: finalValue,
+                isPartial,
+                isSimpleReturn,
+                startDate: usedDate.toISOString().split('T')[0],
+                years: diffYears,
+              };
+            } else {
+              newBenchmarks[ticker] = null;
+            }
+          } catch (error) {
+            console.error(`Erro ao calc benchmark para ${ticker}`, error);
+            newBenchmarks[ticker] = null;
+          }
+        })
+      );
+
+      setBenchmarkData(newBenchmarks);
+      setLoadingBenchmark(false);
+    };
+
+    fetchBenchmarks();
+  }, [uniqueAssetsInfo, timeframe]);
+
+  const assetPerformance = useMemo(() => {
+    if (!purchases || !purchases.length) return [];
+
+    const aggregation = {};
+    purchases.forEach((item) => {
+      if (!aggregation[item.ticker]) {
+        aggregation[item.ticker] = {
           ticker: item.ticker,
           type: item.type,
-          items: [],
-          totalQty: 0,
-          totalPaid: 0,
-          totalCurrent: 0,
+          totalInvested: 0,
           totalProfit: 0,
+          hasData: false,
+          firstTradeDate: item.trade_date,
+          benchmarkData: null,
         };
       }
-      const g = groups[item.ticker];
-      g.items.push(item);
+      const cost = Number(item.price) * Number(item.qty);
+      aggregation[item.ticker].totalInvested += cost;
 
-      const paid = Number(item.price) * Number(item.qty);
-      const current = item.hasPriceData ? Number(item.currentPrice) * Number(item.qty) : 0;
-
-      g.totalQty += Number(item.qty);
-      g.totalPaid += paid;
-      g.totalCurrent += current;
       if (item.hasPriceData) {
-        g.totalProfit += current - paid;
+        aggregation[item.ticker].totalProfit += item.profitValue;
+        aggregation[item.ticker].hasData = true;
+      }
+
+      if (new Date(item.trade_date) < new Date(aggregation[item.ticker].firstTradeDate)) {
+        aggregation[item.ticker].firstTradeDate = item.trade_date;
       }
     });
 
-    return Object.keys(groups)
-      .sort()
-      .reduce((obj, key) => {
-        obj[key] = groups[key];
-        return obj;
-      }, {});
-  }, [processedPurchases, viewMode]);
+    return Object.values(aggregation)
+      .filter((a) => a.hasData)
+      .map((item) => {
+        const totalYieldPercent =
+          item.totalInvested > 0 ? (item.totalProfit / item.totalInvested) * 100 : 0;
+        const timeData = getDetailedTimeElapsed(item.firstTradeDate);
 
-  const maxAbsPercent = Math.max(
-    0.1,
-    ...processedPurchases.map((i) => Math.abs(i.displayPercent || 0))
-  );
+        const positionData = positions?.find((p) => p.ticker === item.ticker);
+        const realYearlyBreakdown = positionData?.yearly_breakdown || [];
 
-  const rentabOptions = {
-    total: { label: 'Total', suffix: '' },
-    aa: { label: 'Ao Ano', suffix: 'a.a.' },
-    am: { label: 'Ao Mês', suffix: 'a.m.' },
-    ad: { label: 'Ao Dia', suffix: 'a.d.' },
-  };
+        return {
+          ...item,
+          totalYieldPercent,
+          timeData,
+          benchmarkData: benchmarkData[item.ticker],
+          yearlyBreakdown: realYearlyBreakdown,
+        };
+      })
+      .sort((a, b) =>
+        performanceMode === 'relative'
+          ? b.totalYieldPercent - a.totalYieldPercent
+          : b.totalProfit - a.totalProfit
+      );
+  }, [purchases, performanceMode, benchmarkData, positions]);
 
-  const handleCopyDebug = () => {
-    const debugInfo = {
-      timestamp: new Date().toISOString(),
-      totalRecords: purchases.length,
-      data: purchases,
+  const portfolioStats = useMemo(() => {
+    if (!assetPerformance.length) return null;
+
+    let totalInvested = 0;
+    let totalProfit = 0;
+
+    let weightedBenchmarkSum = 0;
+    let totalWeightForBenchmark = 0;
+    let hasPartialAssets = false;
+
+    let oldestDate = new Date();
+
+    assetPerformance.forEach((asset) => {
+      totalInvested += asset.totalInvested;
+      totalProfit += asset.totalProfit;
+
+      if (new Date(asset.firstTradeDate) < oldestDate) {
+        oldestDate = new Date(asset.firstTradeDate);
+      }
+
+      const currentAssetValue = asset.totalInvested + asset.totalProfit;
+      const benchData = asset.benchmarkData;
+
+      if (currentAssetValue > 0 && benchData && benchData.value !== null) {
+        weightedBenchmarkSum += benchData.value * currentAssetValue;
+        totalWeightForBenchmark += currentAssetValue;
+        if (benchData.isPartial) hasPartialAssets = true;
+      }
+    });
+
+    const totalYieldPercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
+
+    const portfolioBenchmark =
+      totalWeightForBenchmark > 0 ? weightedBenchmarkSum / totalWeightForBenchmark : null;
+
+    return {
+      ticker: 'CARTEIRA',
+      type: 'TOTAL',
+      totalProfit,
+      totalYieldPercent,
+      totalInvested,
+      timeData: getDetailedTimeElapsed(oldestDate),
+      benchmarkGrowth: portfolioBenchmark,
+      hasPartialAssets,
     };
-    navigator.clipboard.writeText(JSON.stringify(debugInfo, null, 2));
-    alert('Debug copiado!');
+  }, [assetPerformance]);
+
+  const contributionBreakdown = useMemo(() => {
+    if (!portfolioStats || portfolioStats.benchmarkGrowth === null || !assetPerformance.length)
+      return [];
+
+    return assetPerformance
+      .filter(
+        (asset) => asset.benchmarkData?.value !== null && asset.benchmarkData?.value !== undefined
+      )
+      .map((asset) => {
+        return {
+          ...asset,
+          rawReturn: asset.benchmarkData.value,
+        };
+      })
+      .sort((a, b) => b.rawReturn - a.rawReturn);
+  }, [assetPerformance, portfolioStats]);
+
+  const maxValue = useMemo(() => {
+    if (!assetPerformance.length) return 0;
+    const assetsMax = Math.max(
+      ...assetPerformance.map((a) =>
+        Math.abs(performanceMode === 'relative' ? a.totalYieldPercent : a.totalProfit)
+      )
+    );
+    if (portfolioStats) {
+      const portfolioVal = Math.abs(
+        performanceMode === 'relative'
+          ? portfolioStats.totalYieldPercent
+          : portfolioStats.totalProfit
+      );
+      return Math.max(assetsMax, portfolioVal);
+    }
+    return assetsMax;
+  }, [assetPerformance, performanceMode, portfolioStats]);
+
+  const handleMouseEnter = (e, asset) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+
+    setTooltipState({
+      visible: true,
+      x: rect.right + 10,
+      y: rect.top,
+      data: asset,
+    });
   };
 
-  const MaturationExplanation = () => (
-    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg p-4 mb-6 relative animate-fade-in">
-      <button
-        onClick={() => setShowMaturationInfo(false)}
-        className="absolute top-2 right-2 text-blue-400 hover:text-blue-600"
-      >
-        ✕
-      </button>
-      <div className="flex gap-3">
-        <div className="mt-1">
-          <Info className="text-blue-500" size={20} />
-        </div>
-        <div>
-          <h4 className="font-bold text-blue-900 dark:text-blue-100 text-sm mb-1">
-            Proteção de Volatilidade Ativada
-          </h4>
-          <p className="text-sm text-blue-700 dark:text-blue-300 leading-relaxed max-w-3xl">
-            <strong>Controle o que é possível: o tempo.</strong> O cérebro humano supervaloriza
-            eventos recentes, mas janelas curtas ( menos de 180 dias) são irrelevantes para o longo
-            prazo. Para proteger sua disciplina, transformamos a variação financeira em uma contagem
-            regressiva. Nesse período, a barra indica{' '}
-            <strong>tempo decorrido até a maturação</strong>, não lucro.
-          </p>
-          <div className="flex flex-wrap gap-4 mt-3">
-            <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
-              <span className="w-2 h-2 rounded-full bg-slate-400"></span> 0-2 Meses (Semente)
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400">
-              <span className="w-2 h-2 rounded-full bg-blue-400"></span> 2-4 Meses (Enraizando)
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400">
-              <span className="w-2 h-2 rounded-full bg-indigo-400"></span> 4-6 Meses (Consolidando)
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  const handleMouseLeave = () => {
+    setTooltipState((prev) => ({ ...prev, visible: false }));
+  };
 
-  const ContributionRow = ({ item }) => {
-    const timeData = getDetailedTimeElapsed(item.trade_date);
-    const maturation = getMaturationInfo(item.trade_date);
+  const renderBar = (item, isPortfolio = false, overrideValue = null, overrideMax = null) => {
+    const displayValue =
+      overrideValue !== null
+        ? overrideValue
+        : performanceMode === 'absolute'
+          ? item.totalProfit
+          : item.totalYieldPercent;
 
-    const useMaturationVisuals = isProtectionMode && !maturation.isMature;
+    const isProfit = displayValue >= 0;
+    const calculationMax = overrideMax !== null ? overrideMax : maxValue;
+    const rawPercentage = calculationMax > 0 ? Math.abs(displayValue) / calculationMax : 0;
+    const widthPercentage = Math.max(1, rawPercentage * 100);
 
-    const totalCurrentValue = item.hasPriceData
-      ? Number(item.currentPrice) * Number(item.qty)
-      : null;
-    const totalPaidValue = Number(item.price) * Number(item.qty);
-
-    const isSimpleProfit = totalCurrentValue >= totalPaidValue;
-    const isDisplayProfit = (item.displayPercent || 0) >= 0;
-    const rawPercent = item.hasPriceData ? item.displayPercent : 0;
-    const absPercent = Math.abs(rawPercent);
-    const barWidth = Math.min(100, (absPercent / maxAbsPercent) * 100);
-
-    let valueTextColor, percentTextColor, progressBarColor, barWidthToRender, percentageText;
-
-    if (useMaturationVisuals) {
-      valueTextColor = 'text-gray-400 dark:text-gray-500 font-normal';
-      percentTextColor = maturation.stage.textClass;
-
-      progressBarColor = maturation.stage.barClass;
-      barWidthToRender = maturation.progressPercent;
-
-      percentageText = (
-        <div className="flex items-center justify-end gap-1">
-          {maturation.stage.icon}
-          <span className="text-[10px] uppercase font-bold tracking-wide">
-            {maturation.stage.label} {Math.floor(maturation.progressPercent)}%
-          </span>
-        </div>
-      );
+    let formattedValue;
+    if (overrideValue !== null) {
+      formattedValue = `${displayValue > 0 ? '+' : ''}${displayValue.toFixed(2)}%`;
     } else {
-      valueTextColor = isSimpleProfit
-        ? 'text-green-600 dark:text-green-400'
-        : 'text-red-600 dark:text-red-400';
-
-      percentTextColor = isDisplayProfit
-        ? 'text-emerald-600 dark:text-emerald-400'
-        : 'text-rose-600 dark:text-rose-400';
-
-      progressBarColor = isDisplayProfit
-        ? 'bg-emerald-500 dark:bg-emerald-500'
-        : 'bg-rose-500 dark:bg-rose-500';
-      barWidthToRender = barWidth;
-
-      percentageText = (
-        <>
-          {isDisplayProfit ? '+' : ''}
-          {rawPercent.toFixed(2)}%
-        </>
-      );
+      formattedValue =
+        performanceMode === 'absolute'
+          ? displayValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+          : `${displayValue > 0 ? '+' : ''}${displayValue.toFixed(2)}%`;
     }
 
-    const valAtualColor = isSimpleProfit
-      ? 'text-green-600 dark:text-green-400'
-      : 'text-red-600 dark:text-red-400';
-
-    const finalValAtualColor = useMaturationVisuals ? valueTextColor : valAtualColor;
-
     return (
-      <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors border-b border-gray-100 dark:border-gray-800 last:border-0">
-        <td className="px-6 py-4 text-center whitespace-nowrap text-gray-600 dark:text-gray-300">
-          {formatChartDate(item.trade_date)}
-        </td>
-        <td className="px-6 py-4 text-center font-bold text-gray-900 dark:text-white">
-          {item.ticker}
-        </td>
-        <td className="px-6 py-4 text-center">
+      <div
+        className={`flex-1 h-9 rounded-lg relative flex items-center ${isPortfolio ? 'bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-900 shadow-sm' : 'bg-gray-50 dark:bg-gray-700/50'}`}
+      >
+        <div className="absolute inset-0 rounded-lg overflow-hidden">
+          <div
+            className={`h-full transition-all duration-500 ease-out rounded-r-lg ${
+              isProfit
+                ? isPortfolio
+                  ? 'bg-indigo-500/20 border-r-4 border-indigo-500'
+                  : 'bg-green-500/20 border-r-4 border-green-500'
+                : 'bg-red-500/20 border-r-4 border-red-500'
+            }`}
+            style={{ width: `${widthPercentage}%` }}
+          />
+        </div>
+
+        <div className="absolute inset-0 flex items-center pl-3 pointer-events-none">
           <span
-            className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${getTypeColor(item.type)}`}
+            className={`font-medium z-10 ${
+              isProfit
+                ? isPortfolio
+                  ? 'text-indigo-700 dark:text-indigo-300 font-bold'
+                  : 'text-green-700 dark:text-green-300'
+                : 'text-red-700 dark:text-red-300'
+            }`}
           >
-            {item.type}
+            {formattedValue}
           </span>
-        </td>
-        <td className="px-6 py-4 text-center text-gray-900 dark:text-white font-mono">
-          {item.qty}
-        </td>
-        <td className="px-6 py-4 text-center text-gray-600 dark:text-gray-300 font-mono">
-          {Number(item.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-        </td>
-        <td className="px-6 py-4 text-center font-medium text-gray-900 dark:text-white font-mono">
-          {totalPaidValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-        </td>
-
-        {}
-        <td
-          className={`px-6 py-4 text-center font-bold bg-gray-50/50 dark:bg-gray-800/50 border-l border-gray-100 dark:border-gray-700 font-mono ${item.hasPriceData ? finalValAtualColor : 'text-gray-400'}`}
-        >
-          {totalCurrentValue !== null
-            ? totalCurrentValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-            : '-'}
-        </td>
-
-        {}
-        <td className="px-6 py-4 text-center text-gray-500 dark:text-gray-400 border-l border-gray-100 dark:border-gray-700 font-medium text-xs">
-          <div className="flex flex-col items-center justify-center">
-            <span>{timeData.short}</span>
-            {}
-            {useMaturationVisuals && (
-              <span className="text-[9px] text-gray-400">{maturation.days}/180 dias</span>
-            )}
-          </div>
-        </td>
-
-        {}
-        <td
-          className={`px-6 py-4 text-right font-bold font-mono ${item.hasPriceData ? (useMaturationVisuals ? valueTextColor : getOldSystemValueColor(item.profitValue)) : ''}`}
-        >
-          {item.hasPriceData ? (
-            <div className="flex flex-col items-end">
-              <span>
-                {item.profitValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-              </span>
-
-              {}
-              {useMaturationVisuals && (
-                <span
-                  className={`text-[9px] ${(item.displayPercent || 0) >= 0 ? 'text-green-600/60' : 'text-red-600/60'}`}
-                >
-                  ({(item.displayPercent || 0) >= 0 ? '+' : ''}
-                  {rawPercent.toFixed(1)}%)
-                </span>
-              )}
-            </div>
-          ) : (
-            '-'
+          {overrideValue !== null && (
+            <span className="ml-2 text-[10px] text-gray-400 font-normal uppercase tracking-wider opacity-60">
+              pts
+            </span>
           )}
-        </td>
-
-        {}
-        <td className="px-6 py-4 align-middle">
-          {item.hasPriceData ? (
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center w-full gap-3">
-                <div className={`w-24 text-right font-bold text-xs ${percentTextColor}`}>
-                  {percentageText}
-                </div>
-                <div className="flex-1 h-2.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex items-center relative">
-                  {}
-                  {useMaturationVisuals && (
-                    <div className="absolute inset-0 opacity-10 bg-[linear-gradient(45deg,transparent_25%,#000_25%,#000_50%,transparent_50%,transparent_75%,#000_75%,#000_100%)] bg-[length:10px_10px]" />
-                  )}
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 shadow-sm ${progressBarColor}`}
-                    style={{ width: `${barWidthToRender}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          ) : (
-            <span className="text-gray-400 text-xs text-center block">S/ Dados</span>
-          )}
-        </td>
-      </tr>
+        </div>
+      </div>
     );
   };
 
+  if (assetPerformance.length === 0) return null;
+
   return (
-    <div className="p-4 md:p-8 max-w-[90rem] mx-auto pb-20">
-      <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
-            <TrendingUp className="w-8 h-8 text-green-600" /> Meus Aportes
-          </h2>
-          <div className="flex items-center gap-2 mt-1">
-            <p className="text-gray-600 dark:text-gray-400">
-              Histórico completo e análise de performance.
-            </p>
-            {isProtectionMode && (
-              <button
-                onClick={() => setShowMaturationInfo(!showMaturationInfo)}
-                className="text-blue-500 hover:text-blue-700 transition-colors"
-                title="O que é o modo protegido?"
-              >
-                <HelpCircle size={16} />
-              </button>
-            )}
-          </div>
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-all relative">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-2">
+          <BarChart2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+          <h3 className="text-xl font-bold text-gray-800 dark:text-white">Performance por Ativo</h3>
         </div>
 
-        <div className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
-          {}
-          <button
-            onClick={() => {
-              setIsProtectionMode(!isProtectionMode);
-              if (!isProtectionMode) setShowMaturationInfo(true);
-            }}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all shadow-sm ${
-              isProtectionMode
-                ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300'
-                : 'bg-gray-50 border-gray-200 text-gray-500 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400'
-            }`}
-            title={
-              isProtectionMode
-                ? 'Desativar proteção de volatilidade'
-                : 'Ativar proteção de volatilidade'
-            }
-          >
-            {isProtectionMode ? <Lock size={16} /> : <Unlock size={16} />}
-            <span className="text-sm font-medium hidden sm:inline">
-              {isProtectionMode ? 'Protegido' : 'Modo padrão'}
-            </span>
-          </button>
-
-          <div className="h-6 w-px bg-gray-300 dark:bg-gray-600 mx-1 hidden sm:block"></div>
-
-          <button
-            onClick={handleCopyDebug}
-            className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium transition-colors shadow-sm"
-          >
-            <Copy size={16} />
-            <span className="hidden sm:inline">Debug</span>
-          </button>
-
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar..."
-              className="pl-9 pr-4 py-2 w-32 sm:w-auto rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-green-500 outline-none dark:text-white"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+            <div className="px-2 text-gray-400 dark:text-gray-400">
+              <Calendar size={14} />
+            </div>
+            <select
+              value={timeframe}
+              onChange={(e) => setTimeframe(Number(e.target.value))}
+              className="bg-transparent text-sm font-medium text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer py-1 pr-2"
+            >
+              <option value={1}>1 Ano (12m)</option>
+              <option value={2}>2 Anos (Média a.a.)</option>
+              <option value={3}>3 Anos (Média a.a.)</option>
+              <option value={4}>4 Anos (Média a.a.)</option>
+              <option value={5}>5 Anos (Média a.a.)</option>
+            </select>
           </div>
 
-          <select
-            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-green-500 outline-none dark:text-white"
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-          >
-            <option value="all">Todos</option>
-            <option value="stock">Ações</option>
-            <option value="fii">FIIs</option>
-            <option value="etf">ETFs</option>
-          </select>
-
-          <div className="flex bg-white dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-600 p-1">
+          <div className="flex items-center p-1 bg-gray-100 dark:bg-gray-700 rounded-lg">
             <button
-              onClick={() => setViewMode('flat')}
-              className={`p-1.5 rounded transition-all ${viewMode === 'flat' ? 'bg-gray-100 dark:bg-gray-700 text-green-600' : 'text-gray-400 hover:text-gray-600'}`}
+              onClick={() => setPerformanceMode('relative')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${performanceMode === 'relative' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
             >
-              <List size={18} />
+              <Percent className="w-4 h-4" /> Retorno (%)
             </button>
             <button
-              onClick={() => setViewMode('grouped')}
-              className={`p-1.5 rounded transition-all ${viewMode === 'grouped' ? 'bg-gray-100 dark:bg-gray-700 text-green-600' : 'text-gray-400 hover:text-gray-600'}`}
+              onClick={() => setPerformanceMode('absolute')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${performanceMode === 'absolute' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
             >
-              <Layers size={18} />
+              <DollarSign className="w-4 h-4" /> Valor (R$)
             </button>
           </div>
         </div>
       </div>
 
-      {}
-      {showMaturationInfo && isProtectionMode && <MaturationExplanation />}
+      <div className="space-y-4">
+        {assetPerformance.map((asset, index) => {
+          const benchData = asset.benchmarkData;
+          const hasBenchmark = benchData && benchData.value !== null;
+          const benchmarkVal = benchData?.value || 0;
+          const isPartial = benchData?.isPartial;
+          const isSimpleReturn = benchData?.isSimpleReturn;
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-visible mb-8">
-        {loading ? (
-          <div className="p-8 text-center text-gray-500">Calculando dados (Centralizado)...</div>
-        ) : (
-          <div className="overflow-auto max-h-[75vh] relative scroll-smooth">
-            <table className="w-full text-sm text-left">
-              <thead className="sticky top-0 z-20 text-xs text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
-                <tr>
-                  <th className="px-6 py-3 text-center">Data</th>
-                  <th className="px-6 py-3 text-center">Ativo</th>
-                  <th className="px-6 py-3 text-center">Tipo</th>
-                  <th className="px-6 py-3 text-center">Qtd</th>
-                  <th className="px-6 py-3 text-center">Preço Pago</th>
-                  <th className="px-6 py-3 text-center">Total Pago</th>
-                  <th className="px-6 py-3 text-center bg-gray-100/50 dark:bg-gray-700/70 border-l border-gray-200">
-                    Valor Atual
-                  </th>
-                  <th className="px-6 py-3 text-center border-l border-gray-100">Tempo</th>
-                  <th className="px-6 py-3 text-center">Rentab. (R$)</th>
-                  <th
-                    ref={rentabMenuRef}
-                    className="px-6 py-3 text-left cursor-pointer hover:bg-gray-200/50 relative min-w-[220px]"
-                    onClick={() => setIsRentabMenuOpen(!isRentabMenuOpen)}
-                  >
-                    <div className="flex items-center gap-1">
-                      Rentab. ({rentabOptions[rentabMode].label}) <ChevronDown size={14} />
+          return (
+            <div key={asset.ticker} className="flex items-center gap-4 text-sm group">
+              <div className="w-6 text-gray-400 font-mono text-xs">#{index + 1}</div>
+
+              <div className="w-24 flex-shrink-0">
+                <div className="font-bold text-gray-800 dark:text-gray-200">{asset.ticker}</div>
+                <div
+                  className={`text-[10px] uppercase font-bold w-fit px-1.5 rounded ${getTypeColor(asset.type)}`}
+                >
+                  {asset.type}
+                </div>
+              </div>
+
+              <div className="w-24 text-right hidden sm:flex flex-col items-end mr-2 border-r border-gray-100 dark:border-gray-700 pr-4">
+                <div className="flex items-center gap-1 text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">
+                  <Clock className="w-3 h-3" /> Tempo
+                </div>
+                <div className="font-mono font-bold text-gray-600 dark:text-gray-300">
+                  {asset.timeData.short}
+                </div>
+              </div>
+
+              <div className="flex-1 relative group/bench">
+                {renderBar(asset)}
+
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-end justify-center cursor-help z-20">
+                  {loadingBenchmark ? (
+                    <span className="text-[10px] text-gray-400 animate-pulse">Calc...</span>
+                  ) : hasBenchmark ? (
+                    <>
+                      <div className="flex items-center gap-1 opacity-60 group-hover/bench:opacity-100 transition-opacity">
+                        <Activity className="w-3 h-3 text-gray-400" />
+                        <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase font-bold">
+                          {isSimpleReturn
+                            ? 'Absoluto'
+                            : isPartial
+                              ? `CAGR (${benchData.years.toFixed(1)}Y)`
+                              : `Mkt ${timeframe === 1 ? '12m' : `${timeframe}Y (a.a.)`}`}
+                        </span>
+                        {(isPartial || isSimpleReturn) && (
+                          <AlertTriangle className="w-3 h-3 text-amber-500" />
+                        )}
+                      </div>
+                      <span
+                        className={`text-xs font-bold ${benchmarkVal >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}
+                      >
+                        {benchmarkVal > 0 ? '+' : ''}
+                        {benchmarkVal.toFixed(1)}%
+                      </span>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-1.5 opacity-70 group-hover/bench:opacity-100 transition-opacity">
+                      <span className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase">
+                        S/ Histórico
+                      </span>
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
                     </div>
-                    {isRentabMenuOpen && (
-                      <div className="absolute right-0 top-full mt-2 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-xl border z-50">
-                        {Object.keys(rentabOptions).map((key) => (
-                          <div
-                            key={key}
-                            className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setRentabMode(key);
-                              setIsRentabMenuOpen(false);
-                            }}
-                          >
-                            {rentabOptions[key].label}{' '}
-                            {rentabMode === key && <Check size={14} className="inline ml-2" />}
-                          </div>
-                        ))}
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {portfolioStats && (
+          <>
+            <div className="my-4 border-t border-gray-200 dark:border-gray-700 border-dashed" />
+
+            <div className="flex flex-col rounded-lg bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/30 overflow-visible transition-all duration-300">
+              <div
+                onClick={() => setIsPortfolioExpanded(!isPortfolioExpanded)}
+                className="flex items-center gap-4 text-sm group p-2 cursor-pointer hover:bg-indigo-100/50 dark:hover:bg-indigo-900/30 transition-colors"
+              >
+                <div className="w-6 text-indigo-400 flex justify-center">
+                  {isPortfolioExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                </div>
+
+                <div className="w-24 flex-shrink-0">
+                  <div className="font-black text-indigo-900 dark:text-indigo-100 tracking-tight">
+                    CARTEIRA
+                  </div>
+                  <div className="text-[10px] uppercase font-bold w-fit px-1.5 rounded bg-indigo-200 text-indigo-800 dark:bg-indigo-800 dark:text-indigo-200">
+                    GERAL
+                  </div>
+                </div>
+
+                <div className="w-24 text-right hidden sm:flex flex-col items-end mr-2 border-r border-indigo-200 dark:border-indigo-800/50 pr-4">
+                  <div className="flex items-center gap-1 text-[10px] text-indigo-400 uppercase tracking-wide mb-0.5">
+                    <Clock className="w-3 h-3" /> Início
+                  </div>
+                  <div className="font-mono font-bold text-indigo-700 dark:text-indigo-300">
+                    {portfolioStats.timeData.short}
+                  </div>
+                </div>
+
+                <div className="flex-1 relative group/bench">
+                  {renderBar(portfolioStats, true)}
+
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-end justify-center cursor-help z-20">
+                    {loadingBenchmark ? (
+                      <span className="text-[10px] text-indigo-400 animate-pulse">Calc...</span>
+                    ) : portfolioStats.benchmarkGrowth !== null ? (
+                      <>
+                        <div className="flex items-center gap-1 opacity-60 group-hover/bench:opacity-100 transition-opacity">
+                          <Activity className="w-3 h-3 text-indigo-400" />
+                          <span className="text-[9px] text-indigo-500 dark:text-indigo-400 uppercase font-bold">
+                            Média {timeframe === 1 ? '12m' : `${timeframe}Y`}
+                          </span>
+                          {portfolioStats.hasPartialAssets && (
+                            <AlertTriangle className="w-3 h-3 text-indigo-400" />
+                          )}
+                        </div>
+                        <span
+                          className={`text-xs font-bold ${portfolioStats.benchmarkGrowth >= 0 ? 'text-indigo-600 dark:text-indigo-300' : 'text-indigo-400'}`}
+                        >
+                          {portfolioStats.benchmarkGrowth > 0 ? '+' : ''}
+                          {portfolioStats.benchmarkGrowth.toFixed(1)}%
+                        </span>
+                      </>
+                    ) : (
+                      <div className="flex items-center gap-1.5 opacity-60">
+                        <span className="text-[9px] font-bold text-indigo-300 uppercase">
+                          S/ Dados
+                        </span>
                       </div>
                     )}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {viewMode === 'flat' ? (
-                  processedPurchases.length > 0 ? (
-                    processedPurchases.map((item) => <ContributionRow key={item.id} item={item} />)
-                  ) : (
-                    <tr>
-                      <td colSpan="10" className="p-8 text-center text-gray-500">
-                        Nenhum aporte.
-                      </td>
-                    </tr>
-                  )
-                ) : groupedData && Object.keys(groupedData).length > 0 ? (
-                  Object.keys(groupedData).map((ticker) => {
-                    const group = groupedData[ticker];
-                    return (
-                      <React.Fragment key={ticker}>
-                        <tr className="bg-gray-100 dark:bg-gray-900 border-y border-gray-300 dark:border-gray-600">
-                          <td colSpan="10" className="px-6 py-2">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <Tag size={16} className="text-gray-500" />
-                                <span className="font-bold text-base text-gray-800 dark:text-gray-100">
-                                  {ticker}
-                                </span>
-                                <span
-                                  className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${getTypeColor(group.type)}`}
-                                >
-                                  {group.type}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  ({group.items.length} aportes)
-                                </span>
-                              </div>
-                              <div className="flex gap-6 text-xs font-mono text-gray-600 dark:text-gray-400">
-                                <div>
-                                  Qtd: <span className="font-bold">{group.totalQty}</span>
-                                </div>
-                                <div>
-                                  Pago:{' '}
-                                  <span className="font-bold">
-                                    {group.totalPaid.toLocaleString('pt-BR', {
-                                      style: 'currency',
-                                      currency: 'BRL',
-                                    })}
-                                  </span>
-                                </div>
-                                <div
-                                  className={
-                                    group.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'
-                                  }
-                                >
-                                  Res:{' '}
-                                  <span className="font-bold">
-                                    {group.totalProfit.toLocaleString('pt-BR', {
-                                      style: 'currency',
-                                      currency: 'BRL',
-                                    })}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                        {group.items.map((item) => (
-                          <ContributionRow key={item.id} item={item} />
-                        ))}
-                      </React.Fragment>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan="10" className="p-8 text-center text-gray-500">
-                      Nenhum aporte.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                  </div>
+                </div>
+              </div>
+
+              {isPortfolioExpanded && (
+                <div className="px-4 py-3 bg-white/50 dark:bg-gray-800/30 border-t border-indigo-100 dark:border-indigo-800/30 animate-in slide-in-from-top-2 duration-200">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-indigo-800 dark:text-indigo-200 uppercase tracking-wider flex items-center gap-2">
+                      <Activity className="w-3.5 h-3.5" />
+                      Ranking de Eficiência Histórica
+                    </h4>
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 text-right">
+                      Passe o mouse para ver detalhes anuais
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 relative">
+                    {contributionBreakdown.map((asset) => {
+                      const maxRawReturn = Math.max(
+                        ...contributionBreakdown.map((a) => Math.abs(a.rawReturn)),
+                        Math.abs(portfolioStats.benchmarkGrowth || 0)
+                      );
+
+                      const isAboveAverage =
+                        asset.rawReturn > (portfolioStats.benchmarkGrowth || 0);
+
+                      return (
+                        <div key={asset.ticker} className="flex items-center gap-3 text-xs">
+                          <div className="w-24 font-semibold text-gray-600 dark:text-gray-300 flex flex-col">
+                            <span className="flex items-center gap-1">
+                              <ArrowRight
+                                size={10}
+                                className={isAboveAverage ? 'text-green-500' : 'text-gray-300'}
+                              />
+                              {asset.ticker}
+                            </span>
+
+                            {}
+                            <span
+                              className="text-[9px] text-gray-400 pl-3 font-normal opacity-75 flex items-center gap-1 cursor-help hover:text-gray-600 dark:hover:text-gray-200 transition-colors w-fit"
+                              onMouseEnter={(e) => handleMouseEnter(e, asset)}
+                              onMouseLeave={handleMouseLeave}
+                            >
+                              Ver Anual <TrendingUp size={8} />
+                            </span>
+                          </div>
+                          <div className="flex-1 relative pointer-events-none">
+                            {renderBar(asset, false, asset.rawReturn, maxRawReturn)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-gray-100 dark:border-gray-700/50 text-[10px] text-center text-gray-400 italic">
+                    Ordenado pela rentabilidade do ativo.
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
 
       {}
-      <AssetPerformanceChart purchases={purchases} positions={positions} />
+      {tooltipState.visible && tooltipState.data && (
+        <div
+          className="fixed z-50 bg-slate-900 border border-slate-700 text-white p-3 rounded-lg shadow-2xl pointer-events-none animate-in fade-in zoom-in-95 duration-150 min-w-[160px]"
+          style={{
+            top: tooltipState.y - 10,
+            left: tooltipState.x,
+            transform: window.innerWidth - tooltipState.x < 200 ? 'translateX(-105%)' : 'none',
+          }}
+        >
+          <div className="flex items-center justify-between border-b border-slate-700 pb-2 mb-2">
+            <span className="font-bold text-sm">{tooltipState.data.ticker}</span>
+            <span className="text-[10px] text-slate-400 uppercase">Ano a Ano</span>
+          </div>
+
+          <div className="space-y-1">
+            {tooltipState.data.yearlyBreakdown && tooltipState.data.yearlyBreakdown.length > 0 ? (
+              tooltipState.data.yearlyBreakdown.map((yearItem) => (
+                <div key={yearItem.year} className="flex justify-between items-center text-xs">
+                  <span className="text-slate-400 font-mono">{yearItem.year}</span>
+                  <span
+                    className={`font-bold font-mono ${yearItem.value >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}
+                  >
+                    {yearItem.value > 0 ? '+' : ''}
+                    {yearItem.value.toFixed(1)}%
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="text-xs text-slate-500 italic py-1 text-center">
+                Sem histórico anual.
+              </div>
+            )}
+          </div>
+
+          <div className="mt-2 pt-2 border-t border-slate-700 flex justify-between items-center text-xs">
+            <span className="text-slate-500">Média (CAGR)</span>
+            <span
+              className={`font-bold ${tooltipState.data.rawReturn >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}
+            >
+              {tooltipState.data.rawReturn.toFixed(1)}%
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -96,6 +96,9 @@ const calculateEquivalentRate = (totalProfitPercent, tradeDate, mode) => {
 export default function Contributions() {
   const { user } = useAuth();
   const [purchases, setPurchases] = useState([]);
+
+  const [positions, setPositions] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -128,12 +131,14 @@ export default function Contributions() {
     try {
       const dashboardData = await fetchDashboardData();
 
-      const positions = dashboardData.positions || [];
+      const rawPositions = dashboardData.positions || [];
       const transactions = dashboardData.transactions || [];
+
+      setPositions(rawPositions);
 
       const priceMap = {};
 
-      positions.forEach((pos) => {
+      rawPositions.forEach((pos) => {
         let price = pos.close || pos.current_price || pos.price_close;
 
         if (!price && pos.total_value_current && pos.qty) {
@@ -377,7 +382,6 @@ export default function Contributions() {
           {totalPaidValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
         </td>
 
-        {}
         <td
           className={`px-6 py-4 text-center font-bold bg-gray-50/50 dark:bg-gray-800/50 border-l border-gray-100 dark:border-gray-700 font-mono ${item.hasPriceData ? finalValAtualColor : 'text-gray-400'}`}
         >
@@ -386,18 +390,15 @@ export default function Contributions() {
             : '-'}
         </td>
 
-        {}
         <td className="px-6 py-4 text-center text-gray-500 dark:text-gray-400 border-l border-gray-100 dark:border-gray-700 font-medium text-xs">
           <div className="flex flex-col items-center justify-center">
             <span>{timeData.short}</span>
-            {}
             {useMaturationVisuals && (
               <span className="text-[9px] text-gray-400">{maturation.days}/180 dias</span>
             )}
           </div>
         </td>
 
-        {}
         <td
           className={`px-6 py-4 text-right font-bold font-mono ${item.hasPriceData ? (useMaturationVisuals ? valueTextColor : getOldSystemValueColor(item.profitValue)) : ''}`}
         >
@@ -407,7 +408,6 @@ export default function Contributions() {
                 {item.profitValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </span>
 
-              {}
               {useMaturationVisuals && (
                 <span
                   className={`text-[9px] ${(item.displayPercent || 0) >= 0 ? 'text-green-600/60' : 'text-red-600/60'}`}
@@ -422,7 +422,6 @@ export default function Contributions() {
           )}
         </td>
 
-        {}
         <td className="px-6 py-4 align-middle">
           {item.hasPriceData ? (
             <div className="flex flex-col gap-1.5">
@@ -431,7 +430,6 @@ export default function Contributions() {
                   {percentageText}
                 </div>
                 <div className="flex-1 h-2.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex items-center relative">
-                  {}
                   {useMaturationVisuals && (
                     <div className="absolute inset-0 opacity-10 bg-[linear-gradient(45deg,transparent_25%,#000_25%,#000_50%,transparent_50%,transparent_75%,#000_75%,#000_100%)] bg-[length:10px_10px]" />
                   )}
@@ -474,7 +472,6 @@ export default function Contributions() {
         </div>
 
         <div className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
-          {}
           <button
             onClick={() => {
               setIsProtectionMode(!isProtectionMode);
@@ -546,7 +543,6 @@ export default function Contributions() {
         </div>
       </div>
 
-      {}
       {showMaturationInfo && isProtectionMode && <MaturationExplanation />}
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-visible mb-8">
@@ -679,7 +675,8 @@ export default function Contributions() {
         )}
       </div>
 
-      <AssetPerformanceChart purchases={purchases} />
+      {}
+      <AssetPerformanceChart purchases={purchases} positions={positions} />
     </div>
   );
 }
