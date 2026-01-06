@@ -7,7 +7,7 @@ import {
   Activity,
   Calendar,
   AlertCircle,
-  Wallet,
+  AlertTriangle,
   ChevronDown,
   ChevronUp,
   ArrowRight,
@@ -23,12 +23,20 @@ export default function AssetPerformanceChart({ purchases }) {
 
   const [isPortfolioExpanded, setIsPortfolioExpanded] = useState(false);
 
-  const uniqueAssets = useMemo(() => {
+  const uniqueAssetsInfo = useMemo(() => {
     if (!purchases || !purchases.length) return {};
     const assets = {};
+
     purchases.forEach((p) => {
-      if (!assets[p.ticker] && p.currentPrice) {
-        assets[p.ticker] = p.currentPrice;
+      if (!assets[p.ticker]) {
+        assets[p.ticker] = {
+          currentPrice: p.currentPrice,
+          firstTradeDate: p.trade_date,
+        };
+      }
+
+      if (new Date(p.trade_date) < new Date(assets[p.ticker].firstTradeDate)) {
+        assets[p.ticker].firstTradeDate = p.trade_date;
       }
     });
     return assets;
@@ -36,33 +44,60 @@ export default function AssetPerformanceChart({ purchases }) {
 
   useEffect(() => {
     const fetchBenchmarks = async () => {
-      if (Object.keys(uniqueAssets).length === 0) return;
+      const assetKeys = Object.keys(uniqueAssetsInfo);
+      if (assetKeys.length === 0) return;
 
       setLoadingBenchmark(true);
       const newBenchmarks = {};
 
+      const now = new Date();
       const targetDate = new Date();
       targetDate.setFullYear(targetDate.getFullYear() - timeframe);
       const targetDateStr = targetDate.toISOString().split('T')[0];
 
       await Promise.all(
-        Object.keys(uniqueAssets).map(async (ticker) => {
+        assetKeys.map(async (ticker) => {
           try {
-            const currentPrice = uniqueAssets[ticker];
-            const historicalPrice = await fetchPriceClosestToDate(ticker, targetDateStr);
+            const { currentPrice, firstTradeDate } = uniqueAssetsInfo[ticker];
+
+            let historicalPrice = await fetchPriceClosestToDate(ticker, targetDateStr);
+            let usedDate = targetDate;
+            let isPartial = false;
+
+            if (!historicalPrice && firstTradeDate) {
+              historicalPrice = await fetchPriceClosestToDate(ticker, firstTradeDate);
+              usedDate = new Date(firstTradeDate);
+              isPartial = true;
+            }
 
             if (historicalPrice && currentPrice) {
-              const totalReturn = (currentPrice - historicalPrice) / historicalPrice;
-              let annualizedReturn;
+              const diffTime = Math.abs(now - usedDate);
+              const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365.25);
 
-              if (timeframe === 1) {
-                annualizedReturn = totalReturn * 100;
-              } else {
-                const cagr = Math.pow(currentPrice / historicalPrice, 1 / timeframe) - 1;
-                annualizedReturn = cagr * 100;
+              if (diffYears < 0.001) {
+                newBenchmarks[ticker] = null;
+                return;
               }
 
-              newBenchmarks[ticker] = annualizedReturn;
+              let finalValue;
+              let isSimpleReturn = false;
+
+              if (diffYears < 1) {
+                const totalReturn = (currentPrice - historicalPrice) / historicalPrice;
+                finalValue = totalReturn * 100;
+                isSimpleReturn = true;
+              } else {
+                const cagr = Math.pow(currentPrice / historicalPrice, 1 / diffYears) - 1;
+                finalValue = cagr * 100;
+              }
+
+              newBenchmarks[ticker] = {
+                value: finalValue,
+                isPartial,
+                isSimpleReturn,
+                startDate: usedDate.toISOString().split('T')[0],
+                years: diffYears,
+              };
             } else {
               newBenchmarks[ticker] = null;
             }
@@ -78,7 +113,7 @@ export default function AssetPerformanceChart({ purchases }) {
     };
 
     fetchBenchmarks();
-  }, [uniqueAssets, timeframe]);
+  }, [uniqueAssetsInfo, timeframe]);
 
   const assetPerformance = useMemo(() => {
     if (!purchases || !purchases.length) return [];
@@ -93,7 +128,7 @@ export default function AssetPerformanceChart({ purchases }) {
           totalProfit: 0,
           hasData: false,
           firstTradeDate: item.trade_date,
-          benchmarkGrowth: 0,
+          benchmarkData: null,
         };
       }
       const cost = Number(item.price) * Number(item.qty);
@@ -119,7 +154,7 @@ export default function AssetPerformanceChart({ purchases }) {
           ...item,
           totalYieldPercent,
           timeData,
-          benchmarkGrowth: benchmarkData[item.ticker],
+          benchmarkData: benchmarkData[item.ticker],
         };
       })
       .sort((a, b) =>
@@ -137,6 +172,7 @@ export default function AssetPerformanceChart({ purchases }) {
 
     let weightedBenchmarkSum = 0;
     let totalWeightForBenchmark = 0;
+    let hasPartialAssets = false;
 
     let oldestDate = new Date();
 
@@ -149,11 +185,12 @@ export default function AssetPerformanceChart({ purchases }) {
       }
 
       const currentAssetValue = asset.totalInvested + asset.totalProfit;
-      const assetBenchmark = asset.benchmarkGrowth;
+      const benchData = asset.benchmarkData;
 
-      if (currentAssetValue > 0 && assetBenchmark !== null && assetBenchmark !== undefined) {
-        weightedBenchmarkSum += assetBenchmark * currentAssetValue;
+      if (currentAssetValue > 0 && benchData && benchData.value !== null) {
+        weightedBenchmarkSum += benchData.value * currentAssetValue;
         totalWeightForBenchmark += currentAssetValue;
+        if (benchData.isPartial) hasPartialAssets = true;
       }
     });
 
@@ -170,6 +207,7 @@ export default function AssetPerformanceChart({ purchases }) {
       totalInvested,
       timeData: getDetailedTimeElapsed(oldestDate),
       benchmarkGrowth: portfolioBenchmark,
+      hasPartialAssets,
     };
   }, [assetPerformance]);
 
@@ -178,7 +216,8 @@ export default function AssetPerformanceChart({ purchases }) {
       return [];
 
     const totalValidWeight = assetPerformance.reduce((acc, asset) => {
-      const hasBenchmark = asset.benchmarkGrowth !== null && asset.benchmarkGrowth !== undefined;
+      const hasBenchmark =
+        asset.benchmarkData?.value !== null && asset.benchmarkData?.value !== undefined;
       const currentVal = asset.totalInvested + asset.totalProfit;
       return hasBenchmark ? acc + currentVal : acc;
     }, 0);
@@ -186,13 +225,13 @@ export default function AssetPerformanceChart({ purchases }) {
     if (totalValidWeight === 0) return [];
 
     return assetPerformance
-      .filter((asset) => asset.benchmarkGrowth !== null && asset.benchmarkGrowth !== undefined)
+      .filter(
+        (asset) => asset.benchmarkData?.value !== null && asset.benchmarkData?.value !== undefined
+      )
       .map((asset) => {
         const currentVal = asset.totalInvested + asset.totalProfit;
-
         const weight = currentVal / totalValidWeight;
-
-        const contributionPoints = asset.benchmarkGrowth * weight;
+        const contributionPoints = asset.benchmarkData.value * weight;
 
         return {
           ...asset,
@@ -205,13 +244,11 @@ export default function AssetPerformanceChart({ purchases }) {
 
   const maxValue = useMemo(() => {
     if (!assetPerformance.length) return 0;
-
     const assetsMax = Math.max(
       ...assetPerformance.map((a) =>
         Math.abs(performanceMode === 'relative' ? a.totalYieldPercent : a.totalProfit)
       )
     );
-
     if (portfolioStats) {
       const portfolioVal = Math.abs(
         performanceMode === 'relative'
@@ -220,7 +257,6 @@ export default function AssetPerformanceChart({ purchases }) {
       );
       return Math.max(assetsMax, portfolioVal);
     }
-
     return assetsMax;
   }, [assetPerformance, performanceMode, portfolioStats]);
 
@@ -233,9 +269,7 @@ export default function AssetPerformanceChart({ purchases }) {
           : item.totalYieldPercent;
 
     const isProfit = displayValue >= 0;
-
     const calculationMax = overrideMax !== null ? overrideMax : maxValue;
-
     const rawPercentage = calculationMax > 0 ? Math.abs(displayValue) / calculationMax : 0;
     const widthPercentage = Math.max(1, rawPercentage * 100);
 
@@ -251,21 +285,24 @@ export default function AssetPerformanceChart({ purchases }) {
 
     return (
       <div
-        className={`flex-1 h-9 rounded-lg relative overflow-hidden flex items-center ${isPortfolio ? 'bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-900 shadow-sm' : 'bg-gray-50 dark:bg-gray-700/50'}`}
+        className={`flex-1 h-9 rounded-lg relative flex items-center ${isPortfolio ? 'bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-900 shadow-sm' : 'bg-gray-50 dark:bg-gray-700/50'}`}
       >
-        <div
-          className={`h-full transition-all duration-500 ease-out rounded-r-lg ${
-            isProfit
-              ? isPortfolio
-                ? 'bg-indigo-500/20 border-r-4 border-indigo-500'
-                : 'bg-green-500/20 border-r-4 border-green-500'
-              : 'bg-red-500/20 border-r-4 border-red-500'
-          }`}
-          style={{ width: `${widthPercentage}%` }}
-        />
-        <div className="absolute inset-0 flex items-center pl-3">
+        <div className="absolute inset-0 rounded-lg overflow-hidden">
+          <div
+            className={`h-full transition-all duration-500 ease-out rounded-r-lg ${
+              isProfit
+                ? isPortfolio
+                  ? 'bg-indigo-500/20 border-r-4 border-indigo-500'
+                  : 'bg-green-500/20 border-r-4 border-green-500'
+                : 'bg-red-500/20 border-r-4 border-red-500'
+            }`}
+            style={{ width: `${widthPercentage}%` }}
+          />
+        </div>
+
+        <div className="absolute inset-0 flex items-center pl-3 pointer-events-none">
           <span
-            className={`font-medium ${
+            className={`font-medium z-10 ${
               isProfit
                 ? isPortfolio
                   ? 'text-indigo-700 dark:text-indigo-300 font-bold'
@@ -332,9 +369,11 @@ export default function AssetPerformanceChart({ purchases }) {
 
       <div className="space-y-4">
         {assetPerformance.map((asset, index) => {
-          const hasBenchmark =
-            asset.benchmarkGrowth !== null && asset.benchmarkGrowth !== undefined;
-          const benchmarkVal = asset.benchmarkGrowth || 0;
+          const benchData = asset.benchmarkData;
+          const hasBenchmark = benchData && benchData.value !== null;
+          const benchmarkVal = benchData?.value || 0;
+          const isPartial = benchData?.isPartial;
+          const isSimpleReturn = benchData?.isSimpleReturn;
 
           return (
             <div key={asset.ticker} className="flex items-center gap-4 text-sm group">
@@ -358,10 +397,23 @@ export default function AssetPerformanceChart({ purchases }) {
                 </div>
               </div>
 
-              <div className="flex-1 relative">
+              {}
+              <div className="flex-1 relative group/bench">
                 {renderBar(asset)}
 
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-end justify-center cursor-help group/bench z-10">
+                {}
+                <div
+                  className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-end justify-center cursor-help z-20"
+                  title={
+                    hasBenchmark
+                      ? isSimpleReturn
+                        ? `Retorno total absoluto do período (${benchData.startDate} até hoje). Não anualizado pois o histórico é curto.`
+                        : isPartial
+                          ? `Histórico parcial. CAGR calculado desde ${benchData.startDate} (${benchData.years.toFixed(1)} anos).`
+                          : `Rentabilidade anualizada média do ativo nos últimos ${timeframe} anos: ${benchmarkVal.toFixed(2)}%`
+                      : 'Dados históricos insuficientes.'
+                  }
+                >
                   {loadingBenchmark ? (
                     <span className="text-[10px] text-gray-400 animate-pulse">Calc...</span>
                   ) : hasBenchmark ? (
@@ -369,24 +421,27 @@ export default function AssetPerformanceChart({ purchases }) {
                       <div className="flex items-center gap-1 opacity-60 group-hover/bench:opacity-100 transition-opacity">
                         <Activity className="w-3 h-3 text-gray-400" />
                         <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase font-bold">
-                          Mkt {timeframe === 1 ? '12m' : `${timeframe}Y (a.a.)`}
+                          {isSimpleReturn
+                            ? 'Absoluto'
+                            : isPartial
+                              ? `CAGR (${benchData.years.toFixed(1)}Y)`
+                              : `Mkt ${timeframe === 1 ? '12m' : `${timeframe}Y (a.a.)`}`}
                         </span>
+                        {(isPartial || isSimpleReturn) && (
+                          <AlertTriangle className="w-3 h-3 text-amber-500" />
+                        )}
                       </div>
                       <span
                         className={`text-xs font-bold ${benchmarkVal >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}
-                        title={`Rentabilidade anualizada média do ativo nos últimos ${timeframe} anos: ${benchmarkVal.toFixed(2)}%`}
                       >
                         {benchmarkVal > 0 ? '+' : ''}
                         {benchmarkVal.toFixed(1)}%
                       </span>
                     </>
                   ) : (
-                    <div
-                      className="flex items-center gap-1.5 opacity-70 group-hover/bench:opacity-100 transition-opacity"
-                      title={`Dados históricos insuficientes.`}
-                    >
+                    <div className="flex items-center gap-1.5 opacity-70 group-hover/bench:opacity-100 transition-opacity">
                       <span className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase">
-                        Sem Histórico
+                        S/ Histórico
                       </span>
                       <AlertCircle className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
                     </div>
@@ -402,8 +457,7 @@ export default function AssetPerformanceChart({ purchases }) {
           <>
             <div className="my-4 border-t border-gray-200 dark:border-gray-700 border-dashed" />
 
-            <div className="flex flex-col rounded-lg bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/30 overflow-hidden transition-all duration-300">
-              {}
+            <div className="flex flex-col rounded-lg bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/30 overflow-visible transition-all duration-300">
               <div
                 onClick={() => setIsPortfolioExpanded(!isPortfolioExpanded)}
                 className="flex items-center gap-4 text-sm group p-2 cursor-pointer hover:bg-indigo-100/50 dark:hover:bg-indigo-900/30 transition-colors"
@@ -430,10 +484,19 @@ export default function AssetPerformanceChart({ purchases }) {
                   </div>
                 </div>
 
-                <div className="flex-1 relative">
+                <div className="flex-1 relative group/bench">
                   {renderBar(portfolioStats, true)}
 
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-end justify-center cursor-help group/bench z-10">
+                  <div
+                    className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-end justify-center cursor-help z-20"
+                    title={
+                      loadingBenchmark
+                        ? ''
+                        : portfolioStats.benchmarkGrowth !== null
+                          ? `Média Ponderada da performance histórica. ${portfolioStats.hasPartialAssets ? 'Alguns ativos possuem histórico parcial (Retorno Absoluto ou CAGR ajustado).' : ''}`
+                          : 'Dados insuficientes para calcular média ponderada.'
+                    }
+                  >
                     {loadingBenchmark ? (
                       <span className="text-[10px] text-indigo-400 animate-pulse">Calc...</span>
                     ) : portfolioStats.benchmarkGrowth !== null ? (
@@ -441,22 +504,21 @@ export default function AssetPerformanceChart({ purchases }) {
                         <div className="flex items-center gap-1 opacity-60 group-hover/bench:opacity-100 transition-opacity">
                           <Activity className="w-3 h-3 text-indigo-400" />
                           <span className="text-[9px] text-indigo-500 dark:text-indigo-400 uppercase font-bold">
-                            Média {timeframe === 1 ? '12m' : `${timeframe}Y (a.a.)`}
+                            Média {timeframe === 1 ? '12m' : `${timeframe}Y`}
                           </span>
+                          {portfolioStats.hasPartialAssets && (
+                            <AlertTriangle className="w-3 h-3 text-indigo-400" />
+                          )}
                         </div>
                         <span
                           className={`text-xs font-bold ${portfolioStats.benchmarkGrowth >= 0 ? 'text-indigo-600 dark:text-indigo-300' : 'text-indigo-400'}`}
-                          title={`Média Ponderada da performance histórica dos ativos que possuem dados (${timeframe} anos): ${portfolioStats.benchmarkGrowth.toFixed(2)}%`}
                         >
                           {portfolioStats.benchmarkGrowth > 0 ? '+' : ''}
                           {portfolioStats.benchmarkGrowth.toFixed(1)}%
                         </span>
                       </>
                     ) : (
-                      <div
-                        className="flex items-center gap-1.5 opacity-60"
-                        title="Dados insuficientes para calcular média ponderada."
-                      >
+                      <div className="flex items-center gap-1.5 opacity-60">
                         <span className="text-[9px] font-bold text-indigo-300 uppercase">
                           S/ Dados
                         </span>
@@ -476,7 +538,7 @@ export default function AssetPerformanceChart({ purchases }) {
                       %)
                     </h4>
                     <span className="text-[10px] text-gray-500 dark:text-gray-400 text-right">
-                      Impacto de cada ativo na formação da média anual da carteira
+                      Impacto de cada ativo na formação da média da carteira
                     </span>
                   </div>
 
@@ -486,6 +548,8 @@ export default function AssetPerformanceChart({ purchases }) {
                         ...contributionBreakdown.map((a) => Math.abs(a.contributionPoints)),
                         Math.abs(portfolioStats.benchmarkGrowth || 0)
                       );
+                      const isPartial = asset.benchmarkData?.isPartial;
+                      const isSimple = asset.benchmarkData?.isSimpleReturn;
 
                       return (
                         <div key={asset.ticker} className="flex items-center gap-3 text-xs">
@@ -494,12 +558,24 @@ export default function AssetPerformanceChart({ purchases }) {
                               <ArrowRight size={10} className="text-gray-300" />
                               {asset.ticker}
                             </span>
-                            <span className="text-[9px] text-gray-400 pl-3 font-normal opacity-75">
-                              Mkt: {asset.benchmarkGrowth?.toFixed(1)}%
+                            {}
+                            <span
+                              className="text-[9px] text-gray-400 pl-3 font-normal opacity-75 flex items-center gap-1 cursor-help hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                              title={
+                                isSimple
+                                  ? 'Retorno Absoluto (histórico curto)'
+                                  : isPartial
+                                    ? `CAGR Ajustado (${asset.benchmarkData?.years.toFixed(1)} anos)`
+                                    : `CAGR de Mercado (${timeframe} anos)`
+                              }
+                            >
+                              {isSimple ? 'Abs' : 'Mkt'}: {asset.benchmarkData?.value?.toFixed(1)}%
+                              {(isPartial || isSimple) && (
+                                <AlertTriangle size={8} className="text-amber-500" />
+                              )}
                             </span>
                           </div>
-                          <div className="flex-1">
-                            {}
+                          <div className="flex-1 relative">
                             {renderBar(asset, false, asset.contributionPoints, maxContribution)}
                           </div>
                         </div>
