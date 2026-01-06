@@ -55,6 +55,7 @@ export const useWalletDashboardData = (user) => {
 
         if (response.ok) {
           setData(result);
+
           setApiDebug({
             url: `${API_URL}/wallet/dashboard`,
             status: response.status,
@@ -82,7 +83,6 @@ export const useWalletDashboardData = (user) => {
 
     const raw = data || {
       summary: { total_invested: 0, total_current: 0, total_profit: 0, total_profit_percent: 0 },
-
       period_projections: {
         total: defaultProjections,
         stock: defaultProjections,
@@ -95,11 +95,28 @@ export const useWalletDashboardData = (user) => {
       allocation: { stock: 0, fii: 0, etf: 0 },
     };
 
-    const adaptedPositions = raw.positions.map((p) => ({
-      ...p,
-      total_value_current: p.total_value,
-      purchase_price: p.avg_price,
-    }));
+    const adaptedPositions = raw.positions.map((p) => {
+      let mappedSubtype = 'Indefinido';
+      if (p.sector && p.sector !== 'Outros' && p.sector !== 'erro') {
+        if (p.sector.toLowerCase() === 'fundos de fundos') {
+          mappedSubtype = 'Fundos de Fundos';
+        } else {
+          mappedSubtype = p.sector.charAt(0).toUpperCase() + p.sector.slice(1);
+        }
+      }
+
+      let fullTypeRaw = p.subtype || mappedSubtype;
+
+      let cleanFullType = fullTypeRaw.replace(/^FII\s-\s/, '');
+
+      return {
+        ...p,
+        total_value_current: p.total_value,
+        purchase_price: p.avg_price,
+        asset_subtype: mappedSubtype,
+        full_type: cleanFullType,
+      };
+    });
 
     return { ...raw, positions: adaptedPositions };
   }, [data]);

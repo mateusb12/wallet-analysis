@@ -131,6 +131,8 @@ const getFiiTypeStyle = (type) => {
   return 'bg-gray-100 text-gray-600 border-gray-200';
 };
 
+console.log('🔍 [DEBUG] Chaves de Ícones Disponíveis:', Object.keys(FII_SUBTYPE_ICONS));
+
 const PositionsTable = ({
   filteredPositions,
   totalValue,
@@ -328,6 +330,15 @@ const PositionsTable = ({
                 const dynamicStyle = getTimeBadgeStyle(row.ticker);
                 const hasDynamicColor = Object.keys(dynamicStyle).length > 0;
 
+                if (isFiiTable) {
+                  const iconExists = !!FII_SUBTYPE_ICONS[row.asset_subtype];
+                  console.log(
+                    `🔍 [Row Render] ${row.ticker}:`,
+                    `Subtype="${row.asset_subtype}"`,
+                    `IconExists=${iconExists}`
+                  );
+                }
+
                 return (
                   <React.Fragment key={row.ticker}>
                     <tr
@@ -384,8 +395,9 @@ const PositionsTable = ({
                                   />
                                 </div>
                                 <div className="absolute bottom-full mb-2 hidden group-hover:block z-50">
+                                  {}
                                   <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 whitespace-nowrap shadow-lg">
-                                    {row.asset_subtype}
+                                    {row.full_type || row.asset_subtype}
                                     <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
                                   </div>
                                 </div>
@@ -394,7 +406,8 @@ const PositionsTable = ({
                               <span
                                 className={`px-2 py-1 rounded-md text-xs font-bold border ${getFiiTypeStyle(row.asset_subtype)}`}
                               >
-                                {row.asset_subtype || 'Indefinido'}
+                                {}
+                                {row.full_type || row.asset_subtype || 'Indefinido'}
                               </span>
                             )}
                           </div>

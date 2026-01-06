@@ -4,7 +4,7 @@ from datetime import datetime, date
 
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text, bindparam
 
 from backend.source.core.database import get_db
 from backend.source.models.sql_models import AssetPurchase, CdiHistory, B3Price
@@ -231,19 +231,21 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
     classification_map = {}
     if tickers:
         try:
-            # Usamos SQL Raw pois não temos o modelo SQLAlchemy da tabela de cache importado aqui
-            # O PostgreSQL precisa dos tickers como tupla para o IN
-            query = text("SELECT ticker, detected_type, sector FROM asset_classification_cache WHERE ticker IN :tickers")
-            result = db.execute(query, {"tickers": tuple(tickers)}).fetchall()
+            # Precisamos dizer ao SQLAlchemy para expandir a lista (expanding=True)
+            stmt = text("SELECT ticker, detected_type, sector FROM asset_classification_cache WHERE ticker IN :tickers")
+            stmt = stmt.bindparams(bindparam("tickers", expanding=True))
+
+            # Executa passando a lista de tickers
+            result = db.execute(stmt, {"tickers": tickers}).fetchall()
 
             for row in result:
                 classification_map[row.ticker] = {
-                    "subtype": row.detected_type, # Ex: FII - Papel (CRI)
-                    "sector": row.sector          # Ex: papel
+                    "subtype": row.detected_type,
+                    "sector": row.sector
                 }
         except Exception as e:
-            print(f"Erro ao buscar classificações: {e}")
-            # Não quebra o dashboard se falhar a classificação
+            # Dica: Olhe o terminal onde o backend roda para ver este erro se acontecer
+            print(f"❌ Erro crítico ao buscar classificações: {e}")
             pass
 
     # 4. Cálculo de Lucros e Totais (MANTIDO)
