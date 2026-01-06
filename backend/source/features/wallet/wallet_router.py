@@ -4,7 +4,7 @@ from datetime import datetime, date
 
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text, bindparam, tuple_ # <--- ADICIONAR tuple_ AQUI
+from sqlalchemy import func, text, bindparam, tuple_
 
 from backend.source.core.database import get_db
 from backend.source.features.auth.jwt_identity_extraction import get_current_user
@@ -140,6 +140,45 @@ def _calculate_history_logic(user_id: str, db: Session) -> List[Dict]:
              "portfolio_value": round(float(daily_portfolio.iloc[i]), 2),
              "benchmark_value": round(float(benchmark_values[i]), 2)} for i in range(limit)]
 
+# Função auxiliar para calcular rentabilidade anual do ativo (ano fechado)
+def _get_yearly_prices(db: Session, tickers: List[str], start_year: int) -> Dict[str, Dict[int, float]]:
+    # 1. Estratégia: Pegar preços de Dezembro (após dia 20) de todos os anos relevantes
+    current_year = datetime.now().year
+
+    # Query SQL eficiente usando Window Function (PostgreSQL) ou filtragem simples
+    # Vamos usar filtragem simples para compatibilidade e simplicidade:
+    # Pegamos todas as cotações de Dezembro para os tickers alvo a partir do ano de início
+    sql = text("""
+               SELECT ticker, trade_date, adjusted_close
+               FROM b3_prices
+               WHERE ticker IN :tickers
+                 AND EXTRACT(YEAR FROM trade_date) >= :start_year
+                 AND EXTRACT(MONTH FROM trade_date) = 12
+                 AND EXTRACT(DAY FROM trade_date) > 20
+               ORDER BY trade_date ASC
+               """)
+
+    # Executa query
+    rows = db.execute(sql.bindparams(bindparam("tickers", expanding=True)),
+                      {"tickers": tickers, "start_year": start_year - 1}).fetchall()
+
+    # Processa para pegar apenas a ÚLTIMA data de cada ano para cada ticker
+    # map: ticker -> { 2021: 15.50, 2022: 18.20 }
+    yearly_closes = {}
+
+    for r in rows:
+        tck = r.ticker
+        if not r.adjusted_close: continue
+
+        y = r.trade_date.year
+        val = float(r.adjusted_close)
+
+        if tck not in yearly_closes: yearly_closes[tck] = {}
+        # Como ordenamos ASC, o último valor sobrescreve os anteriores, ficando o último de Dezembro
+        yearly_closes[tck][y] = val
+
+    return yearly_closes
+
 # ==========================================
 #  DASHBOARD COMPLETO (RAW + ADJUSTED)
 # ==========================================
@@ -162,13 +201,15 @@ def get_dashboard_data(
     if not purchases:
         return empty_response
 
-    # 2. Buscar Histórico de Preços Ajustados (Para cálculo de Total Return)
-    # Precisamos do 'adjusted_close' exato da data de cada compra para calcular o PM Ajustado
+    # Identificar Data Inicial Global da Carteira para buscar histórico anual
+    min_trade_date = min([p.trade_date for p in purchases])
+    start_year_portfolio = min_trade_date.year if isinstance(min_trade_date, date) else min_trade_date.year
+
+    # 2. Buscar Histórico de Preços Ajustados (Para cálculo de Total Return da posição)
     purchase_keys = list({(p.ticker, p.trade_date) for p in purchases})
     history_map = {}
 
     if purchase_keys:
-        # Busca em lote: SELECT * FROM b3_prices WHERE (ticker, trade_date) IN ((...), (...))
         try:
             hist_rows = db.query(B3Price.ticker, B3Price.trade_date, B3Price.adjusted_close) \
                 .filter(tuple_(B3Price.ticker, B3Price.trade_date).in_(purchase_keys)).all()
@@ -184,26 +225,22 @@ def get_dashboard_data(
     transactions_list = []
 
     for p in purchases:
-        # Adiciona à lista de transações (para o histórico visual)
+        # Adiciona à lista de transações
         transactions_list.append({
             "ticker": p.ticker, "price": float(p.price), "qty": p.qty,
             "trade_date": p.trade_date, "type": "buy", "asset_type": p.type
         })
 
-        # Preço Raw (Pago de fato)
         price_raw = float(p.price)
-
-        # Preço Ajustado (Recuperado do histórico ou fallback para Raw)
         hist_key = f"{p.ticker}_{p.trade_date}"
         price_adj = history_map.get(hist_key, price_raw)
-        if not price_adj or price_adj <= 0:
-            price_adj = price_raw # Fallback de segurança
+        if not price_adj or price_adj <= 0: price_adj = price_raw
 
         if p.ticker not in pos_map:
             pos_map[p.ticker] = {
                 'qty': 0.0,
-                'cost_raw': 0.0,      # Custo Caixa
-                'cost_adjusted': 0.0, # Custo Econômico (Teórico)
+                'cost_raw': 0.0,
+                'cost_adjusted': 0.0,
                 'type': p.type,
                 'min_date': p.trade_date
             }
@@ -215,7 +252,6 @@ def get_dashboard_data(
         if p.trade_date < pos['min_date']:
             pos['min_date'] = p.trade_date
 
-    # Filtra posições zeradas
     active_tickers = [t for t, d in pos_map.items() if d['qty'] > 0.0001]
 
     if not active_tickers:
@@ -226,22 +262,19 @@ def get_dashboard_data(
         .filter(B3Price.ticker.in_(active_tickers)) \
         .order_by(B3Price.trade_date.desc()).all()
 
-    price_map_raw = {}      # Fechamento de Tela
-    price_map_adj = {}      # Fechamento Ajustado
+    price_map_raw = {}
+    price_map_adj = {}
     name_map = {}
 
-    # Processa os preços mais recentes (pega o primeiro que aparecer pois ordenamos DESC)
     for row in latest_prices:
         if row.ticker not in price_map_raw:
             raw_val = float(row.close)
-            # Se adjusted for nulo ou zero, usa raw
             adj_val = float(row.adjusted_close) if row.adjusted_close and row.adjusted_close > 0 else raw_val
-
             price_map_raw[row.ticker] = raw_val
             price_map_adj[row.ticker] = adj_val
             name_map[row.ticker] = row.name
 
-    # 4.1 Buscar Classificações (Subtipo e Setor)
+    # 4.1 Buscar Classificações
     classification_map = {}
     try:
         stmt = text("SELECT ticker, detected_type, sector FROM asset_classification_cache WHERE ticker IN :tickers")
@@ -249,64 +282,89 @@ def get_dashboard_data(
         cls_rows = db.execute(stmt, {"tickers": active_tickers}).fetchall()
         for r in cls_rows:
             classification_map[r.ticker] = {"subtype": r.detected_type, "sector": r.sector}
-    except Exception:
-        pass
+    except Exception: pass
+
+    # --- NOVO: BUSCAR PREÇOS ANUAIS (FECHAMENTO DE DEZEMBRO) PARA TOOLTIP ---
+    # Busca desde o ano anterior ao início da carteira (para calcular a variação do primeiro ano)
+    yearly_closes_map = _get_yearly_prices(db, active_tickers, start_year_portfolio)
+    current_year = datetime.now().year
 
     # 5. Montar Lista Final e Totais
     positions_list = []
 
-    # Acumuladores globais (Baseados no RAW - Dinheiro Real)
     total_invested_global = 0.0
     total_current_global = 0.0
     allocation_by_type = {"stock": 0.0, "fii": 0.0, "etf": 0.0}
 
-    # Acumuladores para projeções por categoria
-    cat_stats = {
-        k: {'invested': 0.0, 'current': 0.0, 'start_date': None}
-        for k in ['stock', 'fii', 'etf']
-    }
+    cat_stats = {k: {'invested': 0.0, 'current': 0.0, 'start_date': None} for k in ['stock', 'fii', 'etf']}
 
     for ticker in active_tickers:
         data = pos_map[ticker]
         qty = data['qty']
 
-        # Dados de Preço
         curr_price_raw = price_map_raw.get(ticker, 0.0)
         curr_price_adj = price_map_adj.get(ticker, curr_price_raw)
 
-        # Se não tiver preço atual (erro de sync), usa o preço médio pra não quebrar
         if curr_price_raw == 0:
             curr_price_raw = data['cost_raw'] / qty
             curr_price_adj = curr_price_raw
 
-        # --- CÁLCULOS RAW (Obrigatório para o Saldo) ---
         pm_raw = data['cost_raw'] / qty
         val_total_raw = qty * curr_price_raw
         profit_raw = val_total_raw - data['cost_raw']
         profit_pct_raw = (profit_raw / data['cost_raw'] * 100) if data['cost_raw'] > 0 else 0
 
-        # --- CÁLCULOS ADJUSTED (Opcional - Total Return) ---
         pm_adj = data['cost_adjusted'] / qty
         val_total_adj_theoretical = qty * curr_price_adj
         profit_adj = val_total_adj_theoretical - data['cost_adjusted']
         profit_pct_adj = (profit_adj / data['cost_adjusted'] * 100) if data['cost_adjusted'] > 0 else 0
 
-        # Totais Globais
         total_invested_global += data['cost_raw']
         total_current_global += val_total_raw
 
-        # Totais por Categoria
         atype = data['type']
         allocation_by_type[atype] = allocation_by_type.get(atype, 0) + val_total_raw
 
         if atype in cat_stats:
             cat_stats[atype]['invested'] += data['cost_raw']
             cat_stats[atype]['current'] += val_total_raw
-            # Define data inicial da categoria
             if not cat_stats[atype]['start_date'] or data['min_date'] < cat_stats[atype]['start_date']:
                 cat_stats[atype]['start_date'] = data['min_date']
 
-        # Monta objeto da Posição
+        # --- CALCULA BREAKDOWN ANUAL DO ATIVO ---
+        yearly_breakdown = []
+        ticker_yearly_closes = yearly_closes_map.get(ticker, {})
+
+        # Se temos dados anuais, calculamos a performance ano a ano
+        # Começamos do ano de início da carteira até o ano atual
+        # O "Start Date" do cálculo de um ano é o fechamento do ano anterior.
+
+        # Considerar preço atual como fechamento do ano corrente (YTD)
+        # Adiciona o ano corrente no mapa temporariamente para o calculo
+        ticker_yearly_closes[current_year] = curr_price_adj
+
+        sorted_years = sorted(ticker_yearly_closes.keys())
+
+        for i in range(1, len(sorted_years)):
+            prev_year = sorted_years[i-1]
+            curr_loop_year = sorted_years[i]
+
+            # Só calculamos se o ano estiver dentro do horizonte da carteira (ou 1 antes pra base)
+            if curr_loop_year < start_year_portfolio:
+                continue
+
+            v_start = ticker_yearly_closes[prev_year]
+            v_end = ticker_yearly_closes[curr_loop_year]
+
+            if v_start > 0:
+                y_perf = ((v_end - v_start) / v_start) * 100
+                yearly_breakdown.append({
+                    "year": curr_loop_year,
+                    "value": round(y_perf, 2),
+                    "start_price": v_start,
+                    "end_price": v_end
+                })
+
         cls = classification_map.get(ticker, {})
 
         positions_list.append({
@@ -318,28 +376,26 @@ def get_dashboard_data(
             "qty": round(qty, 4),
             "age": _format_asset_age(data['min_date']),
 
-            # Preços
             "avg_price": round(pm_raw, 2),
-            "avg_price_adjusted": round(pm_adj, 2), # <--- NOVO
+            "avg_price_adjusted": round(pm_adj, 2),
             "current_price": round(curr_price_raw, 2),
-            "current_adjusted": round(curr_price_adj, 2), # <--- NOVO
+            "current_adjusted": round(curr_price_adj, 2),
 
-            # Valor (Sempre Raw)
             "total_value": round(val_total_raw, 2),
 
-            # Rentabilidade Caixa (Raw)
             "profit": round(profit_raw, 2),
             "profit_percent": round(profit_pct_raw, 2),
 
-            # Rentabilidade Performance (Adjusted)
-            "total_return_profit": round(profit_adj, 2), # <--- NOVO
-            "total_return_percent": round(profit_pct_adj, 2), # <--- NOVO
+            "total_return_profit": round(profit_adj, 2),
+            "total_return_percent": round(profit_pct_adj, 2),
 
-            # Placeholder (será calculado após loop final)
+            # INSERE OS DADOS REAIS
+            "yearly_breakdown": yearly_breakdown,
+
             "allocation_percent": 0
         })
 
-    # 6. Finalização (Allocations % e Projeções)
+    # 6. Finalização
     positions_list.sort(key=lambda x: x['total_value'], reverse=True)
 
     for p in positions_list:
@@ -349,7 +405,6 @@ def get_dashboard_data(
     total_profit_global = total_current_global - total_invested_global
     total_profit_pct_global = (total_profit_global / total_invested_global * 100) if total_invested_global > 0 else 0
 
-    # Projeções por período
     start_date_global = min([p['min_date'] for p in pos_map.values()]) if pos_map else None
 
     projections = {
@@ -376,8 +431,6 @@ def get_dashboard_data(
     }
 
 # --- OUTROS ENDPOINTS (CRUD) PERMANECEM IGUAIS ---
-# (Pode manter o resto do arquivo original wallet_router.py daqui pra baixo)
-# ...
 @wallet_bp.get("/performance/history", response_model=List[HistoryPoint])
 def get_wallet_history(
         db: Session = Depends(get_db),
@@ -477,13 +530,10 @@ def delete_purchase(
         current_user: str = Depends(get_current_user)
 ):
     purchase = db.query(AssetPurchase).filter(AssetPurchase.id == purchase_id).first()
-
     if not purchase:
         raise HTTPException(status_code=404, detail="Aporte não encontrado")
-
     if purchase.user_id != current_user:
         raise HTTPException(status_code=403, detail="Não autorizado a deletar este registro")
-
     try:
         db.delete(purchase)
         db.commit()

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import date
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 
 
 # Base comum para reaproveitar campos
@@ -12,17 +12,16 @@ class AssetPurchaseBase(BaseModel):
     price: float
     trade_date: date
 
-# Usado na lista do Import (que já existia, mas agora herda da Base)
+# Usado na lista do Import
 class AssetPurchaseCreate(AssetPurchaseBase):
     pass
 
-# NOVO: Usado para criar/editar um único aporte (Frontend envia user_id junto)
+# Usado para criar/editar um único aporte
 class AssetPurchaseInput(AssetPurchaseBase):
     pass
 
 # Request do Import em massa
 class ImportPurchasesRequest(BaseModel):
-    pass
     purchases: List[AssetPurchaseCreate]
 
 # Resposta para o frontend
@@ -35,6 +34,13 @@ class HistoryPoint(BaseModel):
     portfolio_value: float
     benchmark_value: float
 
+# [NOVO] Modelo para o detalhamento anual
+class YearlyPerformance(BaseModel):
+    year: int
+    value: float # Percentual de retorno no ano
+    start_price: float
+    end_price: float
+
 class PositionSnapshot(BaseModel):
     ticker: str
     name: Optional[str] = None
@@ -44,22 +50,24 @@ class PositionSnapshot(BaseModel):
     qty: float
 
     # --- PREÇOS ---
-    avg_price: float              # PM "Real" (Dinheiro gasto / Qtd)
-    avg_price_adjusted: float     # [NOVO] PM Ajustado (Considera descontos de dividendos na época)
-
-    current_price: float          # Preço de Tela Atual (B3)
-    current_adjusted: float       # [NOVO] Preço Ajustado Atual (Para cálculo de retorno total)
+    avg_price: float              # PM "Real"
+    avg_price_adjusted: float     # PM Ajustado
+    current_price: float          # Preço de Tela Atual
+    current_adjusted: float       # Preço Ajustado Atual
 
     # --- TOTAIS ---
-    total_value: float            # Qty * Current Price (Saldo Real)
+    total_value: float            # Saldo Real
 
     # --- RENTABILIDADE REAL (CAIXA) ---
-    profit: float                 # Ganho de Capital (Valorização da cota apenas)
+    profit: float
     profit_percent: float
 
     # --- RENTABILIDADE TOTAL (PERFORMANCE) ---
-    total_return_profit: float    # [NOVO] (Vl. Atual Ajustado - Custo Ajustado)
-    total_return_percent: float   # [NOVO] % de retorno considerando dividendos reinvestidos teóricos
+    total_return_profit: float
+    total_return_percent: float
+
+    # [NOVO] Detalhamento Ano a Ano para o Tooltip
+    yearly_breakdown: List[YearlyPerformance] = []
 
     allocation_percent: float
     age: str
@@ -82,14 +90,14 @@ class TransactionSnapshot(BaseModel):
     price: float
     qty: float
     trade_date: date
-    type: str       # "buy" ou o tipo do ativo, dependendo do que vc quer exibir
-    asset_type: str # Sugestão: adicionei para saber se é FII/Stock
+    type: str
+    asset_type: str
 
 class DashboardResponse(BaseModel):
     summary: DashboardSummary
     positions: List[PositionSnapshot]
     transactions: List[TransactionSnapshot]
-    history: List[Dict] # Lista simplificada para o gráfico
-    allocation: Dict[str, float] # Totais por categoria (stock, fii, etf)
+    history: List[Dict]
+    allocation: Dict[str, float]
 
     model_config = ConfigDict(from_attributes=True)
