@@ -18,10 +18,9 @@ import {
   Unlock,
 } from 'lucide-react';
 import { formatChartDate } from '../../utils/dateUtils.js';
-import { fetchB3Prices, fetchPriceClosestToDate } from '../../services/b3service.js';
+import { fetchDashboardData } from '../../services/walletDataService.js';
 import { getDetailedTimeElapsed, getTypeColor } from './contributionUtils.js';
 import AssetPerformanceChart from './ContributionPerformanceChart.jsx';
-import { supabase } from '../../services/supabaseClient.js';
 
 const getMaturationInfo = (tradeDate) => {
   const now = new Date();
@@ -110,8 +109,6 @@ export default function Contributions() {
   const [isProtectionMode, setIsProtectionMode] = useState(true);
   const [showMaturationInfo, setShowMaturationInfo] = useState(false);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
   useEffect(() => {
     function handleClickOutside(event) {
       if (rentabMenuRef.current && !rentabMenuRef.current.contains(event.target)) {
@@ -123,62 +120,33 @@ export default function Contributions() {
   }, []);
 
   useEffect(() => {
-    if (user?.id) fetchPurchases();
+    if (user?.id) fetchAllData();
   }, [user]);
 
-  const fetchPurchases = async () => {
+  const fetchAllData = async () => {
+    setLoading(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      const dashboardData = await fetchDashboardData();
 
-      if (!token) {
-        setLoading(false);
-        return;
-      }
+      const positions = dashboardData.positions || [];
+      const transactions = dashboardData.transactions || [];
 
-      const response = await fetch(`${API_URL}/wallet/purchases?user_id=${user.id}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+      const priceMap = {};
+
+      positions.forEach((pos) => {
+        let price = pos.close || pos.current_price || pos.price_close;
+
+        if (!price && pos.total_value_current && pos.qty) {
+          price = pos.total_value_current / pos.qty;
+        }
+
+        if (price) {
+          priceMap[pos.ticker] = parseFloat(price);
+        }
       });
 
-      if (!response.ok) throw new Error('Falha ao buscar aportes');
-      const data = await response.json();
-
-      const uniqueTickers = [...new Set(data.map((item) => item.ticker))];
-      const marketDataMap = {};
-      const dateOneYearAgo = new Date();
-      dateOneYearAgo.setFullYear(dateOneYearAgo.getFullYear() - 1);
-      const dateOneYearAgoStr = dateOneYearAgo.toISOString().split('T')[0];
-
-      await Promise.all(
-        uniqueTickers.map(async (ticker) => {
-          try {
-            const { data: priceData } = await fetchB3Prices(ticker, 1, 1);
-            const priceOldAdjusted = await fetchPriceClosestToDate(ticker, dateOneYearAgoStr);
-
-            if (priceData && priceData.length > 0) {
-              marketDataMap[ticker] = {
-                currentNominal: parseFloat(priceData[0].close),
-                currentAdjusted: parseFloat(priceData[0].adjusted_close || priceData[0].close),
-                oneYearAgoAdjusted: priceOldAdjusted,
-              };
-            }
-          } catch (err) {
-            console.error(`Erro ao buscar dados de mercado para ${ticker}`, err);
-          }
-        })
-      );
-
-      const enrichedData = data.map((item) => {
-        const marketData = marketDataMap[item.ticker];
-        const currentPrice = marketData?.currentNominal || null;
-        const currentPriceAdj = marketData?.currentAdjusted || null;
-        const priceOneYearAgoAdj = marketData?.oneYearAgoAdjusted || null;
+      const enrichedData = transactions.map((item) => {
+        const currentPrice = priceMap[item.ticker] || null;
 
         let profitValue = 0;
         let profitPercent = 0;
@@ -189,19 +157,12 @@ export default function Contributions() {
           const totalCurrent = currentPrice * Number(item.qty);
           profitValue = totalCurrent - totalPaid;
           profitPercent = ((currentPrice - Number(item.price)) / Number(item.price)) * 100;
-
-          if (priceOneYearAgoAdj && currentPriceAdj) {
-            asset1YGrowth = ((currentPriceAdj - priceOneYearAgoAdj) / priceOneYearAgoAdj) * 100;
-          } else if (marketData?.oneYearAgoNominal) {
-            asset1YGrowth =
-              ((currentPrice - marketData.oneYearAgoNominal) / marketData.oneYearAgoNominal) * 100;
-          }
         }
 
         return {
           ...item,
           currentPrice,
-          priceOneYearAgo: priceOneYearAgoAdj,
+
           asset1YGrowth,
           profitValue,
           profitPercent,
@@ -212,7 +173,7 @@ export default function Contributions() {
       const sorted = enrichedData.sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
       setPurchases(sorted);
     } catch (error) {
-      console.error('Erro ao buscar aportes:', error);
+      console.error('Erro ao buscar aportes unificados:', error);
     } finally {
       setLoading(false);
     }
@@ -590,7 +551,7 @@ export default function Contributions() {
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-visible mb-8">
         {loading ? (
-          <div className="p-8 text-center text-gray-500">Calculando dados...</div>
+          <div className="p-8 text-center text-gray-500">Calculando dados (Centralizado)...</div>
         ) : (
           <div className="overflow-auto max-h-[75vh] relative scroll-smooth">
             <table className="w-full text-sm text-left">
