@@ -38,16 +38,31 @@ class HistoryPoint(BaseModel):
 class PositionSnapshot(BaseModel):
     ticker: str
     name: Optional[str] = None
-    type: str  # stock, fii, etf
-    subtype: Optional[str] = None # <--- NOVO: Ex: "FII - Papel", "Ação - Bancos"
+    type: str
+    subtype: Optional[str] = None
     sector: Optional[str] = None
     qty: float
-    avg_price: float
-    current_price: float
-    total_value: float # qty * current_price
-    profit: float      # total_value - (qty * avg_price)
+
+    # --- PREÇOS ---
+    avg_price: float              # PM "Real" (Dinheiro gasto / Qtd)
+    avg_price_adjusted: float     # [NOVO] PM Ajustado (Considera descontos de dividendos na época)
+
+    current_price: float          # Preço de Tela Atual (B3)
+    current_adjusted: float       # [NOVO] Preço Ajustado Atual (Para cálculo de retorno total)
+
+    # --- TOTAIS ---
+    total_value: float            # Qty * Current Price (Saldo Real)
+
+    # --- RENTABILIDADE REAL (CAIXA) ---
+    profit: float                 # Ganho de Capital (Valorização da cota apenas)
     profit_percent: float
-    allocation_percent: float # % em relação ao total da carteira
+
+    # --- RENTABILIDADE TOTAL (PERFORMANCE) ---
+    total_return_profit: float    # [NOVO] (Vl. Atual Ajustado - Custo Ajustado)
+    total_return_percent: float   # [NOVO] % de retorno considerando dividendos reinvestidos teóricos
+
+    allocation_percent: float
+    age: str
 
 class DashboardSummary(BaseModel):
     total_invested: float
