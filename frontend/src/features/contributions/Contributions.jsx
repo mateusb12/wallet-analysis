@@ -1,11 +1,80 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { TrendingUp, Search, Layers, List, Tag, ChevronDown, Check, Copy } from 'lucide-react';
+import {
+  TrendingUp,
+  Search,
+  Layers,
+  List,
+  Tag,
+  ChevronDown,
+  Check,
+  Copy,
+  Sprout,
+  Timer,
+  Leaf,
+  Info,
+  HelpCircle,
+  Lock,
+  Unlock,
+} from 'lucide-react';
 import { formatChartDate } from '../../utils/dateUtils.js';
 import { fetchB3Prices, fetchPriceClosestToDate } from '../../services/b3service.js';
 import { getDetailedTimeElapsed, getTypeColor } from './contributionUtils.js';
 import AssetPerformanceChart from './ContributionPerformanceChart.jsx';
 import { supabase } from '../../services/supabaseClient.js';
+
+const getMaturationInfo = (tradeDate) => {
+  const now = new Date();
+  const start = new Date(tradeDate);
+  const diffTime = Math.abs(now - start);
+  const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const TARGET_DAYS = 180;
+
+  const progressPercent = Math.min(100, (days / TARGET_DAYS) * 100);
+  const isMature = days >= TARGET_DAYS;
+
+  let stage = {
+    label: 'Maturado',
+    barClass: '',
+    textClass: '',
+  };
+
+  if (!isMature) {
+    if (days < 60) {
+      stage = {
+        label: 'Semente',
+        colorData: 'slate',
+        icon: <Sprout size={14} />,
+        barClass: 'bg-slate-400 dark:bg-slate-500',
+        textClass: 'text-slate-600 dark:text-slate-400',
+      };
+    } else if (days < 120) {
+      stage = {
+        label: 'Enraizando',
+        colorData: 'blue',
+        icon: <Leaf size={14} />,
+        barClass: 'bg-blue-400 dark:bg-blue-500',
+        textClass: 'text-blue-600 dark:text-blue-400',
+      };
+    } else {
+      stage = {
+        label: 'Consolidando',
+        colorData: 'indigo',
+        icon: <Timer size={14} />,
+        barClass: 'bg-indigo-400 dark:bg-indigo-500',
+        textClass: 'text-indigo-600 dark:text-indigo-400',
+      };
+    }
+  }
+
+  return { days, progressPercent, isMature, stage };
+};
+
+const getOldSystemValueColor = (val) => {
+  if (val > 0) return 'text-emerald-600 dark:text-emerald-400';
+  if (val < 0) return 'text-rose-600 dark:text-rose-400';
+  return 'text-gray-600 dark:text-gray-400';
+};
 
 const calculateEquivalentRate = (totalProfitPercent, tradeDate, mode) => {
   if (mode === 'total' || !totalProfitPercent) return totalProfitPercent;
@@ -25,12 +94,6 @@ const calculateEquivalentRate = (totalProfitPercent, tradeDate, mode) => {
   return adjusted * 100;
 };
 
-const getValueColor = (val) => {
-  if (val > 0) return 'text-emerald-600 dark:text-emerald-400';
-  if (val < 0) return 'text-rose-600 dark:text-rose-400';
-  return 'text-gray-600 dark:text-gray-400';
-};
-
 export default function Contributions() {
   const { user } = useAuth();
   const [purchases, setPurchases] = useState([]);
@@ -43,6 +106,9 @@ export default function Contributions() {
   const rentabMenuRef = useRef(null);
 
   const [viewMode, setViewMode] = useState('flat');
+
+  const [isProtectionMode, setIsProtectionMode] = useState(true);
+  const [showMaturationInfo, setShowMaturationInfo] = useState(false);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -68,7 +134,6 @@ export default function Contributions() {
       const token = session?.access_token;
 
       if (!token) {
-        console.error('Token de autenticação não encontrado. Usuário não logado.');
         setLoading(false);
         return;
       }
@@ -82,11 +147,9 @@ export default function Contributions() {
       });
 
       if (!response.ok) throw new Error('Falha ao buscar aportes');
-
       const data = await response.json();
 
       const uniqueTickers = [...new Set(data.map((item) => item.ticker))];
-
       const marketDataMap = {};
       const dateOneYearAgo = new Date();
       dateOneYearAgo.setFullYear(dateOneYearAgo.getFullYear() - 1);
@@ -96,7 +159,6 @@ export default function Contributions() {
         uniqueTickers.map(async (ticker) => {
           try {
             const { data: priceData } = await fetchB3Prices(ticker, 1, 1);
-
             const priceOldAdjusted = await fetchPriceClosestToDate(ticker, dateOneYearAgoStr);
 
             if (priceData && priceData.length > 0) {
@@ -125,9 +187,7 @@ export default function Contributions() {
         if (currentPrice) {
           const totalPaid = Number(item.price) * Number(item.qty);
           const totalCurrent = currentPrice * Number(item.qty);
-
           profitValue = totalCurrent - totalPaid;
-
           profitPercent = ((currentPrice - Number(item.price)) / Number(item.price)) * 100;
 
           if (priceOneYearAgoAdj && currentPriceAdj) {
@@ -173,7 +233,6 @@ export default function Contributions() {
 
   const groupedData = useMemo(() => {
     if (viewMode === 'flat') return null;
-
     const groups = {};
     processedPurchases.forEach((item) => {
       if (!groups[item.ticker]) {
@@ -181,7 +240,6 @@ export default function Contributions() {
           ticker: item.ticker,
           type: item.type,
           items: [],
-
           totalQty: 0,
           totalPaid: 0,
           totalCurrent: 0,
@@ -226,35 +284,112 @@ export default function Contributions() {
     const debugInfo = {
       timestamp: new Date().toISOString(),
       totalRecords: purchases.length,
-
-      structureSample: purchases.length > 0 ? purchases[0] : null,
-
       data: purchases,
     };
-
-    navigator.clipboard
-      .writeText(JSON.stringify(debugInfo, null, 2))
-      .then(() => alert('Dados copiados! Cole no chat.'))
-      .catch((err) => console.error('Erro ao copiar:', err));
+    navigator.clipboard.writeText(JSON.stringify(debugInfo, null, 2));
+    alert('Debug copiado!');
   };
+
+  const MaturationExplanation = () => (
+    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg p-4 mb-6 relative animate-fade-in">
+      <button
+        onClick={() => setShowMaturationInfo(false)}
+        className="absolute top-2 right-2 text-blue-400 hover:text-blue-600"
+      >
+        ✕
+      </button>
+      <div className="flex gap-3">
+        <div className="mt-1">
+          <Info className="text-blue-500" size={20} />
+        </div>
+        <div>
+          <h4 className="font-bold text-blue-900 dark:text-blue-100 text-sm mb-1">
+            Proteção de Volatilidade Ativada
+          </h4>
+          <p className="text-sm text-blue-700 dark:text-blue-300 leading-relaxed max-w-3xl">
+            <strong>Controle o que é possível: o tempo.</strong> O cérebro humano supervaloriza
+            eventos recentes, mas janelas curtas ( menos de 180 dias) são irrelevantes para o longo
+            prazo. Para proteger sua disciplina, transformamos a variação financeira em uma contagem
+            regressiva. Nesse período, a barra indica{' '}
+            <strong>tempo decorrido até a maturação</strong>, não lucro.
+          </p>
+          <div className="flex flex-wrap gap-4 mt-3">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+              <span className="w-2 h-2 rounded-full bg-slate-400"></span> 0-2 Meses (Semente)
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400">
+              <span className="w-2 h-2 rounded-full bg-blue-400"></span> 2-4 Meses (Enraizando)
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400">
+              <span className="w-2 h-2 rounded-full bg-indigo-400"></span> 4-6 Meses (Consolidando)
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   const ContributionRow = ({ item }) => {
     const timeData = getDetailedTimeElapsed(item.trade_date);
+    const maturation = getMaturationInfo(item.trade_date);
+
+    const useMaturationVisuals = isProtectionMode && !maturation.isMature;
+
     const totalCurrentValue = item.hasPriceData
       ? Number(item.currentPrice) * Number(item.qty)
       : null;
     const totalPaidValue = Number(item.price) * Number(item.qty);
+
     const isSimpleProfit = totalCurrentValue >= totalPaidValue;
-    const valAtualColor = isSimpleProfit
-      ? 'text-green-600 dark:text-green-400'
-      : 'text-red-600 dark:text-red-400';
     const isDisplayProfit = (item.displayPercent || 0) >= 0;
     const rawPercent = item.hasPriceData ? item.displayPercent : 0;
     const absPercent = Math.abs(rawPercent);
     const barWidth = Math.min(100, (absPercent / maxAbsPercent) * 100);
-    const barColorClass = isDisplayProfit
-      ? 'bg-emerald-500 dark:bg-emerald-500'
-      : 'bg-rose-500 dark:bg-rose-500';
+
+    let valueTextColor, percentTextColor, progressBarColor, barWidthToRender, percentageText;
+
+    if (useMaturationVisuals) {
+      valueTextColor = 'text-gray-400 dark:text-gray-500 font-normal';
+      percentTextColor = maturation.stage.textClass;
+
+      progressBarColor = maturation.stage.barClass;
+      barWidthToRender = maturation.progressPercent;
+
+      percentageText = (
+        <div className="flex items-center justify-end gap-1">
+          {maturation.stage.icon}
+          <span className="text-[10px] uppercase font-bold tracking-wide">
+            {maturation.stage.label} {Math.floor(maturation.progressPercent)}%
+          </span>
+        </div>
+      );
+    } else {
+      valueTextColor = isSimpleProfit
+        ? 'text-green-600 dark:text-green-400'
+        : 'text-red-600 dark:text-red-400';
+
+      percentTextColor = isDisplayProfit
+        ? 'text-emerald-600 dark:text-emerald-400'
+        : 'text-rose-600 dark:text-rose-400';
+
+      progressBarColor = isDisplayProfit
+        ? 'bg-emerald-500 dark:bg-emerald-500'
+        : 'bg-rose-500 dark:bg-rose-500';
+      barWidthToRender = barWidth;
+
+      percentageText = (
+        <>
+          {isDisplayProfit ? '+' : ''}
+          {rawPercent.toFixed(2)}%
+        </>
+      );
+    }
+
+    const valAtualColor = isSimpleProfit
+      ? 'text-green-600 dark:text-green-400'
+      : 'text-red-600 dark:text-red-400';
+
+    const finalValAtualColor = useMaturationVisuals ? valueTextColor : valAtualColor;
 
     return (
       <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors border-b border-gray-100 dark:border-gray-800 last:border-0">
@@ -280,37 +415,70 @@ export default function Contributions() {
         <td className="px-6 py-4 text-center font-medium text-gray-900 dark:text-white font-mono">
           {totalPaidValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
         </td>
+
+        {}
         <td
-          className={`px-6 py-4 text-center font-bold bg-gray-50/50 dark:bg-gray-800/50 border-l border-gray-100 dark:border-gray-700 font-mono ${item.hasPriceData ? valAtualColor : 'text-gray-400'}`}
+          className={`px-6 py-4 text-center font-bold bg-gray-50/50 dark:bg-gray-800/50 border-l border-gray-100 dark:border-gray-700 font-mono ${item.hasPriceData ? finalValAtualColor : 'text-gray-400'}`}
         >
           {totalCurrentValue !== null
             ? totalCurrentValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
             : '-'}
         </td>
+
+        {}
         <td className="px-6 py-4 text-center text-gray-500 dark:text-gray-400 border-l border-gray-100 dark:border-gray-700 font-medium text-xs">
-          {timeData.short}
+          <div className="flex flex-col items-center justify-center">
+            <span>{timeData.short}</span>
+            {}
+            {useMaturationVisuals && (
+              <span className="text-[9px] text-gray-400">{maturation.days}/180 dias</span>
+            )}
+          </div>
         </td>
+
+        {}
         <td
-          className={`px-6 py-4 text-right font-bold font-mono ${getValueColor(item.profitValue)}`}
+          className={`px-6 py-4 text-right font-bold font-mono ${item.hasPriceData ? (useMaturationVisuals ? valueTextColor : getOldSystemValueColor(item.profitValue)) : ''}`}
         >
-          {item.hasPriceData
-            ? item.profitValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-            : '-'}
+          {item.hasPriceData ? (
+            <div className="flex flex-col items-end">
+              <span>
+                {item.profitValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </span>
+
+              {}
+              {useMaturationVisuals && (
+                <span
+                  className={`text-[9px] ${(item.displayPercent || 0) >= 0 ? 'text-green-600/60' : 'text-red-600/60'}`}
+                >
+                  ({(item.displayPercent || 0) >= 0 ? '+' : ''}
+                  {rawPercent.toFixed(1)}%)
+                </span>
+              )}
+            </div>
+          ) : (
+            '-'
+          )}
         </td>
+
+        {}
         <td className="px-6 py-4 align-middle">
           {item.hasPriceData ? (
-            <div className="flex items-center w-full gap-3">
-              <div
-                className={`w-16 text-right font-bold text-xs ${isDisplayProfit ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}
-              >
-                {isDisplayProfit ? '+' : ''}
-                {rawPercent.toFixed(2)}%
-              </div>
-              <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex items-center">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${barColorClass}`}
-                  style={{ width: `${barWidth}%` }}
-                />
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center w-full gap-3">
+                <div className={`w-24 text-right font-bold text-xs ${percentTextColor}`}>
+                  {percentageText}
+                </div>
+                <div className="flex-1 h-2.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex items-center relative">
+                  {}
+                  {useMaturationVisuals && (
+                    <div className="absolute inset-0 opacity-10 bg-[linear-gradient(45deg,transparent_25%,#000_25%,#000_50%,transparent_50%,transparent_75%,#000_75%,#000_100%)] bg-[length:10px_10px]" />
+                  )}
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 shadow-sm ${progressBarColor}`}
+                    style={{ width: `${barWidthToRender}%` }}
+                  />
+                </div>
               </div>
             </div>
           ) : (
@@ -328,36 +496,73 @@ export default function Contributions() {
           <h2 className="text-3xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
             <TrendingUp className="w-8 h-8 text-green-600" /> Meus Aportes
           </h2>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Histórico completo e análise de performance.
-          </p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-gray-600 dark:text-gray-400">
+              Histórico completo e análise de performance.
+            </p>
+            {isProtectionMode && (
+              <button
+                onClick={() => setShowMaturationInfo(!showMaturationInfo)}
+                className="text-blue-500 hover:text-blue-700 transition-colors"
+                title="O que é o modo protegido?"
+              >
+                <HelpCircle size={16} />
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
+          {}
+          <button
+            onClick={() => {
+              setIsProtectionMode(!isProtectionMode);
+              if (!isProtectionMode) setShowMaturationInfo(true);
+            }}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all shadow-sm ${
+              isProtectionMode
+                ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300'
+                : 'bg-gray-50 border-gray-200 text-gray-500 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400'
+            }`}
+            title={
+              isProtectionMode
+                ? 'Desativar proteção de volatilidade'
+                : 'Ativar proteção de volatilidade'
+            }
+          >
+            {isProtectionMode ? <Lock size={16} /> : <Unlock size={16} />}
+            <span className="text-sm font-medium hidden sm:inline">
+              {isProtectionMode ? 'Protegido' : 'Modo padrão'}
+            </span>
+          </button>
+
+          <div className="h-6 w-px bg-gray-300 dark:bg-gray-600 mx-1 hidden sm:block"></div>
+
           <button
             onClick={handleCopyDebug}
             className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium transition-colors shadow-sm"
-            title="Copiar JSON para Debug"
           >
             <Copy size={16} />
             <span className="hidden sm:inline">Debug</span>
           </button>
+
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar ativo..."
-              className="pl-9 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-green-500 outline-none dark:text-white"
+              placeholder="Buscar..."
+              className="pl-9 pr-4 py-2 w-32 sm:w-auto rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-green-500 outline-none dark:text-white"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+
           <select
             className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-green-500 outline-none dark:text-white"
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
           >
-            <option value="all">Todos os Tipos</option>
+            <option value="all">Todos</option>
             <option value="stock">Ações</option>
             <option value="fii">FIIs</option>
             <option value="etf">ETFs</option>
@@ -367,20 +572,21 @@ export default function Contributions() {
             <button
               onClick={() => setViewMode('flat')}
               className={`p-1.5 rounded transition-all ${viewMode === 'flat' ? 'bg-gray-100 dark:bg-gray-700 text-green-600' : 'text-gray-400 hover:text-gray-600'}`}
-              title="Lista por Data"
             >
               <List size={18} />
             </button>
             <button
               onClick={() => setViewMode('grouped')}
               className={`p-1.5 rounded transition-all ${viewMode === 'grouped' ? 'bg-gray-100 dark:bg-gray-700 text-green-600' : 'text-gray-400 hover:text-gray-600'}`}
-              title="Agrupar por Ativo"
             >
               <Layers size={18} />
             </button>
           </div>
         </div>
       </div>
+
+      {}
+      {showMaturationInfo && isProtectionMode && <MaturationExplanation />}
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-visible mb-8">
         {loading ? (
