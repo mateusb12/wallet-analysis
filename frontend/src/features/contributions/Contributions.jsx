@@ -5,6 +5,7 @@ import { formatChartDate } from '../../utils/dateUtils.js';
 import { fetchB3Prices, fetchPriceClosestToDate } from '../../services/b3service.js';
 import { getDetailedTimeElapsed, getTypeColor } from './contributionUtils.js';
 import AssetPerformanceChart from './ContributionPerformanceChart.jsx';
+import { supabase } from '../../services/supabaseClient.js';
 
 const calculateEquivalentRate = (totalProfitPercent, tradeDate, mode) => {
   if (mode === 'total' || !totalProfitPercent) return totalProfitPercent;
@@ -61,10 +62,29 @@ export default function Contributions() {
 
   const fetchPurchases = async () => {
     try {
-      const response = await fetch(`${API_URL}/wallet/purchases?user_id=${user.id}`);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      if (!token) {
+        console.error('Token de autenticação não encontrado. Usuário não logado.');
+        setLoading(false);
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/wallet/purchases?user_id=${user.id}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
       if (!response.ok) throw new Error('Falha ao buscar aportes');
 
       const data = await response.json();
+
       const uniqueTickers = [...new Set(data.map((item) => item.ticker))];
 
       const marketDataMap = {};
@@ -82,7 +102,6 @@ export default function Contributions() {
             if (priceData && priceData.length > 0) {
               marketDataMap[ticker] = {
                 currentNominal: parseFloat(priceData[0].close),
-
                 currentAdjusted: parseFloat(priceData[0].adjusted_close || priceData[0].close),
                 oneYearAgoAdjusted: priceOldAdjusted,
               };
@@ -207,9 +226,9 @@ export default function Contributions() {
     const debugInfo = {
       timestamp: new Date().toISOString(),
       totalRecords: purchases.length,
-      // Pega o primeiro item completo para vermos a estrutura dos campos (adjusted, etc)
+
       structureSample: purchases.length > 0 ? purchases[0] : null,
-      // Envia todos os dados
+
       data: purchases,
     };
 
@@ -236,8 +255,6 @@ export default function Contributions() {
     const barColorClass = isDisplayProfit
       ? 'bg-emerald-500 dark:bg-emerald-500'
       : 'bg-rose-500 dark:bg-rose-500';
-
-
 
     return (
       <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors border-b border-gray-100 dark:border-gray-800 last:border-0">
