@@ -1,13 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { fetchDashboardData } from '../../services/walletDataService.js'; // <--- Import novo
+import { fetchDashboardData } from '../../services/walletDataService.js';
 
 import iconStocks from '../../assets/stocks.png';
 import iconEtf from '../../assets/etf.png';
 import iconFiis from '../../assets/fiis.png';
 import iconTotal from '../../assets/all.png';
-
-// Removemos API_URL daqui pois o service já lida com isso
 
 export const COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#6366f1'];
 
@@ -46,15 +44,11 @@ export const useWalletDashboardData = (user) => {
   const [debugShowEmpty, setDebugShowEmpty] = useState(false);
 
   useEffect(() => {
-    // Agora só precisamos saber se o usuário está logado,
-    // o ID em si não é mais enviado na URL
     if (!user) return;
 
     const fetchData = async () => {
       setLoading(true);
       try {
-        // --- MUDANÇA PRINCIPAL AQUI ---
-        // Usamos o service centralizado que injeta o token
         const result = await fetchDashboardData();
 
         setData(result);
@@ -66,14 +60,13 @@ export const useWalletDashboardData = (user) => {
         });
       } catch (error) {
         console.error('Falha na conexão:', error);
-        // Opcional: setar algum estado de erro visual
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [user]); // Dependência simplificada
+  }, [user?.id]);
 
   const safeData = useMemo(() => {
     const defaultStats = { profit: 0, yield: 0 };
@@ -110,10 +103,7 @@ export const useWalletDashboardData = (user) => {
 
       let fullTypeRaw = p.subtype || mappedSubtype;
 
-      // Segurança se subtype vier null
-      if (fullTypeRaw && typeof fullTypeRaw === 'string') {
-        // Mantém a lógica existente
-      } else {
+      if (!fullTypeRaw || typeof fullTypeRaw !== 'string') {
         fullTypeRaw = 'Indefinido';
       }
 

@@ -63,7 +63,11 @@ const RentabilityBar = ({ value, maxAbsValue }) => {
 
 const AssetContributions = ({ history = [], ticker }) => {
   if (!history || history.length === 0)
-    return <div className="p-4 text-center text-xs text-gray-500">Sem histórico registrado.</div>;
+    return (
+      <div className="p-4 text-center text-xs text-gray-500">
+        Sem histórico detalhado disponível.
+      </div>
+    );
 
   return (
     <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-b-lg border-t border-gray-200 dark:border-gray-700 shadow-inner">
@@ -131,8 +135,6 @@ const getFiiTypeStyle = (type) => {
   return 'bg-gray-100 text-gray-600 border-gray-200';
 };
 
-console.log('🔍 [DEBUG] Chaves de Ícones Disponíveis:', Object.keys(FII_SUBTYPE_ICONS));
-
 const PositionsTable = ({
   filteredPositions,
   totalValue,
@@ -145,51 +147,6 @@ const PositionsTable = ({
   const isFiiTable =
     categoryLabel === 'FIIs' ||
     (filteredPositions.length > 0 && filteredPositions[0].type === 'fii');
-
-  const getDaysFromHistory = (history) => {
-    if (!history || history.length === 0) return 0;
-
-    const dates = history.map((h) => new Date(h.trade_date).getTime());
-    const oldest = Math.min(...dates);
-
-    const now = new Date().getTime();
-    const diffTime = Math.abs(now - oldest);
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
-
-  const calculateAssetAgeLabel = (history) => {
-    if (!history || history.length === 0) return '-';
-
-    const dates = history.map((h) => new Date(h.trade_date).getTime());
-    const oldest = new Date(Math.min(...dates));
-    const now = new Date();
-
-    let years = now.getFullYear() - oldest.getFullYear();
-    let months = now.getMonth() - oldest.getMonth();
-    let days = now.getDate() - oldest.getDate();
-
-    if (days < 0) {
-      months -= 1;
-      const prevMonthLastDay = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
-      days += prevMonthLastDay;
-    }
-    if (months < 0) {
-      years -= 1;
-      months += 12;
-    }
-
-    const parts = [];
-    if (years > 0) parts.push(`${years}a`);
-    if (months > 0) parts.push(`${months}m`);
-
-    if (years === 0 && days > 0) {
-      parts.push(`${days}d`);
-    }
-
-    if (parts.length === 0) return '0d';
-
-    return parts.join(' ');
-  };
 
   const toggleExpand = (e, ticker) => {
     e.stopPropagation();
@@ -227,9 +184,15 @@ const PositionsTable = ({
   const timeScaleData = useMemo(() => {
     const ages = sortedPositions.map((p) => {
       const history = assetsHistoryMap[p.ticker] || [];
+      if (!history.length) return { ticker: p.ticker, days: 0 };
+
+      const dates = history.map((h) => new Date(h.trade_date).getTime());
+      const oldest = Math.min(...dates);
+      const now = new Date().getTime();
+      const diffTime = Math.abs(now - oldest);
       return {
         ticker: p.ticker,
-        days: getDaysFromHistory(history),
+        days: Math.ceil(diffTime / (1000 * 60 * 60 * 24)),
       };
     });
 
@@ -271,13 +234,11 @@ const PositionsTable = ({
         <span className="text-xs text-gray-500">*Cotações atualizadas via B3/Supabase</span>
       </div>
 
-      {}
       <div className="overflow-x-auto relative custom-scrollbar">
         {filteredPositions.length > 0 ? (
           <table className="w-full text-sm text-left border-collapse">
             <thead className="bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 uppercase font-medium">
               <tr>
-                {}
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-left sticky left-0 z-20 bg-gray-100 dark:bg-gray-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                   Ativo
                 </th>
@@ -287,7 +248,6 @@ const PositionsTable = ({
                     TIPO
                   </th>
                 )}
-                {}
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
                   Tempo
                 </th>
@@ -306,7 +266,6 @@ const PositionsTable = ({
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
                   Variação (R$)
                 </th>
-                {}
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-left min-w-[140px]">
                   Rentabilidade (%)
                 </th>
@@ -325,19 +284,12 @@ const PositionsTable = ({
                 const share = totalValue > 0 ? (marketValue / totalValue) * 100 : 0;
                 const isExpanded = expandedTicker === row.ticker;
 
-                const assetHistory = assetsHistoryMap[row.ticker] || [];
-                const assetAgeLabel = calculateAssetAgeLabel(assetHistory);
+                const assetAgeLabel = row.age || '-';
+
                 const dynamicStyle = getTimeBadgeStyle(row.ticker);
                 const hasDynamicColor = Object.keys(dynamicStyle).length > 0;
 
-                if (isFiiTable) {
-                  const iconExists = !!FII_SUBTYPE_ICONS[row.asset_subtype];
-                  console.log(
-                    `🔍 [Row Render] ${row.ticker}:`,
-                    `Subtype="${row.asset_subtype}"`,
-                    `IconExists=${iconExists}`
-                  );
-                }
+                const assetHistory = assetsHistoryMap[row.ticker] || [];
 
                 return (
                   <React.Fragment key={row.ticker}>
@@ -351,7 +303,6 @@ const PositionsTable = ({
                         setSelectedAssetTicker(selectedAssetTicker === row.ticker ? '' : row.ticker)
                       }
                     >
-                      {}
                       <td
                         className={`px-6 py-4 font-medium text-gray-900 dark:text-gray-100 sticky left-0 z-10 border-r border-gray-200 dark:border-gray-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]
                           ${
@@ -372,7 +323,6 @@ const PositionsTable = ({
                             className={`w-1 h-8 rounded-full ${row.type === 'stock' ? 'bg-blue-500' : row.type === 'fii' ? 'bg-yellow-500' : 'bg-purple-500'}`}
                           ></span>
                           <div className="flex flex-col">
-                            {}
                             <span className="font-bold whitespace-nowrap">{row.ticker}</span>
                             <span className="text-xs text-gray-500 font-normal whitespace-nowrap">
                               {row.name?.substring(0, 15)}
@@ -395,7 +345,6 @@ const PositionsTable = ({
                                   />
                                 </div>
                                 <div className="absolute bottom-full mb-2 hidden group-hover:block z-50">
-                                  {}
                                   <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 whitespace-nowrap shadow-lg">
                                     {row.full_type || row.asset_subtype}
                                     <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
@@ -406,7 +355,6 @@ const PositionsTable = ({
                               <span
                                 className={`px-2 py-1 rounded-md text-xs font-bold border ${getFiiTypeStyle(row.asset_subtype)}`}
                               >
-                                {}
                                 {row.full_type || row.asset_subtype || 'Indefinido'}
                               </span>
                             )}
@@ -430,12 +378,12 @@ const PositionsTable = ({
                                   : 'text-gray-400'
                               }
                             />
+                            {}
                             {assetAgeLabel}
                           </span>
                         </div>
                       </td>
 
-                      {}
                       <td className="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-mono whitespace-nowrap">
                         {row.qty}
                       </td>
@@ -451,7 +399,6 @@ const PositionsTable = ({
                       <td className="px-6 py-4 whitespace-nowrap">
                         <VariationBadge value={variationValue} />
                       </td>
-                      {}
                       <td className="px-6 py-4 whitespace-nowrap min-w-[140px]">
                         <RentabilityBar value={rentabilityPercent} maxAbsValue={maxRentability} />
                       </td>
