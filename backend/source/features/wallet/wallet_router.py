@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, text, bindparam
 
 from backend.source.core.database import get_db
+from backend.source.features.auth.jwt_identity_extraction import get_current_user
 from backend.source.models.sql_models import AssetPurchase, CdiHistory, B3Price
 from backend.source.features.wallet.wallet_schema import (
     ImportPurchasesRequest,
@@ -160,9 +161,12 @@ def _calculate_history_logic(user_id: str, db: Session) -> List[Dict]:
 # ==========================================
 
 @wallet_bp.get("/dashboard")
-def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
+def get_dashboard_data(
+        db: Session = Depends(get_db),
+        current_user: str = Depends(get_current_user)
+):
     # 1. Buscar todas as compras (MANTIDO)
-    purchases = db.query(AssetPurchase).filter(AssetPurchase.user_id == user_id).all()
+    purchases = db.query(AssetPurchase).filter(AssetPurchase.user_id == current_user).all()
 
     transactions_list = [{
         "ticker": p.ticker,
@@ -321,7 +325,7 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
         })
 
     positions_list.sort(key=lambda x: x['total_value'], reverse=True)
-    history_data = _calculate_history_logic(user_id, db)
+    history_data = _calculate_history_logic(current_user, db)
 
     return {
         "summary": {
@@ -339,16 +343,23 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
 
 # --- ROTAS DE CRUD (Mantidas inalteradas abaixo) ---
 @wallet_bp.get("/performance/history", response_model=List[HistoryPoint])
-def get_wallet_history(user_id: str, db: Session = Depends(get_db)):
-    return _calculate_history_logic(user_id, db)
+def get_wallet_history(
+        db: Session = Depends(get_db),
+        current_user: str = Depends(get_current_user) # <--- MUDANÇA AQUI
+):
+    return _calculate_history_logic(current_user, db)
 
 @wallet_bp.post("/import")
-def import_purchases(payload: ImportPurchasesRequest, db: Session = Depends(get_db)):
+def import_purchases(
+        payload: ImportPurchasesRequest,
+        db: Session = Depends(get_db),
+        current_user: str = Depends(get_current_user) # <--- MUDANÇA AQUI
+):
     try:
         new_records = []
         for item in payload.purchases:
             record = AssetPurchase(
-                user_id=payload.user_id,
+                user_id=current_user,
                 ticker=item.ticker.upper(),
                 name=item.name,
                 type=item.type.lower(),
@@ -366,15 +377,22 @@ def import_purchases(payload: ImportPurchasesRequest, db: Session = Depends(get_
         raise HTTPException(status_code=500, detail=str(e))
 
 @wallet_bp.get("/purchases", response_model=List[AssetPurchaseResponse])
-def get_user_purchases(user_id: str, db: Session = Depends(get_db)):
-    purchases = db.query(AssetPurchase).filter(AssetPurchase.user_id == user_id).all()
+def get_user_purchases(
+        db: Session = Depends(get_db),
+        current_user: str = Depends(get_current_user)
+):
+    purchases = db.query(AssetPurchase).filter(AssetPurchase.user_id == current_user).all()
     return purchases
 
 @wallet_bp.post("/purchases", response_model=AssetPurchaseResponse, status_code=status.HTTP_201_CREATED)
-def create_purchase(payload: AssetPurchaseInput, db: Session = Depends(get_db)):
+def create_purchase(
+        payload: AssetPurchaseInput,
+        db: Session = Depends(get_db),
+        current_user: str = Depends(get_current_user)
+):
     try:
         new_purchase = AssetPurchase(
-            user_id=payload.user_id,
+            user_id=current_user,
             ticker=payload.ticker.upper(),
             name=payload.name or payload.ticker.upper(),
             type=payload.type.lower(),
@@ -391,12 +409,17 @@ def create_purchase(payload: AssetPurchaseInput, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @wallet_bp.put("/purchases/{purchase_id}", response_model=AssetPurchaseResponse)
-def update_purchase(purchase_id: int, payload: AssetPurchaseInput, db: Session = Depends(get_db)):
+def update_purchase(
+        purchase_id: int,
+        payload: AssetPurchaseInput,
+        db: Session = Depends(get_db),
+        current_user: str = Depends(get_current_user)
+):
     purchase = db.query(AssetPurchase).filter(AssetPurchase.id == purchase_id).first()
     if not purchase:
         raise HTTPException(status_code=404, detail="Aporte não encontrado")
-    if purchase.user_id != payload.user_id:
-        raise HTTPException(status_code=403, detail="Não autorizado")
+    if purchase.user_id != current_user:
+        raise HTTPException(status_code=403, detail="Não autorizado a alterar este registro")
     try:
         purchase.ticker = payload.ticker.upper()
         purchase.name = payload.name or payload.ticker.upper()
@@ -412,10 +435,20 @@ def update_purchase(purchase_id: int, payload: AssetPurchaseInput, db: Session =
         raise HTTPException(status_code=500, detail=str(e))
 
 @wallet_bp.delete("/purchases/{purchase_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_purchase(purchase_id: int, db: Session = Depends(get_db)):
+def delete_purchase(
+        purchase_id: int,
+        db: Session = Depends(get_db),
+        current_user: str = Depends(get_current_user)
+):
     purchase = db.query(AssetPurchase).filter(AssetPurchase.id == purchase_id).first()
+
     if not purchase:
         raise HTTPException(status_code=404, detail="Aporte não encontrado")
+
+    # SEGURANÇA: Verifica ownership
+    if purchase.user_id != current_user:
+        raise HTTPException(status_code=403, detail="Não autorizado a deletar este registro")
+
     try:
         db.delete(purchase)
         db.commit()

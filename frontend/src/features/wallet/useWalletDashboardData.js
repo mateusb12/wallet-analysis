@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { fetchDashboardData } from '../../services/walletDataService.js'; // <--- Import novo
 
 import iconStocks from '../../assets/stocks.png';
 import iconEtf from '../../assets/etf.png';
 import iconFiis from '../../assets/fiis.png';
 import iconTotal from '../../assets/all.png';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Removemos API_URL daqui pois o service já lida com isso
 
 export const COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#6366f1'];
 
@@ -45,32 +46,34 @@ export const useWalletDashboardData = (user) => {
   const [debugShowEmpty, setDebugShowEmpty] = useState(false);
 
   useEffect(() => {
-    if (!user?.id) return;
+    // Agora só precisamos saber se o usuário está logado,
+    // o ID em si não é mais enviado na URL
+    if (!user) return;
 
     const fetchData = async () => {
       setLoading(true);
       try {
-        const response = await fetch(`${API_URL}/wallet/dashboard?user_id=${user.id}`);
-        const result = await response.json();
+        // --- MUDANÇA PRINCIPAL AQUI ---
+        // Usamos o service centralizado que injeta o token
+        const result = await fetchDashboardData();
 
-        if (response.ok) {
-          setData(result);
+        setData(result);
 
-          setApiDebug({
-            url: `${API_URL}/wallet/dashboard`,
-            status: response.status,
-            rawResponse: result,
-          });
-        }
+        setApiDebug({
+          url: 'walletDataService > /wallet/dashboard',
+          status: 200,
+          rawResponse: result,
+        });
       } catch (error) {
         console.error('Falha na conexão:', error);
+        // Opcional: setar algum estado de erro visual
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [user?.id]);
+  }, [user]); // Dependência simplificada
 
   const safeData = useMemo(() => {
     const defaultStats = { profit: 0, yield: 0 };
@@ -106,6 +109,13 @@ export const useWalletDashboardData = (user) => {
       }
 
       let fullTypeRaw = p.subtype || mappedSubtype;
+
+      // Segurança se subtype vier null
+      if (fullTypeRaw && typeof fullTypeRaw === 'string') {
+        // Mantém a lógica existente
+      } else {
+        fullTypeRaw = 'Indefinido';
+      }
 
       let cleanFullType = fullTypeRaw.replace(/^FII\s-\s/, '');
 

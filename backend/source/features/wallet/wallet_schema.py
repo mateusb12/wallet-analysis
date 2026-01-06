@@ -18,11 +18,11 @@ class AssetPurchaseCreate(AssetPurchaseBase):
 
 # NOVO: Usado para criar/editar um único aporte (Frontend envia user_id junto)
 class AssetPurchaseInput(AssetPurchaseBase):
-    user_id: str
+    pass
 
 # Request do Import em massa
 class ImportPurchasesRequest(BaseModel):
-    user_id: str
+    pass
     purchases: List[AssetPurchaseCreate]
 
 # Resposta para o frontend

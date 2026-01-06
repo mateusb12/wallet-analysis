@@ -8,6 +8,7 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 let cachedPositions = null;
 
 // --- HELPERS ---
+
 const normalizeDate = (dateInput) => {
   if (!dateInput) return null;
   if (typeof dateInput === 'string') return dateInput.substring(0, 10);
@@ -26,64 +27,126 @@ const getPriceFromRecord = (record) => {
   return val ? parseFloat(val) : 0;
 };
 
+// Helper para pegar o Token JWT e montar o Header de Autorização
+async function getAuthHeaders() {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+
+  if (!token) throw new Error('Usuário não autenticado (Sessão expirada)');
+
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+}
+
 // --- CRUD WRAPPERS ---
 
-export const getWalletPurchases = async (userId) => {
-  const response = await fetch(`${API_BASE}/wallet/purchases?user_id=${userId}`);
+// --- [NOVO] Função para o Dashboard ---
+export const fetchDashboardData = async () => {
+  const headers = await getAuthHeaders();
+
+  // Note que removemos o ?user_id= da URL
+  const response = await fetch(`${API_BASE}/wallet/dashboard`, {
+    method: 'GET',
+    headers: headers,
+  });
+
+  if (!response.ok) {
+    // Se der 401, o throw vai capturar
+    const err = await response.json();
+    throw new Error(err.detail || 'Falha ao carregar dashboard');
+  }
+
+  return await response.json();
+};
+
+export const getWalletPurchases = async () => {
+  const headers = await getAuthHeaders();
+
+  const response = await fetch(`${API_BASE}/wallet/purchases`, {
+    method: 'GET',
+    headers: headers,
+  });
+
   if (!response.ok) throw new Error('Falha ao buscar histórico');
   return await response.json();
 };
 
 export const createPurchase = async (payload) => {
+  const headers = await getAuthHeaders();
+
+  const { user_id, ...cleanPayload } = payload;
+
   const response = await fetch(`${API_BASE}/wallet/purchases`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    headers: headers,
+    body: JSON.stringify(cleanPayload),
   });
+
   if (!response.ok) throw new Error('Erro ao criar aporte');
   cachedPositions = null;
   return await response.json();
 };
 
 export const updatePurchase = async (id, payload) => {
+  const headers = await getAuthHeaders();
+  const { user_id, ...cleanPayload } = payload;
+
   const response = await fetch(`${API_BASE}/wallet/purchases/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    headers: headers,
+    body: JSON.stringify(cleanPayload),
   });
+
   if (!response.ok) throw new Error('Erro ao atualizar');
   cachedPositions = null;
   return await response.json();
 };
 
 export const deletePurchase = async (id) => {
-  const response = await fetch(`${API_BASE}/wallet/purchases/${id}`, { method: 'DELETE' });
+  const headers = await getAuthHeaders();
+
+  const response = await fetch(`${API_BASE}/wallet/purchases/${id}`, {
+    method: 'DELETE',
+    headers: headers,
+  });
+
   if (!response.ok) throw new Error('Erro ao excluir');
   cachedPositions = null;
   return true;
 };
 
 export const importPurchases = async (payload) => {
+  const headers = await getAuthHeaders();
+
+  const body = {
+    purchases: payload.purchases || payload,
+  };
+
   const response = await fetch(`${API_BASE}/wallet/import`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    headers: headers,
+    body: JSON.stringify(body),
   });
+
   const data = await response.json();
-  if (!response.ok) throw new Error(data.detail);
+  if (!response.ok) throw new Error(data.detail || 'Erro na importação');
   cachedPositions = null;
   return data;
 };
 
 export const fetchWalletPositions = async (forceRefresh = false) => {
   if (cachedPositions && !forceRefresh) return cachedPositions;
-  try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user || !user.id) return [];
 
-    const response = await fetch(`${API_BASE}/wallet/purchases?user_id=${user.id}`);
+  try {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${API_BASE}/wallet/purchases`, {
+      method: 'GET',
+      headers: headers,
+    });
+
     if (!response.ok) throw new Error('Failed fetch');
     const data = await response.json();
 
@@ -105,40 +168,20 @@ export const fetchWalletPositions = async (forceRefresh = false) => {
   }
 };
 
-// --- NOVA IMPLEMENTAÇÃO: HISTÓRICO TOTAL ---
-// Agora consome direto do Backend que calcula tudo
-export const fetchWalletPerformanceHistory = async (userId) => {
-  // Objeto de Debug que vamos preencher
-  const debugInfo = {
-    url: '',
-    curl: '',
-    status: 0,
-    rawResponse: null,
-    error: null,
-  };
-
-  if (!userId) {
-    debugInfo.error = 'userId is missing/null/undefined';
-    return {
-      stock: [],
-      etf: [],
-      fii: [],
-      total: [],
-      warnings: ['Missing UserID'],
-      debug: debugInfo,
-    };
-  }
+export const fetchWalletPerformanceHistory = async () => {
+  const debugInfo = { url: '', status: 0, rawResponse: null, error: null };
 
   try {
-    const url = `${API_BASE}/wallet/performance/history?user_id=${userId}`;
+    const headers = await getAuthHeaders();
+    const url = `${API_BASE}/wallet/performance/history`;
+
     debugInfo.url = url;
 
-    // Gerar string CURL aproximada para você copiar e colar
-    debugInfo.curl = `curl '${url}' \\
-  -H 'Accept: application/json' \\
-  -H 'User-Agent: WalletApp/1.0'`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: headers,
+    });
 
-    const response = await fetch(url);
     debugInfo.status = response.status;
 
     if (!response.ok) {
@@ -146,16 +189,15 @@ export const fetchWalletPerformanceHistory = async (userId) => {
     }
 
     const data = await response.json();
-    debugInfo.rawResponse = data; // Salva o JSON bruto
+    debugInfo.rawResponse = data;
 
-    // Retorna a estrutura esperada pelo hook + o debugInfo
     return {
-      total: data, // O backend retorna a lista direto agora
+      total: data,
       stock: [],
       etf: [],
       fii: [],
       warnings: [],
-      debug: debugInfo, // <--- Anexamos o debug aqui
+      debug: debugInfo,
     };
   } catch (error) {
     console.error('Falha ao buscar histórico consolidado:', error);
@@ -165,15 +207,13 @@ export const fetchWalletPerformanceHistory = async (userId) => {
       etf: [],
       fii: [],
       total: [],
-      warnings: ['Falha de conexão'],
+      warnings: ['Falha de conexão ou Autenticação'],
       debug: debugInfo,
     };
   }
 };
 
 // --- MANTIDO: LÓGICA PARA ATIVO ESPECÍFICO (Dropdown) ---
-// Como o backend ainda não tem endpoint para ativo isolado vs benchmark,
-// mantemos essa lógica legada no frontend por enquanto.
 
 const fetchBenchmarkData = async (type, startDate, endDate) => {
   try {

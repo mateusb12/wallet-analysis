@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Header
 from backend.source.core.db import get_supabase
 from backend.source.features.analysis.analysis_schema import SimulationRequest
+from backend.source.features.auth.jwt_identity_extraction import get_current_user
 
 analysis_bp = APIRouter(prefix="/analysis", tags=["Analysis"])
 
@@ -235,28 +236,6 @@ def simulate_fii(payload: SimulationRequest):
         "timeline": timeline,
         "period_text": f"({len(df_sim)} meses: {start_sim_date.strftime('%d/%m/%Y')} a {end_sim_date.strftime('%d/%m/%Y')})"
     }
-
-
-def get_current_user(authorization: str = Header(None)):
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authentication Token")
-
-    try:
-        # Extract token from "Bearer <token>"
-        token = authorization.split(" ")[1]
-        supabase = get_supabase()
-
-        # Verify token with Supabase Auth
-        user_response = supabase.auth.get_user(token)
-
-        if not user_response or not user_response.user:
-            raise HTTPException(status_code=401, detail="Invalid Authentication Token")
-
-        return user_response.user.id
-
-    except Exception as e:
-        print(f"Auth Error: {str(e)}")
-        raise HTTPException(status_code=401, detail="Invalid Authentication Token")
 
 
 @analysis_bp.get("/opportunities")
