@@ -215,31 +215,17 @@ export default function AssetPerformanceChart({ purchases }) {
     if (!portfolioStats || portfolioStats.benchmarkGrowth === null || !assetPerformance.length)
       return [];
 
-    const totalValidWeight = assetPerformance.reduce((acc, asset) => {
-      const hasBenchmark =
-        asset.benchmarkData?.value !== null && asset.benchmarkData?.value !== undefined;
-      const currentVal = asset.totalInvested + asset.totalProfit;
-      return hasBenchmark ? acc + currentVal : acc;
-    }, 0);
-
-    if (totalValidWeight === 0) return [];
-
     return assetPerformance
       .filter(
         (asset) => asset.benchmarkData?.value !== null && asset.benchmarkData?.value !== undefined
       )
       .map((asset) => {
-        const currentVal = asset.totalInvested + asset.totalProfit;
-        const weight = currentVal / totalValidWeight;
-        const contributionPoints = asset.benchmarkData.value * weight;
-
         return {
           ...asset,
-          contributionPoints,
-          weightPercent: weight * 100,
+          rawReturn: asset.benchmarkData.value,
         };
       })
-      .sort((a, b) => b.contributionPoints - a.contributionPoints);
+      .sort((a, b) => b.rawReturn - a.rawReturn);
   }, [assetPerformance, portfolioStats]);
 
   const maxValue = useMemo(() => {
@@ -368,6 +354,7 @@ export default function AssetPerformanceChart({ purchases }) {
       </div>
 
       <div className="space-y-4">
+        {}
         {assetPerformance.map((asset, index) => {
           const benchData = asset.benchmarkData;
           const hasBenchmark = benchData && benchData.value !== null;
@@ -397,7 +384,6 @@ export default function AssetPerformanceChart({ purchases }) {
                 </div>
               </div>
 
-              {}
               <div className="flex-1 relative group/bench">
                 {renderBar(asset)}
 
@@ -534,31 +520,35 @@ export default function AssetPerformanceChart({ purchases }) {
                   <div className="mb-3 flex items-center justify-between">
                     <h4 className="text-xs font-bold text-indigo-800 dark:text-indigo-200 uppercase tracking-wider flex items-center gap-2">
                       <Activity className="w-3.5 h-3.5" />
-                      Decomposição da Média Histórica ({portfolioStats.benchmarkGrowth?.toFixed(2)}
-                      %)
+                      Ranking de Eficiência Histórica
                     </h4>
                     <span className="text-[10px] text-gray-500 dark:text-gray-400 text-right">
-                      Impacto de cada ativo na formação da média da carteira
+                      Comparativo de performance pura (independente do peso na carteira)
                     </span>
                   </div>
 
                   <div className="space-y-2">
                     {contributionBreakdown.map((asset) => {
-                      const maxContribution = Math.max(
-                        ...contributionBreakdown.map((a) => Math.abs(a.contributionPoints)),
+                      const maxRawReturn = Math.max(
+                        ...contributionBreakdown.map((a) => Math.abs(a.rawReturn)),
                         Math.abs(portfolioStats.benchmarkGrowth || 0)
                       );
+
                       const isPartial = asset.benchmarkData?.isPartial;
                       const isSimple = asset.benchmarkData?.isSimpleReturn;
+                      const isAboveAverage =
+                        asset.rawReturn > (portfolioStats.benchmarkGrowth || 0);
 
                       return (
                         <div key={asset.ticker} className="flex items-center gap-3 text-xs">
-                          <div className="w-20 font-semibold text-gray-600 dark:text-gray-300 flex flex-col">
+                          <div className="w-24 font-semibold text-gray-600 dark:text-gray-300 flex flex-col">
                             <span className="flex items-center gap-1">
-                              <ArrowRight size={10} className="text-gray-300" />
+                              <ArrowRight
+                                size={10}
+                                className={isAboveAverage ? 'text-green-500' : 'text-gray-300'}
+                              />
                               {asset.ticker}
                             </span>
-                            {}
                             <span
                               className="text-[9px] text-gray-400 pl-3 font-normal opacity-75 flex items-center gap-1 cursor-help hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                               title={
@@ -576,15 +566,16 @@ export default function AssetPerformanceChart({ purchases }) {
                             </span>
                           </div>
                           <div className="flex-1 relative">
-                            {renderBar(asset, false, asset.contributionPoints, maxContribution)}
+                            {}
+                            {renderBar(asset, false, asset.rawReturn, maxRawReturn)}
                           </div>
                         </div>
                       );
                     })}
                   </div>
                   <div className="mt-3 pt-2 border-t border-gray-100 dark:border-gray-700/50 text-[10px] text-center text-gray-400 italic">
-                    Esta lista mostra quanto cada ativo adicionou ou subtraiu da média final de{' '}
-                    {portfolioStats.benchmarkGrowth?.toFixed(2)}%.
+                    Ordenado pela rentabilidade do ativo. Use isso para identificar quais ativos
+                    historicamente perfomaram melhor.
                   </div>
                 </div>
               )}
