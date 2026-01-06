@@ -65,6 +65,43 @@ def _calculate_period_stats(profit: float, yield_pct: float, start_date: Optiona
         }
     }
 
+def _format_asset_age(first_purchase_date) -> str:
+    """
+    Calcula a idade do ativo no formato '2a 3m 15d' ou '3m 15d'.
+    """
+    if not first_purchase_date:
+        return "-"
+
+    today = datetime.now().date()
+
+    # Garante que seja date (pandas pode trazer Timestamp/datetime)
+    start_date = first_purchase_date
+    if isinstance(start_date, (datetime, pd.Timestamp)):
+        start_date = start_date.date()
+
+    delta = today - start_date
+    total_days = delta.days
+
+    if total_days < 0: return "0d"
+
+    # Cálculo aproximado
+    years = total_days // 365
+    remaining_days = total_days % 365
+    months = remaining_days // 30
+    days = remaining_days % 30
+
+    parts = []
+    if years > 0:
+        parts.append(f"{years}a")
+    if months > 0:
+        parts.append(f"{months}m")
+
+    # Se tiver menos que 1 mês, mostra só dias. Se tiver anos/meses, mostra dias também para precisão
+    if days > 0 or (years == 0 and months == 0):
+        parts.append(f"{days}d")
+
+    return " ".join(parts)
+
 def _calculate_history_logic(user_id: str, db: Session) -> List[Dict]:
     """
     Calcula histórico comparativo (Carteira vs Benchmark Equivalente).
@@ -209,7 +246,8 @@ def get_dashboard_data(
         'qty': 'sum',
         'total_cost': 'sum',
         'type': 'first',
-        'price': 'mean'
+        'price': 'mean',
+        'trade_date': 'min'  # <--- ADICIONE ISSO (Pega a data do primeiro aporte)
     }).reset_index()
 
     df_pos = df_pos[df_pos['qty'] > 0.0001].copy()
@@ -309,6 +347,8 @@ def get_dashboard_data(
         subtype = cls_info.get("subtype", "Indefinido")
         sector = cls_info.get("sector", "Outros")
 
+        age_formatted = _format_asset_age(row['trade_date'])
+
         positions_list.append({
             "ticker": ticker,
             "name": name_map.get(ticker, ticker),
@@ -321,7 +361,8 @@ def get_dashboard_data(
             "total_value": round(row['current_total'], 2),
             "profit": round(row['profit'], 2),
             "profit_percent": round(row['profit_percent'], 2),
-            "allocation_percent": round(row['allocation_percent'], 2)
+            "allocation_percent": round(row['allocation_percent'], 2),
+            "age": age_formatted
         })
 
     positions_list.sort(key=lambda x: x['total_value'], reverse=True)
