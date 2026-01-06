@@ -1,5 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronDown, ChevronRight, Clock, History as HistoryIcon } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  History as HistoryIcon,
+  Info,
+  Calculator,
+} from 'lucide-react';
 import VariationBadge from './components/VariationBadge.jsx';
 
 import tijolo from '../../assets/tijolo.png';
@@ -22,7 +29,6 @@ const formatCurrency = (value) =>
 
 const interpolateColor = (color1, color2, factor) => {
   if (!color1 || !color2 || factor === undefined) return null;
-
   const result = color1.slice().map((c, i) => {
     return Math.round(c + factor * (color2[i] - c));
   });
@@ -135,6 +141,35 @@ const getFiiTypeStyle = (type) => {
   return 'bg-gray-100 text-gray-600 border-gray-200';
 };
 
+const getDisplayData = (row) => {
+  const isFii = row.type === 'fii';
+
+  const avgPrice = isFii && row.avg_price_adjusted ? row.avg_price_adjusted : row.purchase_price;
+  const currentPrice = isFii && row.current_adjusted ? row.current_adjusted : row.current_price;
+
+  let variationValue, rentabilityPercent;
+
+  if (isFii && row.total_return_profit !== undefined) {
+    variationValue = row.total_return_profit;
+    rentabilityPercent = row.total_return_percent;
+  } else {
+    const costBasis = row.purchase_price * row.qty;
+    const marketValue = row.current_price * row.qty;
+    variationValue = marketValue - costBasis;
+    rentabilityPercent = costBasis > 0 ? (variationValue / costBasis) * 100 : 0;
+  }
+
+  return {
+    isFii,
+    avgPrice,
+    currentPrice,
+    variationValue,
+    rentabilityPercent,
+
+    marketValue: row.total_value_current,
+  };
+};
+
 const PositionsTable = ({
   filteredPositions,
   totalValue,
@@ -144,9 +179,10 @@ const PositionsTable = ({
   assetsHistoryMap,
 }) => {
   const [expandedTicker, setExpandedTicker] = useState(null);
+
   const isFiiTable =
     categoryLabel === 'FIIs' ||
-    (filteredPositions.length > 0 && filteredPositions[0].type === 'fii');
+    (filteredPositions.length > 0 && filteredPositions.every((p) => p.type === 'fii'));
 
   const toggleExpand = (e, ticker) => {
     e.stopPropagation();
@@ -155,37 +191,59 @@ const PositionsTable = ({
 
   const maxRentability = useMemo(() => {
     if (!filteredPositions || filteredPositions.length === 0) return 0.1;
-
     return Math.max(
       0.1,
       ...filteredPositions.map((p) => {
-        const cost = p.purchase_price * p.qty;
-        const current = p.current_price * p.qty;
-        if (cost <= 0) return 0;
-        return Math.abs(((current - cost) / cost) * 100);
+        const { rentabilityPercent } = getDisplayData(p);
+        return Math.abs(rentabilityPercent);
       })
     );
   }, [filteredPositions]);
 
   const sortedPositions = useMemo(() => {
     return [...filteredPositions].sort((a, b) => {
-      const costA = a.purchase_price * a.qty;
-      const currentA = a.current_price * a.qty;
-      const rentA = costA > 0 ? ((currentA - costA) / costA) * 100 : 0;
-
-      const costB = b.purchase_price * b.qty;
-      const currentB = b.current_price * b.qty;
-      const rentB = costB > 0 ? ((currentB - costB) / costB) * 100 : 0;
-
-      return rentB - rentA;
+      const dataA = getDisplayData(a);
+      const dataB = getDisplayData(b);
+      return dataB.rentabilityPercent - dataA.rentabilityPercent;
     });
   }, [filteredPositions]);
+
+  const tableTotals = useMemo(() => {
+    let sumQty = 0;
+    let sumTotalValue = 0;
+    let sumVariation = 0;
+    let sumImpliedCost = 0;
+    let sumShare = 0;
+
+    sortedPositions.forEach((row) => {
+      const { marketValue, variationValue } = getDisplayData(row);
+
+      sumQty += row.qty;
+      sumTotalValue += marketValue;
+      sumVariation += variationValue;
+
+      sumImpliedCost += marketValue - variationValue;
+
+      const share = totalValue > 0 ? (marketValue / totalValue) * 100 : 0;
+      sumShare += share;
+    });
+
+    const totalRentabilityPercent = sumImpliedCost > 0 ? (sumVariation / sumImpliedCost) * 100 : 0;
+
+    return {
+      qty: sumQty,
+      totalValue: sumTotalValue,
+      totalCost: sumImpliedCost,
+      variation: sumVariation,
+      rentability: totalRentabilityPercent,
+      share: sumShare,
+    };
+  }, [sortedPositions, totalValue]);
 
   const timeScaleData = useMemo(() => {
     const ages = sortedPositions.map((p) => {
       const history = assetsHistoryMap[p.ticker] || [];
       if (!history.length) return { ticker: p.ticker, days: 0 };
-
       const dates = history.map((h) => new Date(h.trade_date).getTime());
       const oldest = Math.min(...dates);
       const now = new Date().getTime();
@@ -197,39 +255,39 @@ const PositionsTable = ({
     });
 
     if (ages.length === 0) return { min: 0, max: 0, map: {} };
-
     const daysValues = ages.map((a) => a.days);
     const min = Math.min(...daysValues);
     const max = Math.max(...daysValues);
-
     const map = {};
     ages.forEach((a) => {
       map[a.ticker] = a.days;
     });
-
     return { min, max, map };
   }, [sortedPositions, assetsHistoryMap]);
 
   const getTimeBadgeStyle = (ticker) => {
     const days = timeScaleData.map[ticker] || 0;
     const { min, max } = timeScaleData;
-
     if (max === min || max === 0) return {};
-
     const factor = (days - min) / (max - min);
     const bgColor = interpolateColor(COLOR_SCALE.start, COLOR_SCALE.end, factor);
-
-    return {
-      backgroundColor: bgColor,
-      transition: 'background-color 0.5s ease',
-    };
+    return { backgroundColor: bgColor, transition: 'background-color 0.5s ease' };
   };
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
       <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
           Detalhamento: {categoryLabel}
+          {isFiiTable && (
+            <div className="group relative">
+              <Info size={16} className="text-blue-500 cursor-help" />
+              <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-50">
+                Para FIIs, utilizamos Preço Médio e Atual <strong>Ajustados</strong> (descontando
+                proventos) para calcular o Retorno Total real.
+              </div>
+            </div>
+          )}
         </h3>
         <span className="text-xs text-gray-500">*Cotações atualizadas via B3/Supabase</span>
       </div>
@@ -242,7 +300,6 @@ const PositionsTable = ({
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-left sticky left-0 z-20 bg-gray-100 dark:bg-gray-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                   Ativo
                 </th>
-
                 {isFiiTable && (
                   <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center whitespace-nowrap">
                     TIPO
@@ -255,13 +312,13 @@ const PositionsTable = ({
                   Qtd
                 </th>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
-                  Preço Médio
+                  {isFiiTable ? 'Preço Médio (Adj)' : 'Preço Médio'}
                 </th>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
-                  Preço Atual
+                  {isFiiTable ? 'Preço Atual (Adj)' : 'Preço Atual'}
                 </th>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
-                  Total
+                  Total (Real)
                 </th>
                 <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
                   Variação (R$)
@@ -276,19 +333,13 @@ const PositionsTable = ({
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {sortedPositions.map((row) => {
-                const currentPrice = row.current_price;
-                const costBasis = row.purchase_price * row.qty;
-                const marketValue = currentPrice * row.qty;
-                const variationValue = marketValue - costBasis;
-                const rentabilityPercent = costBasis > 0 ? (variationValue / costBasis) * 100 : 0;
+                const { avgPrice, currentPrice, variationValue, rentabilityPercent, marketValue } =
+                  getDisplayData(row);
                 const share = totalValue > 0 ? (marketValue / totalValue) * 100 : 0;
                 const isExpanded = expandedTicker === row.ticker;
-
                 const assetAgeLabel = row.age || '-';
-
                 const dynamicStyle = getTimeBadgeStyle(row.ticker);
                 const hasDynamicColor = Object.keys(dynamicStyle).length > 0;
-
                 const assetHistory = assetsHistoryMap[row.ticker] || [];
 
                 return (
@@ -304,13 +355,7 @@ const PositionsTable = ({
                       }
                     >
                       <td
-                        className={`px-6 py-4 font-medium text-gray-900 dark:text-gray-100 sticky left-0 z-10 border-r border-gray-200 dark:border-gray-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]
-                          ${
-                            selectedAssetTicker === row.ticker
-                              ? 'bg-blue-50 dark:bg-blue-900/20'
-                              : 'bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-700/50'
-                          }
-                      `}
+                        className={`px-6 py-4 font-medium text-gray-900 dark:text-gray-100 sticky left-0 z-10 border-r border-gray-200 dark:border-gray-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] ${selectedAssetTicker === row.ticker ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-700/50'}`}
                       >
                         <div className="flex items-center gap-3">
                           <button
@@ -344,12 +389,6 @@ const PositionsTable = ({
                                     className="w-full h-full object-contain opacity-90 group-hover:opacity-100"
                                   />
                                 </div>
-                                <div className="absolute bottom-full mb-2 hidden group-hover:block z-50">
-                                  <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 whitespace-nowrap shadow-lg">
-                                    {row.full_type || row.asset_subtype}
-                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-                                  </div>
-                                </div>
                               </div>
                             ) : (
                               <span
@@ -365,9 +404,7 @@ const PositionsTable = ({
                       <td className="px-6 py-4 text-center whitespace-nowrap">
                         <div className="flex justify-center">
                           <span
-                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-mono font-medium whitespace-nowrap
-                                ${!hasDynamicColor ? 'bg-gray-100 dark:bg-gray-700/60 text-gray-600 dark:text-gray-300' : 'text-gray-800 dark:text-gray-900 shadow-sm'}
-                            `}
+                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-mono font-medium whitespace-nowrap ${!hasDynamicColor ? 'bg-gray-100 dark:bg-gray-700/60 text-gray-600 dark:text-gray-300' : 'text-gray-800 dark:text-gray-900 shadow-sm'}`}
                             style={hasDynamicColor ? dynamicStyle : {}}
                           >
                             <Clock
@@ -378,17 +415,15 @@ const PositionsTable = ({
                                   : 'text-gray-400'
                               }
                             />
-                            {}
                             {assetAgeLabel}
                           </span>
                         </div>
                       </td>
-
                       <td className="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-mono whitespace-nowrap">
                         {row.qty}
                       </td>
                       <td className="px-6 py-4 text-right font-mono text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                        {formatCurrency(row.purchase_price)}
+                        {formatCurrency(avgPrice)}
                       </td>
                       <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white font-mono whitespace-nowrap">
                         {formatCurrency(currentPrice)}
@@ -408,14 +443,12 @@ const PositionsTable = ({
                         </span>
                       </td>
                     </tr>
-
                     {isExpanded && (
-                      <tr className="bg-gray-50 dark:bg-gray-900/30 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <tr className="bg-gray-50 dark:bg-gray-900/30">
                         <td
                           colSpan={isFiiTable ? '10' : '9'}
                           className="p-0 border-b border-gray-200 dark:border-gray-700 relative sticky left-0"
                         >
-                          <div className="absolute left-[34px] top-0 bottom-0 w-[2px] bg-gray-200 dark:bg-gray-700 block"></div>
                           <div className="pl-12 w-screen max-w-[calc(100vw-60px)] md:max-w-4xl">
                             <AssetContributions ticker={row.ticker} history={assetHistory} />
                           </div>
@@ -425,6 +458,49 @@ const PositionsTable = ({
                   </React.Fragment>
                 );
               })}
+
+              {}
+              {sortedPositions.length > 0 && (
+                <tr className="bg-indigo-50 dark:bg-indigo-900/20 border-t-2 border-indigo-100 dark:border-indigo-800 shadow-inner sticky bottom-0 z-10">
+                  <td className="px-6 py-4 text-center">
+                    <Calculator className="w-5 h-5 mx-auto text-indigo-400" />
+                  </td>
+
+                  {isFiiTable && <td className="px-6 py-4 text-center"></td>}
+
+                  <td className="px-6 py-4 text-center font-black text-indigo-900 dark:text-indigo-100 tracking-wide text-xs uppercase">
+                    TOTAL {categoryLabel !== 'Visão Geral' ? categoryLabel.toUpperCase() : 'GERAL'}
+                  </td>
+
+                  <td className="px-6 py-4 text-center font-bold text-indigo-900 dark:text-indigo-100 font-mono">
+                    {tableTotals.qty.toFixed(0)}
+                  </td>
+
+                  {}
+                  <td className="px-6 py-4 text-right font-mono text-xs font-bold text-indigo-800 dark:text-indigo-300">
+                    {formatCurrency(tableTotals.totalCost)}
+                  </td>
+
+                  {}
+                  <td className="px-6 py-4 text-center text-gray-400 font-mono text-xs">-</td>
+
+                  <td className="px-6 py-4 text-right font-bold text-indigo-900 dark:text-indigo-100 font-mono border-l border-indigo-200 dark:border-indigo-800">
+                    {formatCurrency(tableTotals.totalValue)}
+                  </td>
+
+                  <td className="px-6 py-4 whitespace-nowrap border-l border-indigo-100 dark:border-indigo-800/50">
+                    <VariationBadge value={tableTotals.variation} />
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap min-w-[140px]">
+                    <RentabilityBar value={tableTotals.rentability} maxAbsValue={maxRentability} />
+                  </td>
+                  <td className="px-6 py-4 text-center whitespace-nowrap">
+                    <span className="bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 text-xs font-semibold px-2.5 py-0.5 rounded">
+                      {tableTotals.share.toFixed(1)}%
+                    </span>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         ) : (
