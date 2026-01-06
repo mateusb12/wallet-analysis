@@ -389,6 +389,14 @@ const PositionsTable = ({
                                     className="w-full h-full object-contain opacity-90 group-hover:opacity-100"
                                   />
                                 </div>
+                                {}
+                                <div className="absolute bottom-full mb-2 hidden group-hover:block z-50">
+                                  <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 whitespace-nowrap shadow-lg">
+                                    {row.full_type || row.asset_subtype}
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                  </div>
+                                </div>
+                                {}
                               </div>
                             ) : (
                               <span
@@ -477,14 +485,14 @@ const PositionsTable = ({
                   </td>
 
                   {}
-                  <td className="px-6 py-4 text-right font-mono text-xs font-bold text-indigo-800 dark:text-indigo-300">
+                  <td className="px-6 py-4 text-right font-bold text-indigo-900 dark:text-indigo-100 font-mono border-l border-indigo-100 dark:border-indigo-800/50">
                     {formatCurrency(tableTotals.totalCost)}
                   </td>
 
                   {}
                   <td className="px-6 py-4 text-center text-gray-400 font-mono text-xs">-</td>
 
-                  <td className="px-6 py-4 text-right font-bold text-indigo-900 dark:text-indigo-100 font-mono border-l border-indigo-200 dark:border-indigo-800">
+                  <td className="px-6 py-4 text-right font-black text-indigo-900 dark:text-indigo-100 font-mono border-l border-indigo-200 dark:border-indigo-800">
                     {formatCurrency(tableTotals.totalValue)}
                   </td>
 
