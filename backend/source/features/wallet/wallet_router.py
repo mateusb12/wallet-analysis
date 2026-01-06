@@ -161,7 +161,7 @@ def _calculate_history_logic(user_id: str, db: Session) -> List[Dict]:
 
 @wallet_bp.get("/dashboard")
 def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
-    # 1. Buscar todas as compras
+    # 1. Buscar todas as compras (MANTIDO)
     purchases = db.query(AssetPurchase).filter(AssetPurchase.user_id == user_id).all()
 
     transactions_list = [{
@@ -173,10 +173,10 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
         "asset_type": p.type
     } for p in purchases]
 
-    # Estrutura vazia padrão
+    # Estrutura vazia padrão (MANTIDO)
     empty_response = {
         "summary": {"total_invested": 0, "total_current": 0, "total_profit": 0, "total_profit_percent": 0},
-        "period_projections": { # Novo objeto para médias
+        "period_projections": {
             "total": _calculate_period_stats(0, 0, None),
             "stock": _calculate_period_stats(0, 0, None),
             "fii": _calculate_period_stats(0, 0, None),
@@ -191,17 +191,16 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
     if not purchases:
         return empty_response
 
-    # 2. Consolidar Posições
+    # 2. Consolidar Posições (MANTIDO)
     df_raw = pd.DataFrame([{
         'ticker': p.ticker,
         'qty': p.qty,
         'price': float(p.price),
         'total_cost': p.qty * float(p.price),
         'type': p.type,
-        'trade_date': p.trade_date # Importante para calcular idade da categoria
+        'trade_date': p.trade_date
     } for p in purchases])
 
-    # Agrupa por Ticker
     df_pos = df_raw.groupby('ticker').agg({
         'qty': 'sum',
         'total_cost': 'sum',
@@ -217,7 +216,7 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
     df_pos['avg_price'] = df_pos['total_cost'] / df_pos['qty']
     tickers = df_pos['ticker'].tolist()
 
-    # 3. Buscar Preços Atuais
+    # 3. Buscar Preços Atuais (MANTIDO)
     latest_prices_query = db.query(B3Price.ticker, B3Price.close, B3Price.name) \
         .filter(B3Price.ticker.in_(tickers)).order_by(B3Price.trade_date.desc()).all()
 
@@ -228,7 +227,26 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
             price_map[item.ticker] = float(item.close)
             name_map[item.ticker] = item.name
 
-    # 4. Cálculo de Lucros e Totais
+    # --- [NOVO] 3.1 Buscar Classificações Detalhadas (FIIs/Setores) ---
+    classification_map = {}
+    if tickers:
+        try:
+            # Usamos SQL Raw pois não temos o modelo SQLAlchemy da tabela de cache importado aqui
+            # O PostgreSQL precisa dos tickers como tupla para o IN
+            query = text("SELECT ticker, detected_type, sector FROM asset_classification_cache WHERE ticker IN :tickers")
+            result = db.execute(query, {"tickers": tuple(tickers)}).fetchall()
+
+            for row in result:
+                classification_map[row.ticker] = {
+                    "subtype": row.detected_type, # Ex: FII - Papel (CRI)
+                    "sector": row.sector          # Ex: papel
+                }
+        except Exception as e:
+            print(f"Erro ao buscar classificações: {e}")
+            # Não quebra o dashboard se falhar a classificação
+            pass
+
+    # 4. Cálculo de Lucros e Totais (MANTIDO)
     def get_current_price(row):
         return price_map.get(row['ticker'], row['avg_price'])
 
@@ -237,7 +255,7 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
     df_pos['profit'] = df_pos['current_total'] - df_pos['total_cost']
     df_pos['profit_percent'] = (df_pos['profit'] / df_pos['total_cost']) * 100
 
-    # 5. Totais Gerais
+    # 5. Totais Gerais (MANTIDO)
     total_invested = df_pos['total_cost'].sum()
     total_current = df_pos['current_total'].sum()
     total_profit = total_current - total_invested
@@ -245,7 +263,7 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
 
     df_pos['allocation_percent'] = (df_pos['current_total'] / total_current) * 100
 
-    # 6. Alocação Simples
+    # 6. Alocação Simples (MANTIDO)
     allocation_by_type = df_pos.groupby('type')['current_total'].sum().to_dict()
     final_allocation = {
         "stock": allocation_by_type.get('stock', 0),
@@ -253,21 +271,14 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
         "etf": allocation_by_type.get('etf', 0)
     }
 
-    # 7. CÁLCULO DAS PROJEÇÕES (Média Dia, Mês, Ano)
-    # Precisamos da data mais antiga DE CADA CATEGORIA para calcular a média corretamente
-    # Ex: Ações comecei há 2 anos, FIIs comecei ontem. A média diária deve respeitar isso.
-
-    # Data de início Global
+    # 7. CÁLCULO DAS PROJEÇÕES (MANTIDO)
     global_start_date = df_raw['trade_date'].min()
     projections = {
         "total": _calculate_period_stats(total_profit, total_profit_pct, global_start_date)
     }
 
     for cat_type in ['stock', 'fii', 'etf']:
-        # Filtra transações apenas desse tipo para achar a data de início
         cat_txs = df_raw[df_raw['type'] == cat_type]
-
-        # Filtra posições consolidadas apenas desse tipo para achar o lucro total da categoria
         cat_pos = df_pos[df_pos['type'] == cat_type]
 
         if not cat_txs.empty and not cat_pos.empty:
@@ -279,17 +290,25 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
 
             projections[cat_type] = _calculate_period_stats(cat_profit, cat_yield, cat_start)
         else:
-            # Se não tem ativo desse tipo, zera
             projections[cat_type] = _calculate_period_stats(0, 0, None)
 
 
-    # 8. Montar Lista de Posições
+    # 8. Montar Lista de Posições (ATUALIZADO)
     positions_list = []
     for _, row in df_pos.iterrows():
+        ticker = row['ticker']
+        # Pega a classificação do mapa ou define padrão caso não exista
+        cls_info = classification_map.get(ticker, {})
+
+        subtype = cls_info.get("subtype", "Indefinido")
+        sector = cls_info.get("sector", "Outros")
+
         positions_list.append({
-            "ticker": row['ticker'],
-            "name": name_map.get(row['ticker'], row['ticker']),
-            "type": row['type'],
+            "ticker": ticker,
+            "name": name_map.get(ticker, ticker),
+            "type": row['type'],   # Tipo macro (fii, stock)
+            "subtype": subtype,    # <--- INJETADO AQUI
+            "sector": sector,      # <--- INJETADO AQUI
             "qty": round(row['qty'], 4),
             "avg_price": round(row['avg_price'], 2),
             "current_price": round(row['current_price'], 2),
@@ -309,7 +328,7 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
             "total_profit": round(total_profit, 2),
             "total_profit_percent": round(total_profit_pct, 2)
         },
-        "period_projections": projections, # <--- OBJETO NOVO AQUI
+        "period_projections": projections,
         "positions": positions_list,
         "history": history_data,
         "transactions": transactions_list,

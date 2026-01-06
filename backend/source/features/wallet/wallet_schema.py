@@ -39,6 +39,8 @@ class PositionSnapshot(BaseModel):
     ticker: str
     name: Optional[str] = None
     type: str  # stock, fii, etf
+    subtype: Optional[str] = None # <--- NOVO: Ex: "FII - Papel", "Ação - Bancos"
+    sector: Optional[str] = None
     qty: float
     avg_price: float
     current_price: float
