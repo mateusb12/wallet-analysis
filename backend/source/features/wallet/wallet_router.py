@@ -1,6 +1,6 @@
-from typing import List, Dict
+from typing import List, Dict, Optional
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
@@ -12,22 +12,62 @@ from backend.source.features.wallet.wallet_schema import (
     ImportPurchasesRequest,
     AssetPurchaseResponse,
     AssetPurchaseInput,
-    HistoryPoint,
-    DashboardResponse
+    HistoryPoint
 )
 
 wallet_bp = APIRouter(prefix="/wallet", tags=["Wallet"])
 
 # ==========================================
-#  LÓGICA INTERNA (SERVICE) - REUTILIZÁVEL
+#  LÓGICA INTERNA (SERVICE) - AUXILIARES
 # ==========================================
+
+def _calculate_period_stats(profit: float, yield_pct: float, start_date: Optional[date]) -> Dict:
+    """
+    Calcula as projeções de rentabilidade (Dia, Mês, Ano) baseadas no histórico.
+    """
+    if not start_date:
+        return {
+            "total": {"profit": profit, "yield": yield_pct},
+            "day": {"profit": 0, "yield": 0},
+            "month": {"profit": 0, "yield": 0},
+            "year": {"profit": 0, "yield": 0}
+        }
+
+    today = datetime.now().date()
+    # Converte start_date para date se for datetime
+    if isinstance(start_date, datetime):
+        start_date = start_date.date()
+
+    diff_days = (today - start_date).days
+    days = max(1, diff_days) # Evita divisão por zero
+
+    # Médias
+    avg_day_profit = profit / days
+    avg_day_yield = yield_pct / days
+
+    return {
+        "total": {
+            "profit": round(profit, 2),
+            "yield": round(yield_pct, 2)
+        },
+        "day": {
+            "profit": round(avg_day_profit, 2),
+            "yield": round(avg_day_yield, 4)
+        },
+        "month": {
+            "profit": round(avg_day_profit * 30, 2),
+            "yield": round(avg_day_yield * 30, 2)
+        },
+        "year": {
+            "profit": round(avg_day_profit * 365, 2),
+            "yield": round(avg_day_yield * 365, 2)
+        }
+    }
 
 def _calculate_history_logic(user_id: str, db: Session) -> List[Dict]:
     """
     Calcula histórico comparativo (Carteira vs Benchmark Equivalente).
-    CORREÇÃO: Tratamento de Decimal e acesso correto aos valores do CDI.
     """
-    # 1. Buscar todas as compras
     purchases = db.query(
         AssetPurchase.ticker,
         AssetPurchase.qty,
@@ -40,129 +80,77 @@ def _calculate_history_logic(user_id: str, db: Session) -> List[Dict]:
     if not purchases:
         return []
 
-    # Converter para DataFrame
     df_purchases = pd.DataFrame(purchases, columns=['ticker', 'qty', 'price', 'trade_date'])
     df_purchases['trade_date'] = pd.to_datetime(df_purchases['trade_date'])
-
-    # --- FIX 1: Converter Decimal para Float explicitamente ---
-    # O banco retorna 'price' como Decimal, o que quebra contas com float (qty) no Pandas
     df_purchases['price'] = df_purchases['price'].astype(float)
-
     df_purchases['cash_flow'] = df_purchases['qty'] * df_purchases['price']
 
     start_date = df_purchases['trade_date'].min()
     unique_tickers = df_purchases['ticker'].unique().tolist()
 
-    # 2. Buscar histórico de preços (Mark to Market)
-    prices_query = db.query(
-        B3Price.ticker,
-        B3Price.trade_date,
-        B3Price.close
-    ).filter(
-        B3Price.ticker.in_(unique_tickers),
-        B3Price.trade_date >= start_date
-    ).all()
+    prices_query = db.query(B3Price.ticker, B3Price.trade_date, B3Price.close) \
+        .filter(B3Price.ticker.in_(unique_tickers), B3Price.trade_date >= start_date).all()
 
-    # 3. Buscar CDI
-    cdi_query = db.query(
-        CdiHistory.trade_date,
-        CdiHistory.value
-    ).filter(
-        CdiHistory.trade_date >= start_date
-    ).all()
+    cdi_query = db.query(CdiHistory.trade_date, CdiHistory.value) \
+        .filter(CdiHistory.trade_date >= start_date).all()
 
     if not prices_query:
         return []
 
-    # --- PROCESSAMENTO PANDAS ---
     df_prices = pd.DataFrame(prices_query, columns=['ticker', 'trade_date', 'close'])
     df_prices['trade_date'] = pd.to_datetime(df_prices['trade_date'])
     df_prices['close'] = pd.to_numeric(df_prices['close'])
 
-    # Pivot: Datas x Tickers
     price_matrix = df_prices.pivot(index='trade_date', columns='ticker', values='close').resample('D').ffill()
-
-    # Holdings Matrix
     holdings_matrix = pd.DataFrame(0.0, index=price_matrix.index, columns=unique_tickers)
-
-    # Série de Fluxo de Caixa (Soma de aportes por dia)
     daily_cash_flow = df_purchases.groupby('trade_date')['cash_flow'].sum()
 
     for _, row in df_purchases.iterrows():
         p_date = row['trade_date']
         ticker = row['ticker']
         qty = row['qty']
-
         if ticker in holdings_matrix.columns:
             try:
                 holdings_matrix.loc[p_date:, ticker] += qty
             except KeyError:
                 pass
 
-                # Alinhar
     common_idx = price_matrix.index.intersection(holdings_matrix.index)
     price_matrix = price_matrix.loc[common_idx]
     holdings_matrix = holdings_matrix.loc[common_idx]
 
-    # 4. Cálculo Carteira
     daily_portfolio = (holdings_matrix * price_matrix).sum(axis=1)
-
-    # 5. Cálculo Benchmark (CDI Equivalente)
     aligned_cash_flow = daily_cash_flow.reindex(common_idx, fill_value=0.0)
 
-    # Prepara série do CDI
     df_cdi = pd.DataFrame(cdi_query, columns=['trade_date', 'value'])
-
-    # Inicializa fatores padrão (1.0 = sem rendimento)
     cdi_factors_vals = [1.0] * len(common_idx)
 
     if not df_cdi.empty:
         df_cdi['trade_date'] = pd.to_datetime(df_cdi['trade_date'])
         df_cdi.set_index('trade_date', inplace=True)
-
-        # Alinha CDI com as datas da carteira
         aligned_cdi = df_cdi.reindex(common_idx).fillna(0.0)
-
-        # Calcula fator diário (ex: 1.0005)
-        # aligned_cdi['value'] é uma Series. A conta abaixo retorna uma Series.
         cdi_factors_series = 1 + (aligned_cdi['value'] / 100.0)
-
-        # --- FIX 2: Usar .values diretamente (Series não tem coluna 'value') ---
         cdi_factors_vals = cdi_factors_series.values
 
-    # Loop Acumulativo
     benchmark_values = []
     current_bench_balance = 0.0
-
     dates_list = common_idx.tolist()
     cash_flows_vals = aligned_cash_flow.values
-
-    # Segurança caso os tamanhos não batam (ex: dados corrompidos)
     limit = min(len(dates_list), len(cash_flows_vals), len(cdi_factors_vals))
 
     for i in range(limit):
         factor = cdi_factors_vals[i]
         new_money = cash_flows_vals[i]
-
-        # 1. Rende o saldo anterior
         current_bench_balance *= factor
-
-        # 2. Adiciona aporte
         current_bench_balance += new_money
-
         benchmark_values.append(current_bench_balance)
 
-    # 6. Formatar
     result = []
     for i in range(limit):
-        date = dates_list[i]
-        p_val = daily_portfolio.iloc[i]
-        b_val = benchmark_values[i]
-
         result.append({
-            "trade_date": date.strftime("%Y-%m-%d"),
-            "portfolio_value": round(float(p_val), 2),
-            "benchmark_value": round(float(b_val), 2)
+            "trade_date": dates_list[i].strftime("%Y-%m-%d"),
+            "portfolio_value": round(float(daily_portfolio.iloc[i]), 2),
+            "benchmark_value": round(float(benchmark_values[i]), 2)
         })
 
     return result
@@ -171,41 +159,50 @@ def _calculate_history_logic(user_id: str, db: Session) -> List[Dict]:
 #  ROTAS (ENDPOINTS)
 # ==========================================
 
-@wallet_bp.get("/dashboard") # Removi o response_model estrito por enquanto para facilitar
+@wallet_bp.get("/dashboard")
 def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
     # 1. Buscar todas as compras
     purchases = db.query(AssetPurchase).filter(AssetPurchase.user_id == user_id).all()
 
-    # --- NOVO: Preparar lista de transações para o gráfico ---
     transactions_list = [{
         "ticker": p.ticker,
         "price": float(p.price),
         "qty": p.qty,
         "trade_date": p.trade_date,
-        "type": "buy",       # Hardcoded 'buy' pois sua tabela é só de purchases por enquanto
-        "asset_type": p.type # 'stock', 'fii', etc. (Vem do banco)
+        "type": "buy",
+        "asset_type": p.type
     } for p in purchases]
-    # ---------------------------------------------------------
+
+    # Estrutura vazia padrão
+    empty_response = {
+        "summary": {"total_invested": 0, "total_current": 0, "total_profit": 0, "total_profit_percent": 0},
+        "period_projections": { # Novo objeto para médias
+            "total": _calculate_period_stats(0, 0, None),
+            "stock": _calculate_period_stats(0, 0, None),
+            "fii": _calculate_period_stats(0, 0, None),
+            "etf": _calculate_period_stats(0, 0, None),
+        },
+        "positions": [],
+        "history": [],
+        "transactions": [],
+        "allocation": {"stock": 0, "fii": 0, "etf": 0}
+    }
 
     if not purchases:
-        return {
-            "summary": {"total_invested": 0, "total_current": 0, "total_profit": 0, "total_profit_percent": 0},
-            "positions": [],
-            "history": [],
-            "transactions": [], # Agora isso será validado pelo Schema
-            "allocation": {"stock": 0, "fii": 0, "etf": 0}
-        }
+        return empty_response
 
     # 2. Consolidar Posições
-    df_purchases = pd.DataFrame([{
+    df_raw = pd.DataFrame([{
         'ticker': p.ticker,
         'qty': p.qty,
         'price': float(p.price),
         'total_cost': p.qty * float(p.price),
-        'type': p.type
+        'type': p.type,
+        'trade_date': p.trade_date # Importante para calcular idade da categoria
     } for p in purchases])
 
-    df_pos = df_purchases.groupby('ticker').agg({
+    # Agrupa por Ticker
+    df_pos = df_raw.groupby('ticker').agg({
         'qty': 'sum',
         'total_cost': 'sum',
         'type': 'first',
@@ -215,25 +212,14 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
     df_pos = df_pos[df_pos['qty'] > 0.0001].copy()
 
     if df_pos.empty:
-        return {
-            "summary": {"total_invested": 0, "total_current": 0, "total_profit": 0, "total_profit_percent": 0},
-            "positions": [],
-            "history": [],
-            "transactions": [],
-            "allocation": {"stock": 0, "fii": 0, "etf": 0}
-        }
+        return empty_response
 
     df_pos['avg_price'] = df_pos['total_cost'] / df_pos['qty']
     tickers = df_pos['ticker'].tolist()
 
     # 3. Buscar Preços Atuais
-    latest_prices_query = db.query(
-        B3Price.ticker,
-        B3Price.close,
-        B3Price.name # Tentar pegar o nome também
-    ).filter(
-        B3Price.ticker.in_(tickers)
-    ).order_by(B3Price.trade_date.desc()).all()
+    latest_prices_query = db.query(B3Price.ticker, B3Price.close, B3Price.name) \
+        .filter(B3Price.ticker.in_(tickers)).order_by(B3Price.trade_date.desc()).all()
 
     price_map = {}
     name_map = {}
@@ -242,7 +228,7 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
             price_map[item.ticker] = float(item.close)
             name_map[item.ticker] = item.name
 
-    # 4. Cálculos Finais
+    # 4. Cálculo de Lucros e Totais
     def get_current_price(row):
         return price_map.get(row['ticker'], row['avg_price'])
 
@@ -251,6 +237,7 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
     df_pos['profit'] = df_pos['current_total'] - df_pos['total_cost']
     df_pos['profit_percent'] = (df_pos['profit'] / df_pos['total_cost']) * 100
 
+    # 5. Totais Gerais
     total_invested = df_pos['total_cost'].sum()
     total_current = df_pos['current_total'].sum()
     total_profit = total_current - total_invested
@@ -258,6 +245,7 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
 
     df_pos['allocation_percent'] = (df_pos['current_total'] / total_current) * 100
 
+    # 6. Alocação Simples
     allocation_by_type = df_pos.groupby('type')['current_total'].sum().to_dict()
     final_allocation = {
         "stock": allocation_by_type.get('stock', 0),
@@ -265,6 +253,37 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
         "etf": allocation_by_type.get('etf', 0)
     }
 
+    # 7. CÁLCULO DAS PROJEÇÕES (Média Dia, Mês, Ano)
+    # Precisamos da data mais antiga DE CADA CATEGORIA para calcular a média corretamente
+    # Ex: Ações comecei há 2 anos, FIIs comecei ontem. A média diária deve respeitar isso.
+
+    # Data de início Global
+    global_start_date = df_raw['trade_date'].min()
+    projections = {
+        "total": _calculate_period_stats(total_profit, total_profit_pct, global_start_date)
+    }
+
+    for cat_type in ['stock', 'fii', 'etf']:
+        # Filtra transações apenas desse tipo para achar a data de início
+        cat_txs = df_raw[df_raw['type'] == cat_type]
+
+        # Filtra posições consolidadas apenas desse tipo para achar o lucro total da categoria
+        cat_pos = df_pos[df_pos['type'] == cat_type]
+
+        if not cat_txs.empty and not cat_pos.empty:
+            cat_start = cat_txs['trade_date'].min()
+            cat_invested = cat_pos['total_cost'].sum()
+            cat_current = cat_pos['current_total'].sum()
+            cat_profit = cat_current - cat_invested
+            cat_yield = (cat_profit / cat_invested * 100) if cat_invested > 0 else 0
+
+            projections[cat_type] = _calculate_period_stats(cat_profit, cat_yield, cat_start)
+        else:
+            # Se não tem ativo desse tipo, zera
+            projections[cat_type] = _calculate_period_stats(0, 0, None)
+
+
+    # 8. Montar Lista de Posições
     positions_list = []
     for _, row in df_pos.iterrows():
         positions_list.append({
@@ -281,7 +300,6 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
         })
 
     positions_list.sort(key=lambda x: x['total_value'], reverse=True)
-
     history_data = _calculate_history_logic(user_id, db)
 
     return {
@@ -291,18 +309,17 @@ def get_dashboard_data(user_id: str, db: Session = Depends(get_db)):
             "total_profit": round(total_profit, 2),
             "total_profit_percent": round(total_profit_pct, 2)
         },
+        "period_projections": projections, # <--- OBJETO NOVO AQUI
         "positions": positions_list,
         "history": history_data,
-        "transactions": transactions_list, # <--- Agora o Pydantic vai aceitar isso
+        "transactions": transactions_list,
         "allocation": final_allocation
     }
 
-# Rota legado (caso o gráfico antigo ainda tente chamar direto)
+# --- ROTAS DE CRUD (Mantidas inalteradas abaixo) ---
 @wallet_bp.get("/performance/history", response_model=List[HistoryPoint])
 def get_wallet_history(user_id: str, db: Session = Depends(get_db)):
     return _calculate_history_logic(user_id, db)
-
-# --- ROTAS DE CRUD (Mantidas) ---
 
 @wallet_bp.post("/import")
 def import_purchases(payload: ImportPurchasesRequest, db: Session = Depends(get_db)):

@@ -38,8 +38,9 @@ export const useWalletDashboardData = (user) => {
   const [allocationView, setAllocationView] = useState('specific');
   const [timeRange, setTimeRange] = useState('DEFAULT');
   const [selectedAssetTicker, setSelectedAssetTicker] = useState('');
-  const [apiDebug, setApiDebug] = useState(null);
   const [profitPeriod, setProfitPeriod] = useState('total');
+
+  const [apiDebug, setApiDebug] = useState(null);
   const [highlightedDate, setHighlightedDate] = useState(null);
   const [debugShowEmpty, setDebugShowEmpty] = useState(false);
 
@@ -71,8 +72,23 @@ export const useWalletDashboardData = (user) => {
   }, [user?.id]);
 
   const safeData = useMemo(() => {
+    const defaultStats = { profit: 0, yield: 0 };
+    const defaultProjections = {
+      total: defaultStats,
+      day: defaultStats,
+      month: defaultStats,
+      year: defaultStats,
+    };
+
     const raw = data || {
       summary: { total_invested: 0, total_current: 0, total_profit: 0, total_profit_percent: 0 },
+
+      period_projections: {
+        total: defaultProjections,
+        stock: defaultProjections,
+        fii: defaultProjections,
+        etf: defaultProjections,
+      },
       positions: [],
       history: [],
       transactions: [],
@@ -81,9 +97,7 @@ export const useWalletDashboardData = (user) => {
 
     const adaptedPositions = raw.positions.map((p) => ({
       ...p,
-
       total_value_current: p.total_value,
-
       purchase_price: p.avg_price,
     }));
 
@@ -94,6 +108,41 @@ export const useWalletDashboardData = (user) => {
     if (activeTab === 'total') return safeData.positions;
     return safeData.positions.filter((p) => p.type === activeTab);
   }, [safeData, activeTab]);
+
+  const dashboardStats = useMemo(() => {
+    const categoryProjections =
+      safeData.period_projections?.[activeTab] || safeData.period_projections?.total;
+
+    const stats = categoryProjections?.[profitPeriod] || { profit: 0, yield: 0 };
+
+    let current = 0;
+    let invested = 0;
+
+    if (activeTab === 'total') {
+      current = safeData.summary.total_current;
+      invested = safeData.summary.total_invested;
+    } else {
+      current = safeData.allocation[activeTab] || 0;
+
+      const totalCategoryProfit = categoryProjections?.total?.profit || 0;
+      invested = current - totalCategoryProfit;
+    }
+
+    const labels = {
+      total: '(Acumulado)',
+      day: '(Média por Dia)',
+      month: '(Média por Mês)',
+      year: '(Projeção Anual)',
+    };
+
+    return {
+      invested,
+      current,
+      profit: stats.profit,
+      yield: stats.yield,
+      labelSuffix: labels[profitPeriod],
+    };
+  }, [safeData, activeTab, profitPeriod]);
 
   const currentPieData = useMemo(() => {
     if (activeTab === 'total' && allocationView === 'general') {
@@ -153,13 +202,13 @@ export const useWalletDashboardData = (user) => {
     highlightedDate,
     debugShowEmpty,
 
-    totalInvested: safeData.summary.total_invested,
-    totalValue: safeData.summary.total_current,
+    totalInvested: dashboardStats.invested,
+    totalValue: dashboardStats.current,
 
     periodStats: {
-      profit: safeData.summary.total_profit,
-      yield: safeData.summary.total_profit_percent,
-      labelSuffix: '(Acumulado)',
+      profit: dashboardStats.profit,
+      yield: dashboardStats.yield,
+      labelSuffix: dashboardStats.labelSuffix,
     },
 
     positions: safeData.positions,
