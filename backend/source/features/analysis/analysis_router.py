@@ -1,25 +1,22 @@
 import pandas as pd
 from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException, Depends, Header
-from backend.source.core.db import get_supabase
+from fastapi import APIRouter, Depends, HTTPException
+from backend.source.core.dependencies import get_analysis_repository
 from backend.source.features.analysis.analysis_schema import SimulationRequest
 from backend.source.features.auth.jwt_identity_extraction import get_current_user
+from backend.source.persistence.ports import AnalysisRepository
 
 analysis_bp = APIRouter(prefix="/analysis", tags=["Analysis"])
 
 @analysis_bp.get("/zscore/{ticker}")
-def calculate_zscore(ticker: str, window_months: int = 12):
-    supabase = get_supabase()
+def calculate_zscore(
+    ticker: str,
+    window_months: int = 12,
+    analysis: AnalysisRepository = Depends(get_analysis_repository),
+):
 
     # 1. Fetch Price History
-    response = supabase.table("b3_prices") \
-        .select("trade_date,close") \
-        .eq("ticker", ticker.upper()) \
-        .order("trade_date", desc=True) \
-        .limit(window_months * 30 + 100) \
-        .execute()
-
-    data = response.data
+    data = analysis.get_price_history(ticker.upper(), window_months * 30 + 100)
     if not data:
         raise HTTPException(status_code=404, detail="Ticker not found")
 
@@ -88,23 +85,21 @@ def calculate_zscore(ticker: str, window_months: int = 12):
     }
 
 @analysis_bp.post("/simulation/fii")
-def simulate_fii(payload: SimulationRequest):
-    supabase = get_supabase()
+def simulate_fii(
+    payload: SimulationRequest,
+    analysis: AnalysisRepository = Depends(get_analysis_repository),
+):
     ticker = payload.ticker.upper()
 
     # 1. Fetch Data
 
     # A. Dividends
-    div_resp = supabase.table("b3_fiis_dividends") \
-        .select("trade_date,price_close,dividend_value") \
-        .eq("ticker", ticker) \
-        .order("trade_date", desc=False) \
-        .execute()
+    dividends = analysis.get_fii_dividends(ticker)
 
-    if not div_resp.data:
+    if not dividends:
         raise HTTPException(status_code=404, detail="No dividend history found for this ticker")
 
-    df_div = pd.DataFrame(div_resp.data)
+    df_div = pd.DataFrame(dividends)
     df_div['trade_date'] = pd.to_datetime(df_div['trade_date'])
     df_div['price_close'] = pd.to_numeric(df_div['price_close'])
     df_div['dividend_value'] = pd.to_numeric(df_div['dividend_value'])
@@ -122,15 +117,14 @@ def simulate_fii(payload: SimulationRequest):
     end_sim_date = df_sim['trade_date'].max()
 
     # B. IPCA (Fetch range)
-    ipca_resp = supabase.table("ipca_history") \
-        .select("ref_date,ipca") \
-        .gte("ref_date", start_sim_date.strftime('%Y-%m-01')) \
-        .lte("ref_date", end_sim_date.strftime('%Y-%m-28')) \
-        .execute()
+    ipca_rows = analysis.get_ipca_range(
+        start_sim_date.strftime('%Y-%m-01'),
+        end_sim_date.strftime('%Y-%m-28'),
+    )
 
     ipca_map = {}
-    if ipca_resp.data:
-        for row in ipca_resp.data:
+    if ipca_rows:
+        for row in ipca_rows:
             key = row['ref_date'][:7]
             val = float(row['ipca'])
             ipca_map[key] = 1 + (val / 100)
@@ -239,21 +233,20 @@ def simulate_fii(payload: SimulationRequest):
 
 
 @analysis_bp.get("/opportunities")
-def get_investment_opportunities(user_id: str = Depends(get_current_user)):
+def get_investment_opportunities(
+    user_id: str = Depends(get_current_user),
+    analysis: AnalysisRepository = Depends(get_analysis_repository),
+):
     print(f"\n--- DEBUG: Analysis for Authenticated User {user_id} ---")
-    supabase = get_supabase()
 
     # 1. Fetch User's Wallet Tickers
-    wallet_response = supabase.table("asset_purchases") \
-        .select("ticker") \
-        .eq("user_id", user_id) \
-        .execute()
+    wallet_tickers = analysis.get_user_tickers(user_id)
 
-    if not wallet_response.data:
+    if not wallet_tickers:
         print("DEBUG: User has no assets.")
         return []
 
-    my_tickers = list(set([row['ticker'] for row in wallet_response.data]))
+    my_tickers = list(set(wallet_tickers))
     print(f"DEBUG: Analyzing {len(my_tickers)} assets: {my_tickers}")
 
     # 2. Fetch Price History
@@ -265,14 +258,7 @@ def get_investment_opportunities(user_id: str = Depends(get_current_user)):
 
     while True:
         try:
-            response = supabase.table("b3_prices") \
-                .select("ticker,trade_date,close,adjusted_close") \
-                .gte("trade_date", start_date) \
-                .in_("ticker", my_tickers) \
-                .range(offset, offset + batch_size - 1) \
-                .execute()
-
-            rows = response.data
+            rows = analysis.get_prices_for_tickers(start_date, my_tickers, offset, batch_size)
             if not rows:
                 break
 

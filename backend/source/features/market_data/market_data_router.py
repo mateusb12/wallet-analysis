@@ -11,12 +11,13 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import requests
 import yfinance as yf
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 # Certifique-se que estes imports existem no seu projeto
-from backend.source.core.db import get_supabase
+from backend.source.core.dependencies import get_market_data_repository
 from backend.source.features.market_data.market_data_constants import ASSET_SCHEMA
 from backend.source.features.market_data.market_data_schemas import TickerSync
+from backend.source.persistence.ports import MarketDataRepository
 
 market_data_bp = APIRouter(prefix="/sync", tags=["Market Data"])
 
@@ -160,11 +161,10 @@ def _confidence_from_scores(is_fii: bool, is_etf: bool, quote_type: str, scores:
     return max(5, min(95, base))
 
 
-def _get_cache(supabase, ticker_up: str) -> Optional[Dict[str, Any]]:
+def _get_cache(repository: MarketDataRepository, ticker_up: str) -> Optional[Dict[str, Any]]:
     try:
-        resp = supabase.table(CLASSIFICATION_CACHE_TABLE).select("*").eq("ticker", ticker_up).limit(1).execute()
-        if not resp.data: return None
-        row = resp.data[0]
+        row = repository.get_classification_cache(ticker_up)
+        if not row: return None
         updated_at = _safe_parse_iso(row.get("updated_at") or row.get("inserted_at") or "")
         if not updated_at or updated_at < (
                 datetime.now(updated_at.tzinfo) - timedelta(days=CLASSIFICATION_CACHE_TTL_DAYS)):
@@ -174,10 +174,10 @@ def _get_cache(supabase, ticker_up: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def _upsert_cache(supabase, row: Dict[str, Any]) -> None:
+def _upsert_cache(repository: MarketDataRepository, row: Dict[str, Any]) -> None:
     try:
         row["updated_at"] = datetime.now().isoformat()
-        supabase.table(CLASSIFICATION_CACHE_TABLE).upsert(row, on_conflict="ticker").execute()
+        repository.upsert_classification_cache(row)
     except Exception as e:
         print(f"⚠️ Cache upsert failed: {e}")
 
@@ -256,7 +256,10 @@ def get_market_constants():
 
 
 @market_data_bp.post("/")
-def sync_ticker(payload: TickerSync):
+def sync_ticker(
+    payload: TickerSync,
+    market_data: MarketDataRepository = Depends(get_market_data_repository),
+):
     ticker = payload.ticker
     force_mode = payload.force
     if not ticker:
@@ -271,14 +274,10 @@ def sync_ticker(payload: TickerSync):
     clean_ticker = ticker.replace(".SA", "").upper()
 
     print(f"--- 🕵️‍♂️ SYNC DEBUG: {clean_ticker} ---")
-    supabase = get_supabase()
-
     # 1. Checa data atual no banco
     last_db_date = None
     try:
-        last_row = supabase.table("b3_prices").select("trade_date").eq("ticker", clean_ticker).order("trade_date", desc=True).limit(1).execute()
-        if last_row.data:
-            last_db_date = last_row.data[0]['trade_date']
+        last_db_date = market_data.get_last_b3_price_date(clean_ticker)
     except Exception:
         pass
 
@@ -357,10 +356,7 @@ def sync_ticker(payload: TickerSync):
         print(f"✅ {clean_ticker}: {len(records)} registros válidos processados.")
 
         # Batch upsert
-        BATCH_SIZE = 1000
-        for i in range(0, len(records), BATCH_SIZE):
-            batch = records[i:i + BATCH_SIZE]
-            supabase.table("b3_prices").upsert(batch, on_conflict="ticker,trade_date").execute()
+        market_data.upsert_b3_prices(records)
 
         max_date = df_norm['date'].max()
         return {"success": True, "count": len(records), "last_date": max_date}
@@ -371,7 +367,9 @@ def sync_ticker(payload: TickerSync):
 
 
 @market_data_bp.post("/ifix")
-def sync_ifix():
+def sync_ifix(
+    market_data: MarketDataRepository = Depends(get_market_data_repository),
+):
     """
     Syncs IFIX directly from B3 website (Official Source).
     Lógica recuperada do código antigo (Scraper B3).
@@ -430,8 +428,7 @@ def sync_ifix():
             raise HTTPException(status_code=404, detail="B3 returned data, but no valid records parsed.")
 
         # Safety Block & Insert
-        supabase = get_supabase()
-        supabase.table("ifix_history").upsert(records, on_conflict="trade_date").execute()
+        market_data.upsert_ifix_history(records)
 
         return {"success": True, "count": len(records), "message": "Synced IFIX from B3"}
 
@@ -441,7 +438,9 @@ def sync_ifix():
 
 
 @market_data_bp.post("/ibov")
-def sync_ibov():
+def sync_ibov(
+    market_data: MarketDataRepository = Depends(get_market_data_repository),
+):
     """
     Syncs IBOVESPA directly from B3 website (Official Source).
     Lógica recuperada do código antigo.
@@ -499,8 +498,7 @@ def sync_ibov():
         if not records:
             raise HTTPException(status_code=404, detail="B3 returned data, but no valid records parsed.")
 
-        supabase = get_supabase()
-        supabase.table("ibov_history").upsert(records, on_conflict="trade_date").execute()
+        market_data.upsert_ibov_history(records)
 
         return {"success": True, "count": len(records), "message": "Synced IBOV from B3"}
 
@@ -510,19 +508,20 @@ def sync_ibov():
 
 
 @market_data_bp.post("/cdi")
-def sync_cdi():
+def sync_cdi(
+    market_data: MarketDataRepository = Depends(get_market_data_repository),
+):
     BCB_BASE_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados"
     print("📡 Downloading CDI...", flush=True)
 
     try:
-        supabase = get_supabase()
-        last_row = supabase.table("cdi_history").select("trade_date").order("trade_date", desc=True).limit(1).execute()
+        last_date = market_data.get_last_cdi_date()
 
         today = datetime.now()
         start_date_obj = today - timedelta(days=30)  # Default curto
 
-        if last_row.data:
-            last_date_obj = datetime.strptime(last_row.data[0]['trade_date'], "%Y-%m-%d")
+        if last_date:
+            last_date_obj = datetime.strptime(last_date, "%Y-%m-%d")
             start_date_obj = last_date_obj + timedelta(days=1)
 
         if start_date_obj > today:
@@ -552,8 +551,7 @@ def sync_cdi():
         if not records:
             return {"success": True, "action": "up_to_date", "message": "Sem novos registros."}
 
-        for i in range(0, len(records), 1000):
-            supabase.table("cdi_history").upsert(records[i:i + 1000], on_conflict="trade_date").execute()
+        market_data.upsert_cdi_history(records)
 
         return {"success": True, "action": "updated", "count": len(records), "message": "CDI Atualizado."}
 
@@ -568,7 +566,10 @@ def sync_cdi():
 # ==============================================================================
 
 @market_data_bp.post("/classify")
-def classify_ticker(payload: TickerSync):
+def classify_ticker(
+    payload: TickerSync,
+    market_data: MarketDataRepository = Depends(get_market_data_repository),
+):
     """
     Classifica o ativo (FII, ETF ou Ação) com heurísticas e regex.
     """
@@ -593,19 +594,17 @@ def classify_ticker(payload: TickerSync):
     }
 
     try:
-        supabase = get_supabase()
-
         # 1) OVERRIDES
         if ticker_up in CLASSIFICATION_OVERRIDES:
             ov = CLASSIFICATION_OVERRIDES[ticker_up]
             base_result.update(ov)
             base_result["confidence"] = _confidence_from_scores(False, False, "unknown", {}, True)
             base_result["source"] = "override"
-            _upsert_cache(supabase, base_result)
+            _upsert_cache(market_data, base_result)
             return base_result
 
         # 2) CACHE
-        cached = _get_cache(supabase, ticker_up)
+        cached = _get_cache(market_data, ticker_up)
         if cached:
             return {
                 "ticker": cached.get("ticker", ticker_up),
@@ -715,7 +714,7 @@ def classify_ticker(payload: TickerSync):
                 base_result["reasoning"] = "FII sem estratégia clara."
 
             base_result["confidence"] = _confidence_from_scores(True, False, qtype_n, scores, False)
-            _upsert_cache(supabase, base_result)
+            _upsert_cache(market_data, base_result)
             return base_result
 
         # === ETFs ===
@@ -737,7 +736,7 @@ def classify_ticker(payload: TickerSync):
                 base_result["reasoning"] = "ETF Específico."
 
             base_result["confidence"] = _confidence_from_scores(False, True, qtype_n, scores, False)
-            _upsert_cache(supabase, base_result)
+            _upsert_cache(market_data, base_result)
             return base_result
 
         # === AÇÕES ===
@@ -761,13 +760,13 @@ def classify_ticker(payload: TickerSync):
             base_result["detected_type"] = f"Ação - {translated_sector}"
             base_result["reasoning"] = f"Setor Yahoo: {sector_y} -> {macro_strategy}"
             base_result["confidence"] = 80
-            _upsert_cache(supabase, base_result)
+            _upsert_cache(market_data, base_result)
             return base_result
 
         # Fallback
         base_result["sector"] = "outros"
         base_result["reasoning"] = f"Não classificado. Type={quote_type}"
-        _upsert_cache(supabase, base_result)
+        _upsert_cache(market_data, base_result)
         return base_result
 
     except Exception as e:
