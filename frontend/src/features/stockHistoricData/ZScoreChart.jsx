@@ -204,9 +204,10 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
           {yearChangeIndices.map((yearIndex) => (
             <ReferenceLine
               key={yearIndex}
-              x={yearIndex}
-              y1={yDomain[0]}
-              y2={boundaries.minusTwoStdDev}
+              segment={[
+                { x: yearIndex, y: yDomain[0] },
+                { x: yearIndex, y: boundaries.minusTwoStdDev },
+              ]}
               stroke="#facc15"
               strokeWidth={1}
               strokeDasharray="4 4"
