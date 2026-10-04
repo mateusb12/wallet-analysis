@@ -90,6 +90,7 @@ export const useWalletDashboardData = (user) => {
       history: [],
       transactions: [],
       allocation: { stock: 0, fii: 0, etf: 0 },
+      invested_by_type: { stock: 0, fii: 0, etf: 0 },
     };
 
     const adaptedPositions = raw.positions.map((p) => {
@@ -146,9 +147,7 @@ export const useWalletDashboardData = (user) => {
       invested = safeData.summary.total_invested;
     } else {
       current = safeData.allocation[activeTab] || 0;
-
-      const totalCategoryProfit = categoryProjections?.total?.profit || 0;
-      invested = current - totalCategoryProfit;
+      invested = safeData.invested_by_type?.[activeTab] || 0;
     }
 
     const relevantTransactions = (safeData.transactions || []).filter(

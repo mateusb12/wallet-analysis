@@ -256,7 +256,9 @@ def get_dashboard_data(
     empty_response = {
         "summary": {"total_invested": 0, "total_current": 0, "total_profit": 0, "total_profit_percent": 0},
         "period_projections": {k: _calculate_period_stats(0, 0, None) for k in ["total", "stock", "fii", "etf"]},
-        "positions": [], "history": [], "transactions": [], "allocation": {"stock": 0, "fii": 0, "etf": 0}
+        "positions": [], "history": [], "transactions": [],
+        "allocation": {"stock": 0, "fii": 0, "etf": 0},
+        "invested_by_type": {"stock": 0, "fii": 0, "etf": 0},
     }
 
     if not purchases:
@@ -529,7 +531,10 @@ def get_dashboard_data(
         "history_by_type": history_by_type,
         "history_by_ticker": history_by_ticker,
         "transactions": transactions_list,
-        "allocation": {k: round(v, 2) for k, v in allocation_by_type.items()}
+        "allocation": {k: round(v, 2) for k, v in allocation_by_type.items()},
+        "invested_by_type": {
+            k: round(v['invested'], 2) for k, v in cat_stats.items()
+        },
     }
 
 # --- OUTROS ENDPOINTS (CRUD) PERMANECEM IGUAIS ---
