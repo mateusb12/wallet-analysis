@@ -288,7 +288,7 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
           <ReferenceLine
             y={boundaries.current}
             stroke={theme.currentLine}
-            strokeWidth={2}
+            strokeWidth={4}
             label={{
               value: 'Atual',
               position: 'insideRight',
