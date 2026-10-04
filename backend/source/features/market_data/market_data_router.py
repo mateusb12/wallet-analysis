@@ -5,7 +5,7 @@ import io
 import json
 import re
 import unicodedata
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -271,7 +271,7 @@ def sync_ticker(
     days_back = 365 * 15 if force_mode else 365 * 5
     start_date = end_date - timedelta(days=days_back)
 
-    yf_ticker = f"{ticker}.SA" if not ticker.endswith(".SA") else ticker
+    yf_ticker = ticker if ticker.startswith("^") or ticker.endswith(".SA") else f"{ticker}.SA"
     clean_ticker = ticker.replace(".SA", "").upper()
 
     print(f"--- 🕵️‍♂️ SYNC DEBUG: {clean_ticker} ---")
@@ -510,19 +510,23 @@ def sync_ibov(
 
 @market_data_bp.post("/cdi")
 def sync_cdi(
+    start_date: str | None = None,
     market_data: MarketDataRepository = Depends(get_market_data_repository),
 ):
     print("📡 Downloading CDI...", flush=True)
 
     try:
+        today = date.today()
+        requested_start = date.fromisoformat(start_date) if start_date else None
+        # Sem uma data informada, mantemos um backfill razoável para que uma
+        # tabela criada recentemente não deixe o benchmark sem histórico.
+        default_start = today - timedelta(days=365 * 5)
+        start_date_obj = requested_start or default_start
+
         last_date = market_data.get_last_cdi_date()
-
-        today = datetime.now()
-        start_date_obj = today - timedelta(days=30)  # Default curto
-
-        if last_date:
-            last_date_obj = datetime.strptime(last_date, "%Y-%m-%d")
-            start_date_obj = last_date_obj + timedelta(days=1)
+        if last_date and not requested_start:
+            last_date_obj = datetime.strptime(last_date, "%Y-%m-%d").date()
+            start_date_obj = min(default_start, last_date_obj + timedelta(days=1))
 
         if start_date_obj > today:
             return {"success": True, "action": "up_to_date", "message": "CDI já atualizado."}

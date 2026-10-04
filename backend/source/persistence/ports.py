@@ -31,13 +31,24 @@ class WalletRepository(Protocol):
     def delete_purchase(self, purchase: AssetPurchase) -> None:
         ...
 
-    def get_history_purchases(self, user_id: str) -> Sequence[Any]:
+    def get_history_purchases(
+            self,
+            user_id: str,
+            asset_type: str | None = None,
+            ticker: str | None = None,
+    ) -> Sequence[Any]:
         ...
 
     def get_prices_from(self, tickers: Sequence[str], start_date: date) -> Sequence[Any]:
         ...
 
     def get_cdi_from(self, start_date: date) -> Sequence[Any]:
+        ...
+
+    def get_ibov_from(self, start_date: date) -> Sequence[Any]:
+        ...
+
+    def get_ifix_from(self, start_date: date) -> Sequence[Any]:
         ...
 
     def get_adjusted_prices_for_purchases(

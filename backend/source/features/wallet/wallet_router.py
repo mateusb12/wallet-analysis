@@ -78,11 +78,17 @@ def _format_asset_age(first_purchase_date) -> str:
     if days > 0 or (years == 0 and months == 0): parts.append(f"{days}d")
     return " ".join(parts)
 
-def _calculate_history_logic(user_id: str, wallets: WalletRepository) -> List[Dict]:
-    purchases = wallets.get_history_purchases(user_id)
+def _calculate_history_logic(
+        user_id: str,
+        wallets: WalletRepository,
+        asset_type: Optional[str] = None,
+        benchmark: str = 'CDI',
+        ticker: Optional[str] = None,
+) -> List[Dict]:
+    purchases = wallets.get_history_purchases(user_id, asset_type, ticker)
     if not purchases: return []
 
-    df_purchases = pd.DataFrame(purchases, columns=['ticker', 'qty', 'price', 'trade_date'])
+    df_purchases = pd.DataFrame(purchases, columns=['ticker', 'qty', 'price', 'trade_date', 'type'])
     df_purchases['trade_date'] = pd.to_datetime(df_purchases['trade_date'])
     df_purchases['price'] = df_purchases['price'].astype(float)
     df_purchases['cash_flow'] = df_purchases['qty'] * df_purchases['price']
@@ -91,7 +97,13 @@ def _calculate_history_logic(user_id: str, wallets: WalletRepository) -> List[Di
     unique_tickers = df_purchases['ticker'].unique().tolist()
 
     prices_query = wallets.get_prices_from(unique_tickers, start_date.date())
-    cdi_query = wallets.get_cdi_from(start_date.date())
+    benchmark_query = wallets.get_cdi_from(start_date.date())
+    if benchmark == 'IBOV':
+        benchmark_query = wallets.get_ibov_from(start_date.date())
+    elif benchmark == 'IFIX':
+        benchmark_query = wallets.get_ifix_from(start_date.date())
+    elif benchmark == 'SP500':
+        benchmark_query = wallets.get_prices_from(['^GSPC'], start_date.date())
 
     if not prices_query: return []
 
@@ -114,21 +126,41 @@ def _calculate_history_logic(user_id: str, wallets: WalletRepository) -> List[Di
     daily_portfolio = (holdings_matrix * price_matrix).sum(axis=1)
 
     aligned_cash_flow = daily_cash_flow.reindex(common_idx, fill_value=0.0)
-    df_cdi = pd.DataFrame(cdi_query, columns=['trade_date', 'value'])
-    cdi_factors_vals = [1.0] * len(common_idx)
-    if not df_cdi.empty:
-        df_cdi['trade_date'] = pd.to_datetime(df_cdi['trade_date'])
-        df_cdi.set_index('trade_date', inplace=True)
-        aligned_cdi = df_cdi.reindex(common_idx).fillna(0.0)
-        cdi_factors_series = 1 + (aligned_cdi['value'] / 100.0)
-        cdi_factors_vals = cdi_factors_series.values
-
     benchmark_values = []
+    if benchmark in {'IBOV', 'IFIX'}:
+        df_benchmark = pd.DataFrame(benchmark_query, columns=['trade_date', 'value'])
+        if not df_benchmark.empty:
+            df_benchmark['trade_date'] = pd.to_datetime(df_benchmark['trade_date'])
+            df_benchmark.set_index('trade_date', inplace=True)
+            prices = pd.to_numeric(df_benchmark['value']).reindex(common_idx).ffill()
+            benchmark_factors = (prices / prices.shift(1)).fillna(1.0).values
+        else:
+            benchmark_factors = [1.0] * len(common_idx)
+    elif benchmark == 'SP500':
+        df_benchmark = pd.DataFrame(benchmark_query, columns=['ticker', 'trade_date', 'value'])
+        if not df_benchmark.empty:
+            df_benchmark['trade_date'] = pd.to_datetime(df_benchmark['trade_date'])
+            df_benchmark['value'] = pd.to_numeric(df_benchmark['value'])
+            prices = df_benchmark.set_index('trade_date')['value'].sort_index()
+            prices = prices.reindex(common_idx).ffill()
+            benchmark_factors = (prices / prices.shift(1)).fillna(1.0).values
+        else:
+            benchmark_factors = [1.0] * len(common_idx)
+    else:
+        df_cdi = pd.DataFrame(benchmark_query, columns=['trade_date', 'value'])
+        benchmark_factors = [1.0] * len(common_idx)
+        if not df_cdi.empty:
+            df_cdi['trade_date'] = pd.to_datetime(df_cdi['trade_date'])
+            df_cdi.set_index('trade_date', inplace=True)
+            df_cdi.sort_index(inplace=True)
+            aligned_cdi = df_cdi.reindex(common_idx).ffill().fillna(0.0)
+            benchmark_factors = (1 + (aligned_cdi['value'] / 100.0)).values
+
     curr_bench = 0.0
     cash_flows_vals = aligned_cash_flow.values
-    limit = min(len(common_idx), len(cash_flows_vals), len(cdi_factors_vals))
+    limit = min(len(common_idx), len(cash_flows_vals), len(benchmark_factors))
     for i in range(limit):
-        curr_bench = (curr_bench * cdi_factors_vals[i]) + cash_flows_vals[i]
+        curr_bench = (curr_bench * benchmark_factors[i]) + cash_flows_vals[i]
         benchmark_values.append(curr_bench)
 
     return [{"trade_date": common_idx[i].strftime("%Y-%m-%d"),
@@ -395,6 +427,23 @@ def get_dashboard_data(
         c_yield = (c_profit / stats['invested'] * 100) if stats['invested'] > 0 else 0
         projections[cat] = _calculate_period_stats(c_profit, c_yield, stats['start_date'])
 
+    history_by_type = {
+        "stock": _calculate_history_logic(current_user, wallets, "stock", "IBOV"),
+        "fii": _calculate_history_logic(current_user, wallets, "fii", "IFIX"),
+        "etf": _calculate_history_logic(current_user, wallets, "etf", "SP500"),
+    }
+    benchmark_by_type = {"stock": "IBOV", "fii": "IFIX", "etf": "SP500"}
+    history_by_ticker = {
+        ticker: _calculate_history_logic(
+            current_user,
+            wallets,
+            position["type"],
+            benchmark_by_type.get(position["type"], "CDI"),
+            ticker,
+        )
+        for ticker, position in pos_map.items()
+    }
+
     return {
         "summary": {
             "total_invested": round(total_invested_global, 2),
@@ -405,6 +454,8 @@ def get_dashboard_data(
         "period_projections": projections,
         "positions": positions_list,
         "history": _calculate_history_logic(current_user, wallets),
+        "history_by_type": history_by_type,
+        "history_by_ticker": history_by_ticker,
         "transactions": transactions_list,
         "allocation": {k: round(v, 2) for k, v in allocation_by_type.items()}
     }

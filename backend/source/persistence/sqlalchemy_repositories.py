@@ -99,18 +99,27 @@ class SqlAlchemyWalletRepository:
             self._session.rollback()
             raise
 
-    def get_history_purchases(self, user_id: str) -> Sequence:
-        return (
+    def get_history_purchases(
+            self,
+            user_id: str,
+            asset_type: str | None = None,
+            ticker: str | None = None,
+    ) -> Sequence:
+        query = (
             self._session.query(
                 AssetPurchase.ticker,
                 AssetPurchase.qty,
                 AssetPurchase.price,
                 AssetPurchase.trade_date,
+                AssetPurchase.type,
             )
             .filter(AssetPurchase.user_id == user_id)
-            .order_by(AssetPurchase.trade_date.asc())
-            .all()
         )
+        if asset_type:
+            query = query.filter(AssetPurchase.type == asset_type)
+        if ticker:
+            query = query.filter(AssetPurchase.ticker == ticker)
+        return query.order_by(AssetPurchase.trade_date.asc()).all()
 
     def get_prices_from(self, tickers: Sequence[str], start_date: date) -> Sequence:
         return (
@@ -123,6 +132,26 @@ class SqlAlchemyWalletRepository:
         return (
             self._session.query(CdiHistory.trade_date, CdiHistory.value)
             .filter(CdiHistory.trade_date >= start_date)
+            .all()
+        )
+
+    def get_ibov_from(self, start_date: date) -> Sequence:
+        from backend.source.models.sql_models import IbovHistory
+
+        return (
+            self._session.query(IbovHistory.trade_date, IbovHistory.close_value)
+            .filter(IbovHistory.trade_date >= start_date)
+            .order_by(IbovHistory.trade_date.asc())
+            .all()
+        )
+
+    def get_ifix_from(self, start_date: date) -> Sequence:
+        from backend.source.models.sql_models import IfixHistory
+
+        return (
+            self._session.query(IfixHistory.trade_date, IfixHistory.close_value)
+            .filter(IfixHistory.trade_date >= start_date)
+            .order_by(IfixHistory.trade_date.asc())
             .all()
         )
 

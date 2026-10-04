@@ -1,8 +1,12 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export const cdiService = {
-  async syncCdi() {
-    const response = await fetch(`${API_URL}/sync/cdi`, {
+  async syncCdi(startDate = null) {
+    const params = startDate
+      ? `?start_date=${encodeURIComponent(startDate.slice(0, 10))}`
+      : '';
+
+    const response = await fetch(`${API_URL}/sync/cdi${params}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });

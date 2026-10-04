@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { fetchDashboardData } from '../../services/walletDataService.js';
+import { formatElapsedPeriod } from '../../utils/dateUtils.js';
 
 import iconStocks from '../../assets/stocks.png';
 import iconEtf from '../../assets/etf.png';
@@ -145,8 +146,17 @@ export const useWalletDashboardData = (user) => {
       invested = current - totalCategoryProfit;
     }
 
+    const relevantTransactions = (safeData.transactions || []).filter(
+      (transaction) =>
+        activeTab === 'total' || (transaction.asset_type || transaction.type) === activeTab
+    );
+    const earliestPurchaseDate = relevantTransactions
+      .map((transaction) => transaction.trade_date)
+      .filter(Boolean)
+      .sort()[0];
+
     const labels = {
-      total: '(Acumulado)',
+      total: `(${formatElapsedPeriod(earliestPurchaseDate)})`,
       day: '(Média por Dia)',
       month: '(Média por Mês)',
       year: '(Projeção Anual)',
@@ -203,6 +213,19 @@ export const useWalletDashboardData = (user) => {
     .filter(Boolean)
     .sort()[0] || null;
 
+  const chartHistory =
+    selectedAssetTicker
+      ? safeData.history_by_ticker?.[selectedAssetTicker] || []
+      : activeTab === 'total'
+      ? safeData.history
+      : safeData.history_by_type?.[activeTab] || [];
+
+  const chartEarliestPurchaseDate = safeData.transactions
+    .filter((transaction) => activeTab === 'total' || transaction.type === activeTab)
+    .map((transaction) => transaction.trade_date)
+    .filter(Boolean)
+    .sort()[0] || null;
+
   return {
     setActiveTab,
     setAllocationView,
@@ -243,11 +266,11 @@ export const useWalletDashboardData = (user) => {
     },
 
     currentPieData,
-    displayedHistory: safeData.history,
+    displayedHistory: chartHistory,
     chartEvents,
 
     availablePeriods: PROFIT_PERIODS,
-    earliestPurchaseDate,
+    earliestPurchaseDate: chartEarliestPurchaseDate,
     showEmptyState,
     dataWarnings: [],
     assetsHistoryMap: {},

@@ -139,7 +139,18 @@ export default function ManualPriceSync() {
       const indicesToSync = [
         { id: 'IBOV', label: 'Índice IBOVESPA', action: () => syncService.syncIbov() },
         { id: 'IFIX', label: 'Índice IFIX', action: () => syncService.syncIfix('^IFIX') },
-        { id: 'CDI', label: 'Taxa CDI', action: () => cdiService.syncCdi() },
+        {
+          id: 'CDI',
+          label: 'Taxa CDI',
+          action: () => {
+            const firstPurchaseDate = positions
+              .map((position) => position.purchaseDate)
+              .filter(Boolean)
+              .sort()[0];
+            return cdiService.syncCdi(firstPurchaseDate);
+          },
+        },
+        { id: 'SP500', label: 'S&P 500', action: () => syncService.syncTicker('^GSPC') },
         { id: 'IPCA', label: 'Inflação IPCA', action: () => syncIpcaHistory() },
       ];
 
