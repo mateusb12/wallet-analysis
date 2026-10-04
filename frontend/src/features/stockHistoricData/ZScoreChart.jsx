@@ -12,6 +12,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { formatCurrency, formatCurrencyMobile, useMediaQuery } from '../../utils/chartUtils.js';
+import { formatChartDate } from '../../utils/dateUtils.js';
 
 const parseNum = (str) => (typeof str === 'string' ? parseFloat(str.replace(',', '.')) : str);
 
@@ -76,7 +77,7 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
   const yAxisFormatter = (value) =>
     isMobile ? formatCurrencyMobile(value) : formatCurrency(value);
 
-  const { chartData, boundaries, isLongPeriod } = useMemo(() => {
+  const { chartData, boundaries, monthTicks } = useMemo(() => {
     if (!analysisResult || !historicalPrices || historicalPrices.length === 0) {
       return { chartData: [], boundaries: {}, isLongPeriod: false };
     }
@@ -104,18 +105,36 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     const longPeriod = diffDays > 365;
 
-    const data = historicalPrices.map((d) => {
+    const data = historicalPrices.map((d, index) => {
       const dateObj = new Date(d.date);
+      const year = dateObj.getFullYear();
+      const previousDate = index > 0 ? new Date(historicalPrices[index - 1].date) : null;
       return {
         timestamp: d.date,
-        shortDate: dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        xKey: String(index),
+        year,
+        shortDate: formatChartDate(dateObj).split('/').slice(0, 2).join('/'),
+        monthKey: `${year}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`,
         longDate: dateObj.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+        axisLabel:
+          longPeriod && previousDate && previousDate.getFullYear() !== year
+            ? String(year)
+            : formatChartDate(dateObj).split('/').slice(0, 2).join('/'),
         fullDate: dateObj.toLocaleDateString('pt-BR'),
         price: d.close,
       };
     });
 
-    return { chartData: data, boundaries: b, isLongPeriod: longPeriod };
+    const monthTicks = [];
+
+    data.forEach((item, index, items) => {
+      const isFirstDayOfMonth = index === 0 || item.monthKey !== items[index - 1].monthKey;
+      if (!isFirstDayOfMonth) return;
+
+      monthTicks.push(item.xKey);
+    });
+
+    return { chartData: data, boundaries: b, isLongPeriod: longPeriod, monthTicks };
   }, [historicalPrices, analysisResult]);
 
   const CustomTooltip = ({ active, payload }) => {
@@ -152,19 +171,24 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
           margin={{
             top: 20,
             right: 30,
-            left: isMobile ? 0 : 20,
-            bottom: 20,
+            left: isMobile ? 6 : 20,
+            bottom: 28,
           }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} vertical={false} />
 
           <XAxis
-            dataKey={isLongPeriod ? 'longDate' : 'shortDate'}
+            dataKey="xKey"
+            ticks={monthTicks}
+            interval={0}
+            tickFormatter={(value) =>
+              chartData.find((item) => item.xKey === String(value))?.axisLabel || ''
+            }
             minTickGap={40}
             tick={{ fontSize: 11, fill: theme.text }}
             tickLine={false}
             axisLine={{ stroke: theme.grid }}
-            interval="preserveStartEnd"
+            padding={{ left: 14, right: 14 }}
           />
 
           <YAxis
