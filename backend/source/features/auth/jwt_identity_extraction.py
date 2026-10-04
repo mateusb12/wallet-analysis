@@ -1,9 +1,13 @@
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
-from backend.source.core.db import get_supabase
+from backend.source.core.dependencies import get_auth_provider
+from backend.source.features.auth.auth_provider import AuthProvider
 
 
-def get_current_user(authorization: str = Header(None)):
+def get_current_user(
+    authorization: str = Header(None),
+    auth: AuthProvider = Depends(get_auth_provider),
+):
     """
     Extrai o user_id do token Supabase JWT enviado no Header Authorization.
     Formato esperado: 'Bearer <token>'
@@ -13,15 +17,13 @@ def get_current_user(authorization: str = Header(None)):
 
     try:
         token = authorization.split(" ")[1]
-        supabase = get_supabase()
-
         # Verifica o token com o Supabase Auth
-        user_response = supabase.auth.get_user(token)
+        user_response = auth.get_user(token)
 
-        if not user_response or not user_response.user:
+        if not user_response or not user_response.get("id"):
             raise HTTPException(status_code=401, detail="Invalid Authentication Token")
 
-        return user_response.user.id
+        return user_response["id"]
 
     except Exception as e:
         print(f"Auth Error: {str(e)}")

@@ -13,6 +13,12 @@ class UserUpdate(BaseModel):
     balancing_settings: Optional[Dict[str, Any]] = None
 
 
+class UserProfileCreate(BaseModel):
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+
 # O que o Backend devolve (Output)
 class UserResponse(BaseModel):
     id: UUID

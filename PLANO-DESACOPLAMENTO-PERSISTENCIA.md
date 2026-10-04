@@ -93,7 +93,7 @@ Pendências para concluir a etapa:
 
 ## 2. Remover acesso direto do frontend ao Supabase
 
-Status: parcialmente concluída. Os dados de referência, B3 e os fluxos principais de carteira/perfil já passam pelo backend; o `AuthContext` ainda grava diretamente na tabela `users`, e autenticação/Storage continuam usando Supabase.
+Status: parcialmente concluída. Os dados de referência, B3 e os fluxos principais de carteira/perfil já passam pelo backend; falta apenas validação completa dos contratos. Autenticação e Storage agora estão concentrados em adapters próprios.
 
 - [x] Criar endpoints backend para IPCA, IFIX, IBOV e CDI.
 - [x] Migrar `ipcaService.js`.
@@ -108,7 +108,6 @@ Status: parcialmente concluída. Os dados de referência, B3 e os fluxos princip
 
 Pendências para concluir a etapa:
 
-- Migrar a criação do registro de usuário que ainda está no `AuthContext`.
 - Validar os contratos HTTP e as respostas no frontend com o ambiente completo instalado.
 - Confirmar que os únicos usos restantes do Supabase no frontend são autenticação e Storage.
 
@@ -116,23 +115,33 @@ Critério de conclusão: o frontend fala com a aplicação, não diretamente com
 
 ## 3. Separar autenticação e storage
 
-Status: não iniciada. O Supabase continua sendo o provider atual; esta etapa criará apenas a seam para permitir uma troca futura.
+Status: parcialmente concluída. As seams e os adapters Supabase e locais foram criados; ainda falta validar o modo local e concluir a portabilidade do modelo de dados.
 
 ### Autenticação
 
-- [ ] Criar uma interface de autenticação.
-- [ ] Criar adapter Supabase Auth.
-- [ ] Definir como será o adapter local.
-- [ ] Evitar que os routers chamem `supabase.auth` diretamente.
-- [ ] Padronizar a obtenção do usuário atual.
+- [x] Criar uma interface de autenticação.
+- [x] Criar adapter Supabase Auth.
+- [x] Definir como será o adapter local.
+- [x] Evitar que os routers chamem `supabase.auth` diretamente.
+- [x] Padronizar a obtenção do usuário atual.
 
 ### Storage
 
-- [ ] Isolar upload de avatar atrás de uma interface.
-- [ ] Manter Supabase Storage inicialmente, se for conveniente.
-- [ ] Deixar possível trocar depois por filesystem local ou outro storage.
+- [x] Isolar upload de avatar atrás de uma interface.
+- [x] Manter Supabase Storage inicialmente, se for conveniente.
+- [x] Deixar possível trocar depois por filesystem local ou outro storage.
 
-Critério de conclusão: trocar o banco não exige reescrever os routers.
+Critério de conclusão: trocar o provider de autenticação ou Storage não exige reescrever os routers nem os consumidores do frontend.
+
+Implementação atual:
+
+- `AUTH_PROVIDER=local` ativa autenticação local no backend.
+- `VITE_AUTH_PROVIDER=local` ativa a sessão local no frontend.
+- `LOCAL_AUTH_STORE` define o arquivo de usuários locais.
+- `AUTH_SECRET_KEY` assina os tokens locais e deve ser obrigatória em produção.
+- `LOCAL_STORAGE_PATH` define onde os avatares locais são gravados.
+- O login Google continua disponível apenas com o adapter Supabase.
+- O modo local ainda depende da etapa 4 para tornar o banco e os modelos de usuário compatíveis com SQLite.
 
 ## 4. Tornar o modelo de dados portátil
 

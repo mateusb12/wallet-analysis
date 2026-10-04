@@ -3,10 +3,22 @@ import json
 
 from backend.source.core.dependencies import get_user_repository
 from backend.source.features.auth.jwt_identity_extraction import get_current_user
-from backend.source.features.users.user_schemas import UserUpdate, UserResponse
+from backend.source.features.users.user_schemas import UserProfileCreate, UserUpdate, UserResponse
 from backend.source.persistence.ports import UserRepository
 
 user_bp = APIRouter(prefix="/users", tags=["Users"])
+
+
+@user_bp.post("/me", response_model=UserResponse)
+def ensure_user_profile(
+        payload: UserProfileCreate,
+        users: UserRepository = Depends(get_user_repository),
+        current_user=Depends(get_current_user)
+):
+    try:
+        return users.ensure_profile(current_user, payload.model_dump(exclude_unset=True))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @user_bp.patch("/me", response_model=UserResponse)

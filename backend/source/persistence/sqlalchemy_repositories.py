@@ -20,6 +20,21 @@ class SqlAlchemyUserRepository:
     def get_by_id(self, user_id: str) -> User | None:
         return self._session.query(User).filter(User.id == user_id).first()
 
+    def ensure_profile(self, user_id: str, fields: dict) -> User:
+        user = self.get_by_id(user_id)
+        if user:
+            return user
+
+        try:
+            user = User(id=user_id, **fields)
+            self._session.add(user)
+            self._session.commit()
+            self._session.refresh(user)
+            return user
+        except Exception:
+            self._session.rollback()
+            raise
+
     def update(self, user: User, fields: dict) -> User:
         try:
             for key, value in fields.items():

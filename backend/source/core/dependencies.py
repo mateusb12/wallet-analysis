@@ -1,8 +1,12 @@
+import os
+
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from backend.source.core.database import get_db
 from backend.source.core.db import get_supabase
+from backend.source.features.auth.auth_provider import AuthProvider, SupabaseAuthProvider
+from backend.source.features.auth.local_auth_provider import LocalAuthProvider
 from backend.source.persistence.sqlalchemy_repositories import (
     SqlAlchemyUserRepository,
     SqlAlchemyWalletRepository,
@@ -41,3 +45,9 @@ def get_b3_repository() -> SupabaseB3Repository:
 
 def get_reference_data_repository() -> SupabaseReferenceDataRepository:
     return SupabaseReferenceDataRepository(get_supabase())
+
+
+def get_auth_provider() -> AuthProvider:
+    if os.getenv("AUTH_PROVIDER", "supabase").lower() == "local":
+        return LocalAuthProvider()
+    return SupabaseAuthProvider(get_supabase())

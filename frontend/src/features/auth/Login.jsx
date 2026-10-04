@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../theme/ThemeContext';
 import { authService, systemService } from '../../services/api';
-import { supabase } from '../../services/supabaseClient';
+import { signInWithGoogle } from '../../services/authClient.js';
 import { useAuth } from './AuthContext';
 import { Wifi, WifiOff, Loader2, Sun, Moon } from 'lucide-react';
 
@@ -30,17 +30,7 @@ export default function Login({ onSwitchToRegister }) {
 
   const handleGoogleLogin = async () => {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
-      });
-      if (error) throw error;
+      await signInWithGoogle();
     } catch (error) {
       console.error('Erro Google:', error);
       setMessage({ type: 'error', content: error.message });

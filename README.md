@@ -4,7 +4,7 @@ Essa é uma aplicação web construída em **React** que oferece algumas **calcu
 Ela foi projetada para ajudar usuários a analisar e comparar o que aconteceria em diferentes cenários de investimento, com foco especial em opções do mercado brasileiro como **FIIs (Fundos de Investimento Imobiliário)**, **CDBs** e **LCIs**.
 
 Essa aplicação utiliza um **frontend em React** construído com **Vite** e usa **Tailwind CSS** para a estilização.  
-Os dados para os módulos de FIIs são buscados de um **backend Supabase**
+Os dados para os módulos de FIIs são buscados pelo backend, que pode usar Supabase ou um provider local conforme a configuração.
 
 🔗 **Demo ao Vivo:** [https://mateusb12.github.io/investments-calculator](https://mateusb12.github.io/investments-calculator)
 
@@ -36,8 +36,9 @@ Os dados para os módulos de FIIs são buscados de um **backend Supabase**
 - **Recharts** – Gráficos interativos no Simulador de FIIs
 
 ### Backend & Dados
-- **Supabase** – Armazena e serve os dados históricos da B3
-- **b3service.js** – Gerencia todas as chamadas de API para o Supabase
+- **Backend FastAPI** – Expõe os dados históricos e as operações da aplicação
+- **Adapters** – Permitem usar Supabase ou providers locais
+- **b3service.js** – Gerencia as chamadas do frontend para o backend
 
 ---
 
@@ -46,7 +47,23 @@ Os dados para os módulos de FIIs são buscados de um **backend Supabase**
 ### 1️⃣ Pré-requisitos
 - Node.js (v18 ou superior)
 - npm ou yarn
-- Projeto Supabase configurado
+- Backend configurado (Supabase ou modo local)
+
+Para rodar sem Supabase, configure no backend:
+
+```env
+AUTH_PROVIDER=local
+AUTH_SECRET_KEY=uma-chave-secreta-forte
+LOCAL_AUTH_STORE=./data/auth_users.json
+LOCAL_STORAGE_PATH=./data/uploads
+```
+
+E no frontend:
+
+```env
+VITE_AUTH_PROVIDER=local
+VITE_API_URL=http://localhost:8000
+```
 
 ---
 

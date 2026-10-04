@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
 from backend.debugger import start_debugger_monitor
@@ -11,6 +12,7 @@ from backend.source.features.auth.auth_router import auth_bp
 from backend.source.features.market_data.market_data_router import market_data_bp
 from backend.source.features.reference_data.reference_data_router import reference_data_bp
 from backend.source.features.market_data.b3_router import b3_bp
+from backend.source.features.storage.storage_router import storage_bp
 from backend.source.features.users.user_router import user_bp
 from backend.source.features.wallet.wallet_router import wallet_bp
 
@@ -41,6 +43,12 @@ app.include_router(b3_bp)
 app.include_router(analysis_bp)
 app.include_router(wallet_bp)
 app.include_router(user_bp)
+app.include_router(storage_bp)
+app.mount(
+    "/uploads",
+    StaticFiles(directory=os.getenv("LOCAL_STORAGE_PATH", "./data/uploads"), check_dir=False),
+    name="uploads",
+)
 
 @app.get("/")
 def health_check():

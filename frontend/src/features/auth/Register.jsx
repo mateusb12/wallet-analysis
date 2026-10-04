@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../../services/supabaseClient';
+import { authService } from '../../services/api.js';
 import { useTheme } from '../theme/ThemeContext';
 
 export default function Register({ onSwitchToLogin }) {
@@ -38,10 +38,11 @@ export default function Register({ onSwitchToLogin }) {
     }
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-      });
+      const data = await authService.register(
+        formData.email,
+        formData.password,
+        formData.confirmPassword
+      );
 
       if (data?.user?.identities?.length === 0) {
         console.log('⚠️ IDENTITIES VAZIO → EMAIL JÁ EXISTE');
@@ -52,8 +53,6 @@ export default function Register({ onSwitchToLogin }) {
         setLoading(false);
         return;
       }
-
-      if (error) throw error;
 
       setMessage({
         type: 'success',

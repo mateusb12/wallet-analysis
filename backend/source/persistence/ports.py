@@ -8,6 +8,9 @@ class UserRepository(Protocol):
     def get_by_id(self, user_id: str) -> User | None:
         ...
 
+    def ensure_profile(self, user_id: str, fields: dict) -> User:
+        ...
+
     def update(self, user: User, fields: dict) -> User:
         ...
 
