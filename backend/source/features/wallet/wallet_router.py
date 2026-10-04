@@ -78,6 +78,24 @@ def _format_asset_age(first_purchase_date) -> str:
     if days > 0 or (years == 0 and months == 0): parts.append(f"{days}d")
     return " ".join(parts)
 
+
+def _build_cdi_factors(benchmark_query, common_idx):
+    """Build CDI factors without applying a business-day rate on calendar gaps."""
+    factors = pd.Series(1.0, index=common_idx, dtype=float)
+    df_cdi = pd.DataFrame(benchmark_query, columns=['trade_date', 'value'])
+
+    if df_cdi.empty:
+        return factors.values
+
+    df_cdi['trade_date'] = pd.to_datetime(df_cdi['trade_date'])
+    df_cdi.set_index('trade_date', inplace=True)
+    df_cdi.sort_index(inplace=True)
+
+    observed_cdi = pd.to_numeric(df_cdi['value']).reindex(common_idx)
+    observed_dates = observed_cdi.notna()
+    factors.loc[observed_dates] = 1 + (observed_cdi.loc[observed_dates] / 100.0)
+    return factors.values
+
 def _calculate_history_logic(
         user_id: str,
         wallets: WalletRepository,
@@ -147,14 +165,7 @@ def _calculate_history_logic(
         else:
             benchmark_factors = [1.0] * len(common_idx)
     else:
-        df_cdi = pd.DataFrame(benchmark_query, columns=['trade_date', 'value'])
-        benchmark_factors = [1.0] * len(common_idx)
-        if not df_cdi.empty:
-            df_cdi['trade_date'] = pd.to_datetime(df_cdi['trade_date'])
-            df_cdi.set_index('trade_date', inplace=True)
-            df_cdi.sort_index(inplace=True)
-            aligned_cdi = df_cdi.reindex(common_idx).ffill().fillna(0.0)
-            benchmark_factors = (1 + (aligned_cdi['value'] / 100.0)).values
+        benchmark_factors = _build_cdi_factors(benchmark_query, common_idx)
 
     curr_bench = 0.0
     cash_flows_vals = aligned_cash_flow.values
