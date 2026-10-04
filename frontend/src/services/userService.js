@@ -1,18 +1,7 @@
-import { supabase } from './supabaseClient';
+import { supabase } from './supabaseClient.js';
+import { getAuthHeaders } from './authClient.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-async function getAuthHeaders() {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-
-  if (!token) throw new Error('Usuário não autenticado');
-
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  };
-}
 
 export const userService = {
   getProfile: async () => {

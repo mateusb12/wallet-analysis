@@ -55,7 +55,7 @@ Critério de conclusão: saber exatamente quais módulos precisam de persistênc
 
 ## 1. Centralizar a persistência do backend
 
-Status: parcialmente concluída. A centralização foi implementada, mas os testes de contrato e a validação funcional ainda estão pendentes. Auth e Storage continuam pendentes na etapa 3.
+Status: parcialmente concluída. A centralização dos routers foi implementada, mas os testes de contrato e a validação funcional ainda estão pendentes. Auth e Storage não fazem parte desta etapa.
 
 Criar repositórios orientados ao domínio:
 
@@ -63,7 +63,7 @@ Criar repositórios orientados ao domínio:
 - [x] `AnalysisRepository` para leituras de análise, inicialmente com adapter Supabase
 - [x] `WalletRepository` (CRUD, importação, dashboard e histórico)
 - [x] `UserRepository`
-- [x] Repositório para IPCA, CDI, IFIX e IBOV, dentro do `MarketDataRepository`
+- [x] `ReferenceDataRepository` para IPCA, CDI, IFIX e IBOV
 - [x] Repositório para cache de classificação, dentro do `MarketDataRepository`
 
 Depois:
@@ -74,7 +74,7 @@ Depois:
 - [ ] Validar o comportamento atual sem trocar o banco.
 - [ ] Adicionar testes dos repositórios.
 
-Critério parcial: os routers de dados não conhecem Supabase ou detalhes de SQLAlchemy. Auth e Storage ficam isolados na etapa 3.
+Critério parcial: os routers de dados não conhecem Supabase ou detalhes de SQLAlchemy. Auth e Storage permanecem em seams próprias na etapa 3.
 
 Resultado atual:
 
@@ -93,27 +93,30 @@ Pendências para concluir a etapa:
 
 ## 2. Remover acesso direto do frontend ao Supabase
 
-- Status: parcialmente concluída. Os dados de referência já passam pelo backend; B3, operações de usuário/carteira, autenticação e Storage ainda estão pendentes.
+Status: parcialmente concluída. Os dados de referência, B3 e os fluxos principais de carteira/perfil já passam pelo backend; o `AuthContext` ainda grava diretamente na tabela `users`, e autenticação/Storage continuam usando Supabase.
 
 - [x] Criar endpoints backend para IPCA, IFIX, IBOV e CDI.
 - [x] Migrar `ipcaService.js`.
 - [x] Migrar `ifixService.js`.
 - [x] Migrar `ibovService.js`.
 - [x] Migrar `cdiService.js`.
-- [ ] Migrar `b3service.js`.
-- [ ] Migrar operações de carteira e usuário.
-- [ ] Remover consultas diretas às tabelas do Supabase dos services restantes.
-- [ ] Manter Supabase apenas onde ele ainda for explicitamente necessário.
+- [x] Manter as operações de dados de `walletDataService.js` atrás do backend.
+- [x] Manter leitura/edição do perfil atrás do backend.
+- [x] Migrar `b3service.js`.
+- [x] Remover consultas diretas às tabelas do Supabase dos services restantes.
+- [x] Remover dependências de autenticação do Supabase dos services de dados, concentrando-as em `authClient.js`.
 
 Pendências para concluir a etapa:
 
-- Migrar o B3 e revisar os fluxos de carteira/usuário.
+- Migrar a criação do registro de usuário que ainda está no `AuthContext`.
 - Validar os contratos HTTP e as respostas no frontend com o ambiente completo instalado.
-- Confirmar que os únicos usos restantes do Supabase são autenticação e Storage, tratados na etapa 3.
+- Confirmar que os únicos usos restantes do Supabase no frontend são autenticação e Storage.
 
 Critério de conclusão: o frontend fala com a aplicação, não diretamente com o banco.
 
 ## 3. Separar autenticação e storage
+
+Status: não iniciada. O Supabase continua sendo o provider atual; esta etapa criará apenas a seam para permitir uma troca futura.
 
 ### Autenticação
 

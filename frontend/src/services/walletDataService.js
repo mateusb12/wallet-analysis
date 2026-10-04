@@ -1,7 +1,7 @@
 import { fetchFiiChartData, fetchB3Prices } from './b3service.js';
 import { getIfixRange } from './ifixService.js';
 import { getIbovRange } from './ibovService.js';
-import { supabase } from './supabaseClient.js';
+import { getAuthHeaders } from './authClient.js';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -28,18 +28,6 @@ const getPriceFromRecord = (record) => {
 };
 
 // Helper para pegar o Token JWT e montar o Header de Autorização
-async function getAuthHeaders() {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-
-  if (!token) throw new Error('Usuário não autenticado (Sessão expirada)');
-
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  };
-}
-
 // --- CRUD WRAPPERS ---
 
 // --- [NOVO] Função para o Dashboard ---

@@ -133,6 +133,111 @@ class SupabaseAnalysisRepository:
         return response.data
 
 
+class SupabaseB3Repository:
+    def __init__(self, client: Client):
+        self._client = client
+
+    def get_prices(self, ticker: str, offset: int, limit: int) -> dict[str, Any]:
+        response = (
+            self._client.table("b3_prices")
+            .select("*", count="exact")
+            .eq("ticker", ticker)
+            .order("trade_date", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
+        return {"data": response.data, "count": response.count}
+
+    def get_unique_stock_tickers(self) -> Sequence[str]:
+        response = self._client.table("unique_stocks_view").select("ticker").execute()
+        return sorted(row["ticker"] for row in response.data)
+
+    def get_full_stock_history(self, ticker: str, limit: int) -> Sequence[dict[str, Any]]:
+        response = (
+            self._client.table("b3_prices")
+            .select("trade_date,close,adjusted_close")
+            .eq("ticker", ticker)
+            .order("trade_date", desc=False)
+            .limit(limit)
+            .execute()
+        )
+        return response.data
+
+    def get_unique_tickers(self) -> Sequence[str]:
+        response = self._client.table("unique_tickers_view").select("ticker").execute()
+        return [row["ticker"] for row in response.data]
+
+    def get_fii_dividends(self, ticker: str | None, offset: int, limit: int) -> dict[str, Any]:
+        query = (
+            self._client.table("b3_fiis_dividends")
+            .select("*", count="exact")
+            .gt("dividend_value", 0)
+            .order("trade_date", desc=True)
+        )
+        if ticker:
+            query = query.eq("ticker", ticker)
+        response = query.range(offset, offset + limit - 1).execute()
+        return {"data": response.data, "count": response.count}
+
+    def get_fii_chart_data(self, ticker: str, start_date: str | None) -> Sequence[dict[str, Any]]:
+        query = (
+            self._client.table("b3_prices")
+            .select("*, price_close:close")
+            .eq("ticker", ticker)
+            .order("trade_date", desc=True)
+        )
+        if start_date:
+            query = query.gte("trade_date", start_date)
+        return query.execute().data
+
+    def get_fii_date_range(self, ticker: str) -> dict[str, Any] | None:
+        response = (
+            self._client.table("fii_date_ranges_view")
+            .select("oldest_date,newest_date")
+            .eq("ticker", ticker)
+            .limit(1)
+            .execute()
+        )
+        return response.data[0] if response.data else None
+
+    def get_fii_dividend_for_month(self, ticker: str, start_date: str, end_date: str) -> dict[str, Any] | None:
+        response = (
+            self._client.table("b3_fiis_dividends")
+            .select("*")
+            .eq("ticker", ticker)
+            .gt("dividend_value", 0)
+            .gte("trade_date", start_date)
+            .lte("trade_date", end_date)
+            .order("trade_date", desc=False)
+            .limit(1)
+            .execute()
+        )
+        return response.data[0] if response.data else None
+
+    def get_first_fii_price(self, ticker: str, oldest_date: str) -> dict[str, Any] | None:
+        response = (
+            self._client.table("b3_fiis_dividends")
+            .select("price_close")
+            .eq("ticker", ticker)
+            .gte("trade_date", oldest_date)
+            .order("trade_date", desc=False)
+            .limit(1)
+            .execute()
+        )
+        return response.data[0] if response.data else None
+
+    def get_price_closest_to_date(self, ticker: str, target_date: str) -> dict[str, Any] | None:
+        response = (
+            self._client.table("b3_prices")
+            .select("close,adjusted_close,trade_date")
+            .eq("ticker", ticker)
+            .lte("trade_date", target_date)
+            .order("trade_date", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return response.data[0] if response.data else None
+
 class SupabaseReferenceDataRepository:
     def __init__(self, client: Client):
         self._client = client

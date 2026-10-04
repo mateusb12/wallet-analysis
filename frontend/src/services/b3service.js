@@ -1,222 +1,90 @@
-import { supabase } from './supabaseClient.js';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-const CORS_PROXY = 'https://corsproxy.io/?';
+async function request(path, options = {}) {
+  const response = await fetch(`${API_URL}${path}`, options);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.detail || 'Falha ao buscar dados da B3');
+  return data;
+}
 
 export async function fetchB3Prices(ticker, page = 1, pageSize = 50) {
-  const from = (page - 1) * pageSize;
-  const to = from + pageSize - 1;
-
-  const { data, error, count } = await supabase
-    .from('b3_prices')
-    .select('*', { count: 'exact' })
-    .eq('ticker', ticker.toUpperCase())
-    .order('trade_date', { ascending: false })
-    .range(from, to);
-
-  if (error) throw error;
-  return { data, count };
+  return request(
+    `/data/b3/prices?ticker=${encodeURIComponent(ticker.toUpperCase())}&page=${page}&page_size=${pageSize}`
+  );
 }
 
 export async function fetchUniqueStockTickers() {
-  const { data, error } = await supabase.from('unique_stocks_view').select('ticker');
-
-  if (error) {
-    console.error(
-      "Erro: Crie a view 'unique_stocks_view' no Supabase para performance: 'create view unique_stocks_view as select distinct ticker from b3_prices;'"
-    );
-    throw error;
-  }
-
-  return data.map((item) => item.ticker).sort();
+  return request('/data/b3/stocks');
 }
 
 export async function fetchFullStockHistory(ticker) {
-  const { data, error } = await supabase
-    .from('b3_prices')
-    .select('trade_date, close, adjusted_close')
-    .eq('ticker', ticker.toUpperCase())
-    .order('trade_date', { ascending: true })
-    .limit(1300);
-
-  if (error) throw error;
-
+  const data = await request(`/data/b3/stocks/${encodeURIComponent(ticker.toUpperCase())}/history`);
   return data.map((item) => {
-    const dateObj = new Date(item.trade_date);
-
-    const val =
-      item.adjusted_close && item.adjusted_close > 0
-        ? parseFloat(item.adjusted_close)
-        : parseFloat(item.close);
-
+    const value = item.adjusted_close && item.adjusted_close > 0 ? item.adjusted_close : item.close;
     return {
-      date: dateObj.getTime(),
+      date: new Date(item.trade_date).getTime(),
       dateStr: item.trade_date,
-      close: val,
+      close: parseFloat(value),
     };
   });
 }
 
 export async function fetchUniqueTickers() {
-  const { data, error } = await supabase.from('unique_tickers_view').select('ticker');
-
-  if (error) {
-    console.error("Erro ao buscar tickers únicos. Você criou a 'unique_tickers_view' no Supabase?");
-    throw error;
-  }
-
-  return data.map((item) => item.ticker);
+  return request('/data/b3/tickers');
 }
 
 export async function fetchFiiDividends(ticker = null, page = 1, pageSize = 50) {
-  const from = (page - 1) * pageSize;
-  const to = from + pageSize - 1;
-
-  let query = supabase
-    .from('b3_fiis_dividends')
-    .select('*', { count: 'exact' })
-    .gt('dividend_value', 0)
-    .order('trade_date', { ascending: false })
-    .range(from, to);
-
-  if (ticker) {
-    query = query.eq('ticker', ticker.toUpperCase());
-  }
-
-  const { data, error, count } = await query;
-  if (error) {
-    console.error('Erro ao buscar dividendos de FIIs:', error.message);
-    throw error;
-  }
-
-  return { data, count };
+  const params = new URLSearchParams({ page, page_size: pageSize });
+  if (ticker) params.set('ticker', ticker.toUpperCase());
+  return request(`/data/b3/fiis/dividends?${params}`);
 }
 
 export async function fetchFiiChartData(ticker, months) {
-  let query = supabase
-    .from('b3_prices')
-    .select('*, price_close:close')
-    .eq('ticker', ticker.toUpperCase())
-
-    .order('trade_date', { ascending: false });
-
+  const params = new URLSearchParams();
   if (months > 0) {
     const date = new Date();
     date.setMonth(date.getMonth() - months);
-    const dateString = date.toISOString().split('T')[0];
-    query = query.gte('trade_date', dateString);
+    params.set('start_date', date.toISOString().split('T')[0]);
   }
-
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao buscar dados do gráfico:', error.message);
-    throw error;
-  }
-
-  return data;
+  const query = params.toString();
+  return request(`/data/b3/fiis/${encodeURIComponent(ticker.toUpperCase())}/chart${query ? `?${query}` : ''}`);
 }
 
 export async function fetchFiiDateRange(ticker) {
-  const { data, error } = await supabase
-    .from('fii_date_ranges_view')
-    .select('oldest_date, newest_date')
-    .eq('ticker', ticker.toUpperCase())
-    .single();
-
-  if (error) {
-    console.error(`Erro ao buscar range de datas para ${ticker}:`, error.message);
-    if (error.code === 'PGRST116') {
-      throw new Error(`Nenhum dado histórico encontrado para o ticker ${ticker}.`);
-    }
-    throw error;
-  }
-
-  return data;
+  return request(`/data/b3/fiis/${encodeURIComponent(ticker.toUpperCase())}/date-range`);
 }
 
 export async function fetchFiiDividendForMonth(ticker, month, year) {
-  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-  const lastDay = new Date(year, month, 0).getDate();
-  const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-
-  const { data, error } = await supabase
-    .from('b3_fiis_dividends')
-    .select('*')
-    .eq('ticker', ticker.toUpperCase())
-    .gt('dividend_value', 0)
-    .gte('trade_date', startDate)
-    .lte('trade_date', endDate)
-    .order('trade_date', { ascending: true })
-    .limit(1);
-
-  if (error) {
-    console.error(`Erro ao buscar dividendo para ${ticker} em ${month}/${year}:`, error.message);
-    throw error;
-  }
-
-  return data && data.length > 0 ? data[0] : null;
+  return request(
+    `/data/b3/fiis/${encodeURIComponent(ticker.toUpperCase())}/dividend?month=${month}&year=${year}`
+  );
 }
 
 export async function fetchFirstEverPrice(ticker, oldestDate) {
-  const { data, error } = await supabase
-    .from('b3_fiis_dividends')
-    .select('price_close')
-    .eq('ticker', ticker.toUpperCase())
-    .gte('trade_date', oldestDate)
-    .order('trade_date', { ascending: true })
-    .limit(1)
-    .single();
-
-  if (error) {
-    console.error('Erro ao buscar primeiro preço histórico:', error.message);
-    throw error;
-  }
-
-  return data;
+  return request(
+    `/data/b3/fiis/${encodeURIComponent(ticker.toUpperCase())}/first-price?oldest_date=${encodeURIComponent(oldestDate)}`
+  );
 }
 
 export async function syncTickerHistory(ticker) {
   try {
-    const response = await fetch('http://localhost:5000/sync', {
+    return await request('/sync/', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ ticker: ticker }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker }),
     });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Server error');
-    }
-
-    return data;
   } catch (error) {
     console.error('Sync failed:', error);
-
-    return { success: false, error: error.message || 'Failed to connect to Python backend' };
+    return { success: false, error: error.message || 'Falha ao sincronizar ticker' };
   }
 }
 
 export async function fetchPriceClosestToDate(ticker, targetDate) {
-  const { data, error } = await supabase
-    .from('b3_prices')
-    .select('close, adjusted_close, trade_date')
-    .eq('ticker', ticker.toUpperCase())
-    .lte('trade_date', targetDate)
-    .order('trade_date', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    console.error(`Erro ao buscar preço histórico para ${ticker}:`, error);
-    return null;
-  }
-
+  const data = await request(
+    `/data/b3/prices/closest?ticker=${encodeURIComponent(ticker.toUpperCase())}&target_date=${encodeURIComponent(targetDate)}`
+  );
   if (!data) return null;
 
-  const finalPrice =
-    data.adjusted_close && data.adjusted_close > 0 ? data.adjusted_close : data.close;
-
-  return parseFloat(finalPrice);
+  const value = data.adjusted_close && data.adjusted_close > 0 ? data.adjusted_close : data.close;
+  return parseFloat(value);
 }

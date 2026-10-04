@@ -10,6 +10,7 @@ from backend.source.features.auth import auth_router
 from backend.source.features.auth.auth_router import auth_bp
 from backend.source.features.market_data.market_data_router import market_data_bp
 from backend.source.features.reference_data.reference_data_router import reference_data_bp
+from backend.source.features.market_data.b3_router import b3_bp
 from backend.source.features.users.user_router import user_bp
 from backend.source.features.wallet.wallet_router import wallet_bp
 
@@ -36,6 +37,7 @@ app.add_middleware(
 app.include_router(auth_bp)
 app.include_router(market_data_bp)
 app.include_router(reference_data_bp)
+app.include_router(b3_bp)
 app.include_router(analysis_bp)
 app.include_router(wallet_bp)
 app.include_router(user_bp)
