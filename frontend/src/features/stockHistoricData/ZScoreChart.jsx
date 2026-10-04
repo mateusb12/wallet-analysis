@@ -160,7 +160,7 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
   const yDomain = [boundaries.min * 0.95, boundaries.max * 1.05];
 
   return (
-    <div style={{ width: '100%', height: 450 }}>
+    <div style={{ width: '100%', height: isMobile ? 580 : 700 }}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
           data={chartData}
@@ -205,6 +205,8 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
             <ReferenceLine
               key={yearIndex}
               x={yearIndex}
+              y1={yDomain[0]}
+              y2={boundaries.minusTwoStdDev}
               stroke="#facc15"
               strokeWidth={1}
               strokeDasharray="4 4"
