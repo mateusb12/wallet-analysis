@@ -3,10 +3,12 @@ import pandas as pd
 from datetime import datetime, date
 
 from fastapi import APIRouter, HTTPException, Depends, status
-from backend.source.core.dependencies import get_wallet_repository
+from sqlalchemy.orm import Session
+from sqlalchemy import func, text, bindparam, tuple_
+
+from backend.source.core.database import get_db
 from backend.source.features.auth.jwt_identity_extraction import get_current_user
-from backend.source.models.sql_models import AssetPurchase
-from backend.source.persistence.ports import WalletRepository
+from backend.source.models.sql_models import AssetPurchase, CdiHistory, B3Price
 from backend.source.features.wallet.wallet_schema import (
     ImportPurchasesRequest,
     AssetPurchaseResponse,
@@ -78,8 +80,9 @@ def _format_asset_age(first_purchase_date) -> str:
     if days > 0 or (years == 0 and months == 0): parts.append(f"{days}d")
     return " ".join(parts)
 
-def _calculate_history_logic(user_id: str, wallets: WalletRepository) -> List[Dict]:
-    purchases = wallets.get_history_purchases(user_id)
+def _calculate_history_logic(user_id: str, db: Session) -> List[Dict]:
+    purchases = db.query(AssetPurchase.ticker, AssetPurchase.qty, AssetPurchase.price, AssetPurchase.trade_date) \
+        .filter(AssetPurchase.user_id == user_id).order_by(AssetPurchase.trade_date.asc()).all()
     if not purchases: return []
 
     df_purchases = pd.DataFrame(purchases, columns=['ticker', 'qty', 'price', 'trade_date'])
@@ -90,8 +93,10 @@ def _calculate_history_logic(user_id: str, wallets: WalletRepository) -> List[Di
     start_date = df_purchases['trade_date'].min()
     unique_tickers = df_purchases['ticker'].unique().tolist()
 
-    prices_query = wallets.get_prices_from(unique_tickers, start_date.date())
-    cdi_query = wallets.get_cdi_from(start_date.date())
+    prices_query = db.query(B3Price.ticker, B3Price.trade_date, B3Price.close) \
+        .filter(B3Price.ticker.in_(unique_tickers), B3Price.trade_date >= start_date).all()
+    cdi_query = db.query(CdiHistory.trade_date, CdiHistory.value) \
+        .filter(CdiHistory.trade_date >= start_date).all()
 
     if not prices_query: return []
 
@@ -136,12 +141,26 @@ def _calculate_history_logic(user_id: str, wallets: WalletRepository) -> List[Di
              "benchmark_value": round(float(benchmark_values[i]), 2)} for i in range(limit)]
 
 # Função auxiliar para calcular rentabilidade anual do ativo (ano fechado)
-def _get_yearly_prices(
-        wallets: WalletRepository,
-        tickers: List[str],
-        start_year: int,
-) -> Dict[str, Dict[int, float]]:
-    rows = wallets.get_prices_from_previous_year(tickers, start_year)
+def _get_yearly_prices(db: Session, tickers: List[str], start_year: int) -> Dict[str, Dict[int, float]]:
+    # 1. Estratégia: Pegar preços de Dezembro (após dia 20) de todos os anos relevantes
+    current_year = datetime.now().year
+
+    # Query SQL eficiente usando Window Function (PostgreSQL) ou filtragem simples
+    # Vamos usar filtragem simples para compatibilidade e simplicidade:
+    # Pegamos todas as cotações de Dezembro para os tickers alvo a partir do ano de início
+    sql = text("""
+               SELECT ticker, trade_date, adjusted_close
+               FROM b3_prices
+               WHERE ticker IN :tickers
+                 AND EXTRACT(YEAR FROM trade_date) >= :start_year
+                 AND EXTRACT(MONTH FROM trade_date) = 12
+                 AND EXTRACT(DAY FROM trade_date) > 20
+               ORDER BY trade_date ASC
+               """)
+
+    # Executa query
+    rows = db.execute(sql.bindparams(bindparam("tickers", expanding=True)),
+                      {"tickers": tickers, "start_year": start_year - 1}).fetchall()
 
     # Processa para pegar apenas a ÚLTIMA data de cada ano para cada ticker
     # map: ticker -> { 2021: 15.50, 2022: 18.20 }
@@ -150,9 +169,6 @@ def _get_yearly_prices(
     for r in rows:
         tck = r.ticker
         if not r.adjusted_close: continue
-
-        if r.trade_date.month != 12 or r.trade_date.day <= 20:
-            continue
 
         y = r.trade_date.year
         val = float(r.adjusted_close)
@@ -169,11 +185,11 @@ def _get_yearly_prices(
 
 @wallet_bp.get("/dashboard")
 def get_dashboard_data(
-        wallets: WalletRepository = Depends(get_wallet_repository),
+        db: Session = Depends(get_db),
         current_user: str = Depends(get_current_user)
 ):
     # 1. Buscar todas as compras
-    purchases = wallets.list_purchases(current_user)
+    purchases = db.query(AssetPurchase).filter(AssetPurchase.user_id == current_user).all()
 
     # Estrutura vazia
     empty_response = {
@@ -195,7 +211,8 @@ def get_dashboard_data(
 
     if purchase_keys:
         try:
-            hist_rows = wallets.get_adjusted_prices_for_purchases(purchase_keys)
+            hist_rows = db.query(B3Price.ticker, B3Price.trade_date, B3Price.adjusted_close) \
+                .filter(tuple_(B3Price.ticker, B3Price.trade_date).in_(purchase_keys)).all()
 
             for r in hist_rows:
                 key = f"{r.ticker}_{r.trade_date}"
@@ -241,7 +258,9 @@ def get_dashboard_data(
         return empty_response
 
     # 4. Buscar Preços Atuais (Raw e Adjusted)
-    latest_prices = wallets.get_latest_prices(active_tickers)
+    latest_prices = db.query(B3Price.ticker, B3Price.close, B3Price.adjusted_close, B3Price.name) \
+        .filter(B3Price.ticker.in_(active_tickers)) \
+        .order_by(B3Price.trade_date.desc()).all()
 
     price_map_raw = {}
     price_map_adj = {}
@@ -258,14 +277,16 @@ def get_dashboard_data(
     # 4.1 Buscar Classificações
     classification_map = {}
     try:
-        cls_rows = wallets.get_classifications(active_tickers)
+        stmt = text("SELECT ticker, detected_type, sector FROM asset_classification_cache WHERE ticker IN :tickers")
+        stmt = stmt.bindparams(bindparam("tickers", expanding=True))
+        cls_rows = db.execute(stmt, {"tickers": active_tickers}).fetchall()
         for r in cls_rows:
             classification_map[r.ticker] = {"subtype": r.detected_type, "sector": r.sector}
     except Exception: pass
 
     # --- NOVO: BUSCAR PREÇOS ANUAIS (FECHAMENTO DE DEZEMBRO) PARA TOOLTIP ---
     # Busca desde o ano anterior ao início da carteira (para calcular a variação do primeiro ano)
-    yearly_closes_map = _get_yearly_prices(wallets, active_tickers, start_year_portfolio)
+    yearly_closes_map = _get_yearly_prices(db, active_tickers, start_year_portfolio)
     current_year = datetime.now().year
 
     # 5. Montar Lista Final e Totais
@@ -404,7 +425,7 @@ def get_dashboard_data(
         },
         "period_projections": projections,
         "positions": positions_list,
-        "history": _calculate_history_logic(current_user, wallets),
+        "history": _calculate_history_logic(current_user, db),
         "transactions": transactions_list,
         "allocation": {k: round(v, 2) for k, v in allocation_by_type.items()}
     }
@@ -412,15 +433,15 @@ def get_dashboard_data(
 # --- OUTROS ENDPOINTS (CRUD) PERMANECEM IGUAIS ---
 @wallet_bp.get("/performance/history", response_model=List[HistoryPoint])
 def get_wallet_history(
-        wallets: WalletRepository = Depends(get_wallet_repository),
+        db: Session = Depends(get_db),
         current_user: str = Depends(get_current_user)
 ):
-    return _calculate_history_logic(current_user, wallets)
+    return _calculate_history_logic(current_user, db)
 
 @wallet_bp.post("/import")
 def import_purchases(
         payload: ImportPurchasesRequest,
-        wallets: WalletRepository = Depends(get_wallet_repository),
+        db: Session = Depends(get_db),
         current_user: str = Depends(get_current_user)
 ):
     try:
@@ -436,22 +457,26 @@ def import_purchases(
                 trade_date=item.trade_date
             )
             new_records.append(record)
-        wallets.add_purchases(new_records)
+        if new_records:
+            db.add_all(new_records)
+            db.commit()
         return {"success": True, "count": len(new_records), "message": "Import successful"}
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 @wallet_bp.get("/purchases", response_model=List[AssetPurchaseResponse])
 def get_user_purchases(
-        wallets: WalletRepository = Depends(get_wallet_repository),
+        db: Session = Depends(get_db),
         current_user: str = Depends(get_current_user)
 ):
-    return wallets.list_purchases(current_user)
+    purchases = db.query(AssetPurchase).filter(AssetPurchase.user_id == current_user).all()
+    return purchases
 
 @wallet_bp.post("/purchases", response_model=AssetPurchaseResponse, status_code=status.HTTP_201_CREATED)
 def create_purchase(
         payload: AssetPurchaseInput,
-        wallets: WalletRepository = Depends(get_wallet_repository),
+        db: Session = Depends(get_db),
         current_user: str = Depends(get_current_user)
 ):
     try:
@@ -464,18 +489,22 @@ def create_purchase(
             price=payload.price,
             trade_date=payload.trade_date
         )
-        return wallets.save_purchase(new_purchase)
+        db.add(new_purchase)
+        db.commit()
+        db.refresh(new_purchase)
+        return new_purchase
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 @wallet_bp.put("/purchases/{purchase_id}", response_model=AssetPurchaseResponse)
 def update_purchase(
         purchase_id: int,
         payload: AssetPurchaseInput,
-        wallets: WalletRepository = Depends(get_wallet_repository),
+        db: Session = Depends(get_db),
         current_user: str = Depends(get_current_user)
 ):
-    purchase = wallets.get_purchase(purchase_id)
+    purchase = db.query(AssetPurchase).filter(AssetPurchase.id == purchase_id).first()
     if not purchase:
         raise HTTPException(status_code=404, detail="Aporte não encontrado")
     if purchase.user_id != current_user:
@@ -487,23 +516,28 @@ def update_purchase(
         purchase.qty = payload.qty
         purchase.price = payload.price
         purchase.trade_date = payload.trade_date
-        return wallets.save_purchase(purchase)
+        db.commit()
+        db.refresh(purchase)
+        return purchase
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 @wallet_bp.delete("/purchases/{purchase_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_purchase(
         purchase_id: int,
-        wallets: WalletRepository = Depends(get_wallet_repository),
+        db: Session = Depends(get_db),
         current_user: str = Depends(get_current_user)
 ):
-    purchase = wallets.get_purchase(purchase_id)
+    purchase = db.query(AssetPurchase).filter(AssetPurchase.id == purchase_id).first()
     if not purchase:
         raise HTTPException(status_code=404, detail="Aporte não encontrado")
     if purchase.user_id != current_user:
         raise HTTPException(status_code=403, detail="Não autorizado a deletar este registro")
     try:
-        wallets.delete_purchase(purchase)
+        db.delete(purchase)
+        db.commit()
         return None
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
