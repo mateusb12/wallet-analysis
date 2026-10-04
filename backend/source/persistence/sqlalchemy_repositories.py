@@ -123,7 +123,12 @@ class SqlAlchemyWalletRepository:
 
     def get_prices_from(self, tickers: Sequence[str], start_date: date) -> Sequence:
         return (
-            self._session.query(B3Price.ticker, B3Price.trade_date, B3Price.close)
+            self._session.query(
+                B3Price.ticker,
+                B3Price.trade_date,
+                B3Price.close,
+                B3Price.dividend_value,
+            )
             .filter(B3Price.ticker.in_(tickers), B3Price.trade_date >= start_date)
             .all()
         )

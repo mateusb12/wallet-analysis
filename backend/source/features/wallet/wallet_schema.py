@@ -32,6 +32,8 @@ class AssetPurchaseResponse(AssetPurchaseBase):
 class HistoryPoint(BaseModel):
     trade_date: str
     portfolio_value: float
+    dividends_value: float = 0
+    dividends_accumulated: float = 0
     benchmark_value: float
 
 # [NOVO] Modelo para o detalhamento anual

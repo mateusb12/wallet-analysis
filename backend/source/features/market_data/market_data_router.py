@@ -246,6 +246,22 @@ def normalize_yahoo_robust(df: pd.DataFrame) -> pd.DataFrame:
     return df[final_cols]
 
 
+def normalize_yahoo_dividends(dividend_series: pd.Series) -> Dict[str, float]:
+    """Normalize Yahoo's per-share cash distributions by ex-date."""
+    if dividend_series is None or dividend_series.empty:
+        return {}
+
+    result: Dict[str, float] = {}
+    for raw_date, raw_value in dividend_series.items():
+        if pd.isna(raw_value):
+            continue
+        value = float(raw_value)
+        if value <= 0:
+            continue
+        result[pd.Timestamp(raw_date).date().isoformat()] = value
+    return result
+
+
 # ==============================================================================
 # 3. ROTAS DE SINCRONIZAÇÃO (INTEGRAÇÃO DE FUNCIONALIDADES)
 # ==============================================================================
@@ -293,6 +309,12 @@ def sync_ticker(
         df_norm = normalize_yahoo_robust(df_raw)
         if df_norm.empty:
             return {"success": False, "action": "parse_error", "message": "Falha ao ler dados do Yahoo."}
+
+        dividend_by_date: Dict[str, float] = {}
+        try:
+            dividend_by_date = normalize_yahoo_dividends(yf.Ticker(yf_ticker).dividends)
+        except Exception as dividend_error:
+            print(f"⚠️ {clean_ticker}: falha ao buscar dividendos no Yahoo: {dividend_error}")
 
         # 3. Processamento com DEBUG DE DADOS RUINS
         records = []
@@ -342,7 +364,7 @@ def sync_ticker(
             if pd.isna(adjusted_value) or float(adjusted_value) <= 0:
                 adjusted_value = close_price
 
-            records.append({
+            record = {
                 "ticker": clean_ticker,
                 "trade_date": row["date"],
                 "open": open_price,
@@ -352,7 +374,15 @@ def sync_ticker(
                 "adjusted_close": float(adjusted_value),
                 "volume": float(row["volume"]),
                 "inserted_at": current_time
-            })
+            }
+
+            trade_date_key = pd.Timestamp(row["date"]).date().isoformat()
+            dividend_value = dividend_by_date.get(trade_date_key)
+            if dividend_value is not None:
+                record["dividend_value"] = dividend_value
+                record["has_dividend"] = True
+
+            records.append(record)
 
         print(f"✅ {clean_ticker}: {len(records)} registros válidos processados.")
 

@@ -20,13 +20,19 @@ wallet_bp = APIRouter(prefix="/wallet", tags=["Wallet"])
 #  LÓGICA INTERNA (SERVICE) - AUXILIARES
 # ==========================================
 
-def _calculate_period_stats(profit: float, yield_pct: float, start_date: Optional[date]) -> Dict:
+def _calculate_period_stats(
+        profit: float,
+        yield_pct: float,
+        start_date: Optional[date],
+        dividends: float = 0.0,
+) -> Dict:
+    valuation = profit - dividends
     if not start_date:
         return {
-            "total": {"profit": profit, "yield": yield_pct},
-            "day": {"profit": 0, "yield": 0},
-            "month": {"profit": 0, "yield": 0},
-            "year": {"profit": 0, "yield": 0}
+            "total": {"profit": profit, "yield": yield_pct, "valuation": valuation, "dividends": dividends},
+            "day": {"profit": 0, "yield": 0, "valuation": 0, "dividends": 0},
+            "month": {"profit": 0, "yield": 0, "valuation": 0, "dividends": 0},
+            "year": {"profit": 0, "yield": 0, "valuation": 0, "dividends": 0}
         }
 
     today = datetime.now().date()
@@ -38,23 +44,33 @@ def _calculate_period_stats(profit: float, yield_pct: float, start_date: Optiona
 
     avg_day_profit = profit / days
     avg_day_yield = yield_pct / days
+    avg_day_dividends = dividends / days
+    avg_day_valuation = valuation / days
 
     return {
         "total": {
             "profit": round(profit, 2),
-            "yield": round(yield_pct, 2)
+            "yield": round(yield_pct, 2),
+            "valuation": round(valuation, 2),
+            "dividends": round(dividends, 2),
         },
         "day": {
             "profit": round(avg_day_profit, 2),
-            "yield": round(avg_day_yield, 4)
+            "yield": round(avg_day_yield, 4),
+            "valuation": round(avg_day_valuation, 2),
+            "dividends": round(avg_day_dividends, 2),
         },
         "month": {
             "profit": round(avg_day_profit * 30, 2),
-            "yield": round(avg_day_yield * 30, 2)
+            "yield": round(avg_day_yield * 30, 2),
+            "valuation": round(avg_day_valuation * 30, 2),
+            "dividends": round(avg_day_dividends * 30, 2),
         },
         "year": {
             "profit": round(avg_day_profit * 365, 2),
-            "yield": round(avg_day_yield * 365, 2)
+            "yield": round(avg_day_yield * 365, 2),
+            "valuation": round(avg_day_valuation * 365, 2),
+            "dividends": round(avg_day_dividends * 365, 2),
         }
     }
 
@@ -125,11 +141,20 @@ def _calculate_history_logic(
 
     if not prices_query: return []
 
-    df_prices = pd.DataFrame(prices_query, columns=['ticker', 'trade_date', 'close'])
+    df_prices = pd.DataFrame(
+        prices_query,
+        columns=['ticker', 'trade_date', 'close', 'dividend_value'],
+    )
     df_prices['trade_date'] = pd.to_datetime(df_prices['trade_date'])
     df_prices['close'] = pd.to_numeric(df_prices['close'])
+    df_prices['dividend_value'] = pd.to_numeric(df_prices['dividend_value'], errors='coerce').fillna(0.0)
 
     price_matrix = df_prices.pivot(index='trade_date', columns='ticker', values='close').resample('D').ffill()
+    dividend_matrix = df_prices.pivot(
+        index='trade_date',
+        columns='ticker',
+        values='dividend_value',
+    ).reindex(price_matrix.index).fillna(0.0)
     holdings_matrix = pd.DataFrame(0.0, index=price_matrix.index, columns=unique_tickers)
     daily_cash_flow = df_purchases.groupby('trade_date')['cash_flow'].sum()
 
@@ -142,6 +167,8 @@ def _calculate_history_logic(
     price_matrix = price_matrix.loc[common_idx]
     holdings_matrix = holdings_matrix.loc[common_idx]
     daily_portfolio = (holdings_matrix * price_matrix).sum(axis=1)
+    daily_dividends = (holdings_matrix * dividend_matrix.loc[common_idx]).sum(axis=1)
+    accumulated_dividends = daily_dividends.cumsum()
 
     aligned_cash_flow = daily_cash_flow.reindex(common_idx, fill_value=0.0)
     benchmark_values = []
@@ -155,7 +182,10 @@ def _calculate_history_logic(
         else:
             benchmark_factors = [1.0] * len(common_idx)
     elif benchmark == 'SP500':
-        df_benchmark = pd.DataFrame(benchmark_query, columns=['ticker', 'trade_date', 'value'])
+        df_benchmark = pd.DataFrame(
+            benchmark_query,
+            columns=['ticker', 'trade_date', 'value', 'dividend_value'],
+        )
         if not df_benchmark.empty:
             df_benchmark['trade_date'] = pd.to_datetime(df_benchmark['trade_date'])
             df_benchmark['value'] = pd.to_numeric(df_benchmark['value'])
@@ -174,9 +204,13 @@ def _calculate_history_logic(
         curr_bench = (curr_bench * benchmark_factors[i]) + cash_flows_vals[i]
         benchmark_values.append(curr_bench)
 
-    return [{"trade_date": common_idx[i].strftime("%Y-%m-%d"),
-             "portfolio_value": round(float(daily_portfolio.iloc[i]), 2),
-             "benchmark_value": round(float(benchmark_values[i]), 2)} for i in range(limit)]
+    return [{
+        "trade_date": common_idx[i].strftime("%Y-%m-%d"),
+        "portfolio_value": round(float(daily_portfolio.iloc[i]), 2),
+        "dividends_value": round(float(daily_dividends.iloc[i]), 2),
+        "dividends_accumulated": round(float(accumulated_dividends.iloc[i]), 2),
+        "benchmark_value": round(float(benchmark_values[i]), 2),
+    } for i in range(limit)]
 
 # Função auxiliar para calcular rentabilidade anual do ativo (ano fechado)
 def _get_yearly_prices(
@@ -424,25 +458,52 @@ def get_dashboard_data(
         if total_current_global > 0:
             p['allocation_percent'] = round((p['total_value'] / total_current_global) * 100, 2)
 
-    total_profit_global = total_current_global - total_invested_global
-    total_profit_pct_global = (total_profit_global / total_invested_global * 100) if total_invested_global > 0 else 0
+    valuation_profit_global = total_current_global - total_invested_global
 
     start_date_global = min([p['min_date'] for p in pos_map.values()]) if pos_map else None
-
-    projections = {
-        "total": _calculate_period_stats(total_profit_global, total_profit_pct_global, start_date_global)
-    }
-
-    for cat, stats in cat_stats.items():
-        c_profit = stats['current'] - stats['invested']
-        c_yield = (c_profit / stats['invested'] * 100) if stats['invested'] > 0 else 0
-        projections[cat] = _calculate_period_stats(c_profit, c_yield, stats['start_date'])
 
     history_by_type = {
         "stock": _calculate_history_logic(current_user, wallets, "stock", "IBOV"),
         "fii": _calculate_history_logic(current_user, wallets, "fii", "IFIX"),
         "etf": _calculate_history_logic(current_user, wallets, "etf", "SP500"),
     }
+    history_total = _calculate_history_logic(current_user, wallets)
+
+    dividends_global = (
+        history_total[-1].get("dividends_accumulated", 0.0)
+        if history_total else 0.0
+    )
+    dividends_by_type = {
+        asset_type: (
+            history[-1].get("dividends_accumulated", 0.0)
+            if history else 0.0
+        )
+        for asset_type, history in history_by_type.items()
+    }
+
+    total_profit_global = valuation_profit_global + dividends_global
+    total_profit_pct_global = (total_profit_global / total_invested_global * 100) if total_invested_global > 0 else 0
+
+    projections = {
+        "total": _calculate_period_stats(
+            total_profit_global,
+            total_profit_pct_global,
+            start_date_global,
+            dividends_global,
+        )
+    }
+
+    for cat, stats in cat_stats.items():
+        c_valuation = stats['current'] - stats['invested']
+        c_profit = c_valuation + dividends_by_type.get(cat, 0.0)
+        c_yield = (c_profit / stats['invested'] * 100) if stats['invested'] > 0 else 0
+        projections[cat] = _calculate_period_stats(
+            c_profit,
+            c_yield,
+            stats['start_date'],
+            dividends_by_type.get(cat, 0.0),
+        )
+
     benchmark_by_type = {"stock": "IBOV", "fii": "IFIX", "etf": "SP500"}
     history_by_ticker = {
         ticker: _calculate_history_logic(
@@ -464,7 +525,7 @@ def get_dashboard_data(
         },
         "period_projections": projections,
         "positions": positions_list,
-        "history": _calculate_history_logic(current_user, wallets),
+        "history": history_total,
         "history_by_type": history_by_type,
         "history_by_ticker": history_by_ticker,
         "transactions": transactions_list,

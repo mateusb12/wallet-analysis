@@ -70,7 +70,7 @@ export const useWalletDashboardData = (user) => {
   }, [user?.id]);
 
   const safeData = useMemo(() => {
-    const defaultStats = { profit: 0, yield: 0 };
+    const defaultStats = { profit: 0, yield: 0, valuation: 0, dividends: 0 };
     const defaultProjections = {
       total: defaultStats,
       day: defaultStats,
@@ -131,7 +131,12 @@ export const useWalletDashboardData = (user) => {
     const categoryProjections =
       safeData.period_projections?.[activeTab] || safeData.period_projections?.total;
 
-    const stats = categoryProjections?.[profitPeriod] || { profit: 0, yield: 0 };
+    const stats = categoryProjections?.[profitPeriod] || {
+      profit: 0,
+      yield: 0,
+      valuation: 0,
+      dividends: 0,
+    };
 
     let current = 0;
     let invested = 0;
@@ -167,6 +172,8 @@ export const useWalletDashboardData = (user) => {
       current,
       profit: stats.profit,
       yield: stats.yield,
+      valuation: stats.valuation ?? stats.profit - (stats.dividends || 0),
+      dividends: stats.dividends || 0,
       labelSuffix: labels[profitPeriod],
     };
   }, [safeData, activeTab, profitPeriod]);
@@ -252,6 +259,7 @@ export const useWalletDashboardData = (user) => {
     periodStats: {
       profit: dashboardStats.profit,
       yield: dashboardStats.yield,
+      dividends: dashboardStats.dividends,
       labelSuffix: dashboardStats.labelSuffix,
     },
 
