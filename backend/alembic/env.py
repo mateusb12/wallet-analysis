@@ -55,6 +55,10 @@ db_url = os.getenv("DATABASE_URL")
 if not db_url:
     raise ValueError("DATABASE_URL is missing from .env")
 
+if db_url.startswith("sqlite:///./"):
+    relative_path = db_url.removeprefix("sqlite:///./")
+    db_url = f"sqlite:///{os.path.join(project_root, relative_path)}"
+
 config.set_main_option("sqlalchemy.url", db_url)
 
 if config.config_file_name is not None:

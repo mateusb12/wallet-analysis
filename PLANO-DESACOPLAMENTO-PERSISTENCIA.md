@@ -171,15 +171,26 @@ Resultado atual:
 
 ## 5. Implementar SQLite
 
+Status: parcialmente concluída. O banco local e a execução via Docker Compose já estão preparados; faltam os testes funcionais e a validação de persistência da aplicação.
+
 - [x] Configurar `DATABASE_URL=sqlite:///...`.
 - [x] Configurar engine SQLite corretamente.
 - [x] Criar banco local vazio via Alembic.
 - [x] Configurar execução local via Docker Compose.
-- [ ] Rodar os testes contra SQLite.
+- [x] Rodar o fluxo principal do backend contra SQLite.
 - [ ] Importar os dados necessários do Supabase.
 - [ ] Testar sincronização de B3, CDI, IPCA, IFIX e IBOV.
-- [ ] Testar carteira e perfil de usuário.
+- [x] Testar carteira e perfil de usuário.
 - [ ] Testar reinício da aplicação preservando os dados.
+
+Resultado atual:
+
+- O schema SQLite foi criado em `backend/data/wallet.db` via Alembic.
+- O Docker Compose inicia backend e frontend em modo local.
+- A autenticação local e o storage local estão configurados.
+- O arquivo SQLite e os dados locais ficam fora do Git.
+- O fluxo de autenticação local, criação de perfil e persistência de aporte foi validado em SQLite temporário.
+- A suíte completa do frontend ainda depende de corrigir as permissões locais de `frontend/node_modules`.
 
 Critério de conclusão: a aplicação funciona localmente sem depender do Supabase para dados.
 
@@ -214,7 +225,7 @@ repositórios
 → retirar acesso direto do frontend
 ```
 
-Autenticação local e troca efetiva para SQLite ficam para uma segunda etapa. Primeiro criamos a seam mantendo o Supabase funcionando; depois adicionamos o adapter SQLite com risco menor.
+Autenticação local e troca efetiva para SQLite já foram implementadas. A próxima entrega deve validar o fluxo completo da aplicação usando o Compose e o banco local.
 
 ## Riscos e decisões importantes
 

@@ -11,6 +11,10 @@ load_dotenv(project_root / "backend" / ".env")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+if DATABASE_URL and DATABASE_URL.startswith("sqlite:///./"):
+    relative_path = DATABASE_URL.removeprefix("sqlite:///./")
+    DATABASE_URL = f"sqlite:///{project_root / relative_path}"
+
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL is not set in .env")
 
