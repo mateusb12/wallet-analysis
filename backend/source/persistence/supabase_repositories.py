@@ -149,8 +149,8 @@ class SupabaseB3Repository:
         return {"data": response.data, "count": response.count}
 
     def get_unique_stock_tickers(self) -> Sequence[str]:
-        response = self._client.table("unique_stocks_view").select("ticker").execute()
-        return sorted(row["ticker"] for row in response.data)
+        response = self._client.table("b3_prices").select("ticker").execute()
+        return sorted({row["ticker"] for row in response.data})
 
     def get_full_stock_history(self, ticker: str, limit: int) -> Sequence[dict[str, Any]]:
         response = (
@@ -164,8 +164,8 @@ class SupabaseB3Repository:
         return response.data
 
     def get_unique_tickers(self) -> Sequence[str]:
-        response = self._client.table("unique_tickers_view").select("ticker").execute()
-        return [row["ticker"] for row in response.data]
+        response = self._client.table("b3_prices").select("ticker").execute()
+        return sorted({row["ticker"] for row in response.data})
 
     def get_fii_dividends(self, ticker: str | None, offset: int, limit: int) -> dict[str, Any]:
         query = (
@@ -192,13 +192,13 @@ class SupabaseB3Repository:
 
     def get_fii_date_range(self, ticker: str) -> dict[str, Any] | None:
         response = (
-            self._client.table("fii_date_ranges_view")
-            .select("oldest_date,newest_date")
+            self._client.table("b3_fiis_dividends")
+            .select("trade_date")
             .eq("ticker", ticker)
-            .limit(1)
             .execute()
         )
-        return response.data[0] if response.data else None
+        dates = [row["trade_date"] for row in response.data]
+        return {"oldest_date": min(dates), "newest_date": max(dates)} if dates else None
 
     def get_fii_dividend_for_month(self, ticker: str, start_date: str, end_date: str) -> dict[str, Any] | None:
         response = (

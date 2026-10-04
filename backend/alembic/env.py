@@ -27,6 +27,9 @@ print(f"DEBUG: Backend Dir: {backend_dir}")
 # -------------------------------------------------------------------------
 # 2. LOAD ENVIRONMENT VARIABLES
 # -------------------------------------------------------------------------
+# Prefer the project-level environment used by the application. Keep the
+# backend-local file as a fallback for older setups.
+load_dotenv(os.path.join(project_root, ".env"))
 load_dotenv(os.path.join(backend_dir, ".env"))
 
 # -------------------------------------------------------------------------
@@ -116,7 +119,8 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            include_object=include_object  # <--- Adicionado aqui
+            include_object=include_object,
+            render_as_batch=connection.dialect.name == "sqlite",
         )
 
         with context.begin_transaction():

@@ -5,17 +5,17 @@ services:
       dockerfile: Dockerfile
     environment:
       APP_ENV: development
-      # Essencial para o Python entender que /app contém módulos importáveis
       PYTHONPATH: /app
+      DATABASE_URL: sqlite:////app/backend/data/wallet.db
+      AUTH_PROVIDER: local
+      AUTH_SECRET_KEY: wallet-analysis-local-development-key
+      LOCAL_AUTH_STORE: /app/backend/data/auth_users.json
+      LOCAL_STORAGE_PATH: /app/backend/data/uploads
     volumes:
-      # --- MUDANÇA CRÍTICA ---
-      # Montamos o código local DENTRO da pasta backend no container
-      # Isso garante que a estrutura seja idêntica à de produção (/app/backend)
       - ./backend:/app/backend
     ports:
       - "8000:8000"
-    # O comando uvicorn backend.main:app agora funcionará perfeitamente
-    command: bash -c "pip install pydevd-pycharm==253.29346.142 && uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -25,6 +25,10 @@ services:
       dockerfile: frontend/Dockerfile.dev
     environment:
       APP_ENV: development
+      VITE_API_URL: http://localhost:8000
+      VITE_AUTH_PROVIDER: local
+    depends_on:
+      - backend
     volumes:
       - ./frontend:/app
       - /app/node_modules

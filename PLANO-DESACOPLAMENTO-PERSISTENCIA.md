@@ -145,21 +145,36 @@ Implementação atual:
 
 ## 4. Tornar o modelo de dados portátil
 
-- [ ] Remover dependência direta de `auth.users` dos modelos compartilhados.
-- [ ] Revisar uso de UUID.
-- [ ] Revisar `Identity`, `Numeric`, `JSON` e timestamps.
-- [ ] Remover migrations específicas de PostgreSQL do caminho comum.
-- [ ] Criar migrations compatíveis com SQLite e PostgreSQL.
-- [ ] Definir constraints e índices que funcionam nos dois bancos.
-- [ ] Revisar views usadas atualmente pelo frontend.
+- Status: concluída. O SQLite agora é o banco inicial oficial; o schema nasce dos models atuais e a camada de repositórios continua mantendo a opção de outro provider no futuro.
+
+- [x] Remover dependência direta de `auth.users` dos modelos compartilhados.
+- [x] Revisar uso de UUID.
+- [x] Revisar `Identity`, `Numeric`, `JSON` e timestamps.
+- [x] Remover migrations específicas de PostgreSQL do caminho comum.
+- [x] Remover da cadeia executável as migrations que dependiam de `auth.users`.
+- [x] Remover a dependência das views Supabase dos adapters de B3.
+- [x] Criar baseline de migrations compatível com SQLite e PostgreSQL.
+- [x] Validar constraints e índices no SQLite.
+- [x] Revisar views usadas atualmente pelo frontend.
 
 Critério de conclusão: o mesmo modelo lógico pode ser criado em SQLite e PostgreSQL.
 
+Resultado atual:
+
+- `User.id` agora é um identificador textual fornecido pelo provider de autenticação.
+- A engine usa `check_same_thread=False` quando `DATABASE_URL` aponta para SQLite.
+- A migration inicial cria o schema atual diretamente a partir de `Base.metadata`, sem depender de tabelas previamente existentes.
+- As migrations históricas específicas do Supabase/PostgreSQL agora são inertes; permanecem apenas para preservar a cadeia do Alembic.
+- `Identity`/`BigInteger` foram removidos dos IDs dos modelos compartilhados.
+- A migration de perfil não cria FK, RLS ou trigger de `auth.users` quando o dialeto é SQLite.
+- `b3_fiis_dividends` agora faz parte do modelo portátil; as views de tickers/ranges não são mais necessárias nos adapters.
+
 ## 5. Implementar SQLite
 
-- [ ] Configurar `DATABASE_URL=sqlite:///...`.
-- [ ] Configurar engine SQLite corretamente.
-- [ ] Criar banco local vazio via Alembic.
+- [x] Configurar `DATABASE_URL=sqlite:///...`.
+- [x] Configurar engine SQLite corretamente.
+- [x] Criar banco local vazio via Alembic.
+- [x] Configurar execução local via Docker Compose.
 - [ ] Rodar os testes contra SQLite.
 - [ ] Importar os dados necessários do Supabase.
 - [ ] Testar sincronização de B3, CDI, IPCA, IFIX e IBOV.

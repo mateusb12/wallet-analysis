@@ -1,21 +1,12 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, UniqueConstraint, Date, Boolean, Numeric, Text, \
-    BigInteger, Identity, UUID, ForeignKey, Table, JSON, CheckConstraint
+from sqlalchemy import Column, Integer, String, Float, DateTime, UniqueConstraint, Date, Boolean, Numeric, Text, JSON, CheckConstraint
 from sqlalchemy.sql import func
 from backend.source.core.database import Base
-
-auth_users_table = Table(
-    "users",
-    Base.metadata,
-    Column("id", UUID(as_uuid=True), primary_key=True),
-    schema="auth",
-    extend_existing=True
-)
 
 class B3Price(Base):
     __tablename__ = "b3_prices"
 
     # MATCH DB: Explicitly define Identity(always=True) to stop Alembic from trying to change it
-    id = Column(BigInteger, Identity(always=True), primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
     ticker = Column(Text, index=True, nullable=False)
     trade_date = Column(Date, nullable=False)
@@ -47,6 +38,20 @@ class B3Price(Base):
     )
 
 
+class B3FiiDividend(Base):
+    __tablename__ = "b3_fiis_dividends"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticker = Column(String, index=True, nullable=False)
+    trade_date = Column(Date, index=True, nullable=False)
+    price_close = Column(Numeric(10, 2), nullable=True)
+    dividend_value = Column(Numeric(10, 4), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("ticker", "trade_date", name="uq_fii_dividend_ticker_date"),
+    )
+
+
 class IfixHistory(Base):
     __tablename__ = "ifix_history"
 
@@ -64,7 +69,7 @@ class IpcaHistory(Base):
     __tablename__ = "ipca_history"
 
     # MATCH DB: Identity(always=True)
-    id = Column(BigInteger, Identity(always=True), primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
     ref_date = Column(Date, nullable=False)
     ipca = Column(Numeric(6, 2), nullable=False)
@@ -107,24 +112,20 @@ class User(Base):
     # O schema padrão geralmente é 'public', mas se precisar ser explícito:
     # __table_args__ = {"schema": "public"}
 
-    # O ID deve ser PK e FK ao mesmo tempo, apontando para a tabela de auth do Supabase
-    id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("auth.users.id", ondelete="CASCADE"),
-        primary_key=True
-    )
+    # O ID é fornecido pelo provider de autenticação ativo.
+    id = Column(String(36), primary_key=True)
 
     email = Column(String, nullable=True)
     full_name = Column(String, nullable=True)
     avatar_url = Column(String, nullable=True)
 
     updated_at = Column(
-        DateTime(timezone=True),
+        DateTime(timezone=False),
         server_default=func.now(),
         onupdate=func.now()
     )
 
-    balancing_settings = Column(JSON, default={}, nullable=True)
+    balancing_settings = Column(JSON, default=dict, nullable=True)
 
     # Opcional: Se quiser converter para dict facilmente
     def to_dict(self):
@@ -146,5 +147,5 @@ class AssetClassificationCache(Base):
     confidence = Column(Integer)
     raw_info_sample = Column(Text)
     source = Column(Text)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now())
-    inserted_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=False), server_default=func.now())
+    inserted_at = Column(DateTime(timezone=False), server_default=func.now())
