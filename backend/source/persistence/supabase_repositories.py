@@ -131,3 +131,59 @@ class SupabaseAnalysisRepository:
             .execute()
         )
         return response.data
+
+
+class SupabaseReferenceDataRepository:
+    def __init__(self, client: Client):
+        self._client = client
+
+    def get_ipca(self, ref_date=None, start_date=None, end_date=None):
+        query = self._client.table("ipca_history").select("*")
+        if ref_date:
+            query = query.eq("ref_date", ref_date)
+        if start_date:
+            query = query.gte("ref_date", start_date)
+        if end_date:
+            query = query.lte("ref_date", end_date)
+        return query.order("ref_date", desc=False).execute().data
+
+    def get_last_ipca_date(self):
+        rows = self._client.table("ipca_history").select("ref_date").order("ref_date", desc=True).limit(1).execute().data
+        return rows[0]["ref_date"] if rows else None
+
+    def insert_ipca(self, records):
+        if records:
+            self._client.table("ipca_history").upsert(list(records), on_conflict="ref_date").execute()
+
+    def get_ifix(self, date=None, start_date=None, end_date=None):
+        query = self._client.table("ifix_history").select("trade_date,close_value")
+        if date:
+            query = query.eq("trade_date", date)
+        if start_date:
+            query = query.gte("trade_date", start_date)
+        if end_date:
+            query = query.lte("trade_date", end_date)
+        return query.order("trade_date", desc=False).execute().data
+
+    def get_ibov(self, start_date=None, end_date=None):
+        query = self._client.table("ibov_history").select("trade_date,close_value")
+        if start_date:
+            query = query.gte("trade_date", start_date)
+        if end_date:
+            query = query.lte("trade_date", end_date)
+        return query.order("trade_date", desc=False).execute().data
+
+    def get_last_ibov_date(self):
+        rows = self._client.table("ibov_history").select("trade_date").order("trade_date", desc=True).limit(1).execute().data
+        return rows[0]["trade_date"] if rows else None
+
+    def get_cdi(self, start_date, end_date):
+        return (
+            self._client.table("cdi_history")
+            .select("trade_date,value")
+            .gte("trade_date", start_date)
+            .lte("trade_date", end_date)
+            .order("trade_date", desc=False)
+            .execute()
+            .data
+        )

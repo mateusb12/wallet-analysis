@@ -1,5 +1,3 @@
-import { supabase } from './supabaseClient.js';
-
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export const cdiService = {
@@ -15,14 +13,10 @@ export const cdiService = {
   },
 
   async getCdiRange(startDate, endDate) {
-    const { data, error } = await supabase
-      .from('cdi_history')
-      .select('trade_date, value')
-      .gte('trade_date', startDate)
-      .lte('trade_date', endDate)
-      .order('trade_date', { ascending: true });
-
-    if (error) throw error;
+    const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
+    const response = await fetch(`${API_URL}/data/cdi?${params}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Falha ao buscar CDI');
     return data;
   },
 };

@@ -93,15 +93,23 @@ Pendências para concluir a etapa:
 
 ## 2. Remover acesso direto do frontend ao Supabase
 
-- [ ] Criar endpoints backend para as leituras atuais.
+- Status: parcialmente concluída. Os dados de referência já passam pelo backend; B3, operações de usuário/carteira, autenticação e Storage ainda estão pendentes.
+
+- [x] Criar endpoints backend para IPCA, IFIX, IBOV e CDI.
+- [x] Migrar `ipcaService.js`.
+- [x] Migrar `ifixService.js`.
+- [x] Migrar `ibovService.js`.
+- [x] Migrar `cdiService.js`.
 - [ ] Migrar `b3service.js`.
-- [ ] Migrar `ipcaService.js`.
-- [ ] Migrar `ifixService.js`.
-- [ ] Migrar `ibovService.js`.
-- [ ] Migrar `cdiService.js`.
 - [ ] Migrar operações de carteira e usuário.
-- [ ] Remover consultas diretas às tabelas do Supabase.
+- [ ] Remover consultas diretas às tabelas do Supabase dos services restantes.
 - [ ] Manter Supabase apenas onde ele ainda for explicitamente necessário.
+
+Pendências para concluir a etapa:
+
+- Migrar o B3 e revisar os fluxos de carteira/usuário.
+- Validar os contratos HTTP e as respostas no frontend com o ambiente completo instalado.
+- Confirmar que os únicos usos restantes do Supabase são autenticação e Storage, tratados na etapa 3.
 
 Critério de conclusão: o frontend fala com a aplicação, não diretamente com o banco.
 

@@ -10,6 +10,7 @@ from backend.source.persistence.sqlalchemy_repositories import (
 from backend.source.persistence.supabase_repositories import (
     SupabaseAnalysisRepository,
     SupabaseMarketDataRepository,
+    SupabaseReferenceDataRepository,
 )
 
 
@@ -31,3 +32,7 @@ def get_market_data_repository() -> SupabaseMarketDataRepository:
 
 def get_analysis_repository() -> SupabaseAnalysisRepository:
     return SupabaseAnalysisRepository(get_supabase())
+
+
+def get_reference_data_repository() -> SupabaseReferenceDataRepository:
+    return SupabaseReferenceDataRepository(get_supabase())

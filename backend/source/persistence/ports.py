@@ -100,3 +100,26 @@ class AnalysisRepository(Protocol):
         limit: int,
     ) -> Sequence[dict[str, Any]]:
         ...
+
+
+class ReferenceDataRepository(Protocol):
+    def get_ipca(self, ref_date: str | None = None, start_date: str | None = None, end_date: str | None = None) -> Sequence[dict[str, Any]]:
+        ...
+
+    def get_last_ipca_date(self) -> str | None:
+        ...
+
+    def insert_ipca(self, records: Sequence[dict[str, Any]]) -> None:
+        ...
+
+    def get_ifix(self, date: str | None = None, start_date: str | None = None, end_date: str | None = None) -> Sequence[dict[str, Any]]:
+        ...
+
+    def get_ibov(self, start_date: str | None = None, end_date: str | None = None) -> Sequence[dict[str, Any]]:
+        ...
+
+    def get_last_ibov_date(self) -> str | None:
+        ...
+
+    def get_cdi(self, start_date: str, end_date: str) -> Sequence[dict[str, Any]]:
+        ...
