@@ -198,6 +198,10 @@ export const useWalletDashboardData = (user) => {
   }, [safeData, selectedAssetTicker, activeTab, filteredPositions]);
 
   const showEmptyState = (safeData.positions.length === 0 && !loading) || debugShowEmpty;
+  const earliestPurchaseDate = safeData.transactions
+    .map((transaction) => transaction.trade_date)
+    .filter(Boolean)
+    .sort()[0] || null;
 
   return {
     setActiveTab,
@@ -243,7 +247,7 @@ export const useWalletDashboardData = (user) => {
     chartEvents,
 
     availablePeriods: PROFIT_PERIODS,
-    earliestPurchaseDate: safeData.history.length > 0 ? safeData.history[0].trade_date : null,
+    earliestPurchaseDate,
     showEmptyState,
     dataWarnings: [],
     assetsHistoryMap: {},

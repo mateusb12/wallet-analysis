@@ -18,6 +18,7 @@ from backend.source.core.dependencies import get_market_data_repository
 from backend.source.features.market_data.market_data_constants import ASSET_SCHEMA
 from backend.source.features.market_data.market_data_schemas import TickerSync
 from backend.source.persistence.ports import MarketDataRepository
+from backend.source.features.reference_data.bcb_sgs_client import fetch_series, parse_series_date
 
 market_data_bp = APIRouter(prefix="/sync", tags=["Market Data"])
 
@@ -511,7 +512,6 @@ def sync_ibov(
 def sync_cdi(
     market_data: MarketDataRepository = Depends(get_market_data_repository),
 ):
-    BCB_BASE_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados"
     print("📡 Downloading CDI...", flush=True)
 
     try:
@@ -530,23 +530,14 @@ def sync_cdi(
         data_inicial = start_date_obj.strftime("%d/%m/%Y")
         data_final = today.strftime("%d/%m/%Y")
 
-        params = {"formato": "json", "dataInicial": data_inicial, "dataFinal": data_final}
-        headers = {"User-Agent": "Mozilla/5.0"}
-
-        response = requests.get(BCB_BASE_URL, headers=headers, params=params)
-
-        # TRATAMENTO DE ERRO 404 (FIM DE SEMANA/FERIADO)
-        if response.status_code == 404:
-            return {"success": True, "action": "up_to_date", "message": "Sem dados no BCB (Feriado/Fim de semana)."}
-
-        response.raise_for_status()
-
-        data = response.json()
+        data = fetch_series(11, data_inicial, data_final)
         records = []
         for entry in data:
             if 'data' not in entry or 'valor' not in entry: continue
-            day, month, year = entry['data'].split('/')
-            records.append({"trade_date": f"{year}-{month}-{day}", "value": float(entry['valor'].replace(',', '.'))})
+            records.append({
+                "trade_date": parse_series_date(entry["data"]),
+                "value": float(entry["valor"].replace(',', '.')),
+            })
 
         if not records:
             return {"success": True, "action": "up_to_date", "message": "Sem novos registros."}

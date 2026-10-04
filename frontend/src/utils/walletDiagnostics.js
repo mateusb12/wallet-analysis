@@ -18,16 +18,6 @@ export const diagnoseChartIssues = (
     );
   }
 
-  // 3. Verificar Benchmark (Crítico para cálculos relativos)
-  // O gráfico precisa do CDI/IBOV para traçar a linha comparativa.
-  const benchmarkHistory = assetsHistoryMap?.[benchmarkName];
-  if (!benchmarkHistory || benchmarkHistory.length === 0) {
-    issues.push(`🔴 Benchmark Crítico: Histórico do "${benchmarkName}" vazio no banco de dados.`);
-    issues.push(
-      'ℹ️ Dica: Verifique se a tabela de dados de mercado (market_data) possui dados para este índice.'
-    );
-  }
-
   // Definição do Modo de Visão
   const isTotalView = targetPositions.length > 1;
 
@@ -46,6 +36,16 @@ export const diagnoseChartIssues = (
   } else {
     // --- VISÃO DE ATIVO ÚNICO ---
     // Aqui sim verificamos o histórico individual do ativo selecionado.
+    // A visão consolidada valida o histórico retornado pelo endpoint próprio;
+    // não existe um assetsHistoryMap por benchmark nesse modo.
+    const benchmarkHistory = assetsHistoryMap?.[benchmarkName];
+    if (!benchmarkHistory || benchmarkHistory.length === 0) {
+      issues.push(`🔴 Benchmark Crítico: Histórico do "${benchmarkName}" vazio no banco de dados.`);
+      issues.push(
+        'ℹ️ Dica: Verifique se a tabela de dados de mercado (market_data) possui dados para este índice.'
+      );
+    }
+
     const pos = targetPositions[0];
     const ticker = pos.ticker;
     const history = assetsHistoryMap?.[ticker];

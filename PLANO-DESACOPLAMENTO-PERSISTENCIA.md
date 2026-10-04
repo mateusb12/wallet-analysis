@@ -171,7 +171,7 @@ Resultado atual:
 
 ## 5. Implementar SQLite
 
-Status: parcialmente concluída. O banco local e a execução via Docker Compose já estão preparados; faltam os testes funcionais e a validação de persistência da aplicação.
+Status: parcialmente concluída. O banco local, os adapters de mercado e a execução via Docker Compose estão preparados; falta validar a sincronização externa e a persistência após reinício.
 
 - [x] Configurar `DATABASE_URL=sqlite:///...`.
 - [x] Configurar engine SQLite corretamente.
@@ -179,7 +179,9 @@ Status: parcialmente concluída. O banco local e a execução via Docker Compose
 - [x] Configurar execução local via Docker Compose.
 - [x] Rodar o fluxo principal do backend contra SQLite.
 - [ ] Importar os dados necessários do Supabase.
-- [ ] Testar sincronização de B3, CDI, IPCA, IFIX e IBOV.
+- [x] Criar adapters SQLAlchemy locais para B3, CDI, IPCA, IFIX, IBOV e cache de classificação.
+- [x] Testar leitura, upsert idempotente e atualização dos dados de mercado no SQLite temporário.
+- [ ] Validar sincronização externa de B3, CDI, IPCA, IFIX e IBOV.
 - [x] Testar carteira e perfil de usuário.
 - [ ] Testar reinício da aplicação preservando os dados.
 
@@ -190,6 +192,10 @@ Resultado atual:
 - A autenticação local e o storage local estão configurados.
 - O arquivo SQLite e os dados locais ficam fora do Git.
 - O fluxo de autenticação local, criação de perfil e persistência de aporte foi validado em SQLite temporário.
+- Quando `DATABASE_URL` aponta para SQLite, os repositórios de mercado, análise, B3 e referências usam SQLAlchemy local; com PostgreSQL, os adapters Supabase continuam disponíveis.
+- O upsert e as leituras dos dados de mercado foram validados em um SQLite temporário, sem depender do Supabase.
+- CDI e IPCA agora tentam o REST do SGS e usam o WebService SOAP oficial do BCB quando `api.bcb.gov.br` não resolve.
+- O diagnóstico do dashboard agora usa a data das transações e não acusa benchmark individual indevidamente na visão consolidada.
 - A suíte completa do frontend ainda depende de corrigir as permissões locais de `frontend/node_modules`.
 
 Critério de conclusão: a aplicação funciona localmente sem depender do Supabase para dados.

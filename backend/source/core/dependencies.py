@@ -11,11 +11,23 @@ from backend.source.persistence.sqlalchemy_repositories import (
     SqlAlchemyUserRepository,
     SqlAlchemyWalletRepository,
 )
+from backend.source.persistence.sqlalchemy_market_repositories import (
+    SqlAlchemyAnalysisRepository,
+    SqlAlchemyB3Repository,
+    SqlAlchemyMarketDataRepository,
+    SqlAlchemyReferenceDataRepository,
+)
 from backend.source.persistence.supabase_repositories import (
     SupabaseAnalysisRepository,
     SupabaseB3Repository,
     SupabaseMarketDataRepository,
     SupabaseReferenceDataRepository,
+)
+from backend.source.persistence.ports import (
+    AnalysisRepository,
+    B3Repository,
+    MarketDataRepository,
+    ReferenceDataRepository,
 )
 
 
@@ -31,19 +43,35 @@ def get_wallet_repository(
     return SqlAlchemyWalletRepository(db)
 
 
-def get_market_data_repository() -> SupabaseMarketDataRepository:
+def get_market_data_repository(
+    db: Session = Depends(get_db),
+) -> MarketDataRepository:
+    if os.getenv("DATABASE_URL", "").startswith("sqlite"):
+        return SqlAlchemyMarketDataRepository(db)
     return SupabaseMarketDataRepository(get_supabase())
 
 
-def get_analysis_repository() -> SupabaseAnalysisRepository:
+def get_analysis_repository(
+    db: Session = Depends(get_db),
+) -> AnalysisRepository:
+    if os.getenv("DATABASE_URL", "").startswith("sqlite"):
+        return SqlAlchemyAnalysisRepository(db)
     return SupabaseAnalysisRepository(get_supabase())
 
 
-def get_b3_repository() -> SupabaseB3Repository:
+def get_b3_repository(
+    db: Session = Depends(get_db),
+) -> B3Repository:
+    if os.getenv("DATABASE_URL", "").startswith("sqlite"):
+        return SqlAlchemyB3Repository(db)
     return SupabaseB3Repository(get_supabase())
 
 
-def get_reference_data_repository() -> SupabaseReferenceDataRepository:
+def get_reference_data_repository(
+    db: Session = Depends(get_db),
+) -> ReferenceDataRepository:
+    if os.getenv("DATABASE_URL", "").startswith("sqlite"):
+        return SqlAlchemyReferenceDataRepository(db)
     return SupabaseReferenceDataRepository(get_supabase())
 
 

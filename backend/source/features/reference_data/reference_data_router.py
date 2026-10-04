@@ -1,9 +1,12 @@
-from datetime import datetime
-
 import requests
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.source.core.dependencies import get_reference_data_repository
+from backend.source.features.reference_data.bcb_sgs_client import (
+    default_date_range,
+    fetch_series,
+    parse_series_date,
+)
 from backend.source.persistence.ports import ReferenceDataRepository
 
 
@@ -60,15 +63,13 @@ def get_cdi(
 
 @reference_data_bp.post("/ipca/sync")
 def sync_ipca(repository: ReferenceDataRepository = Depends(get_reference_data_repository)):
-    base_url = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.433/dados"
     try:
-        response = requests.get(base_url, params={"formato": "json"}, timeout=15)
-        response.raise_for_status()
-        data = response.json()
+        start_date, end_date = default_date_range()
+        data = fetch_series(433, start_date, end_date)
         last_date = repository.get_last_ipca_date()
         records = [
             {
-                "ref_date": datetime.strptime(row["data"], "%d/%m/%Y").strftime("%Y-%m-%d"),
+                "ref_date": parse_series_date(row["data"]),
                 "ipca": float(row["valor"].replace(",", ".")),
             }
             for row in data
@@ -78,9 +79,11 @@ def sync_ipca(repository: ReferenceDataRepository = Depends(get_reference_data_r
             records = [row for row in records if row["ref_date"] > last_date]
         repository.insert_ipca(records)
         return {
+            "success": True,
             "inserted": len(records),
             "from": records[0]["ref_date"] if records else None,
             "to": records[-1]["ref_date"] if records else None,
+            "message": f"IPCA sincronizado: {len(records)} registros.",
         }
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha ao sincronizar IPCA: {exc}") from exc
