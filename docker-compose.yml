@@ -16,11 +16,9 @@ services:
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?AUTH_SECRET_KEY is required}
       LOCAL_AUTH_STORE: ${LOCAL_AUTH_STORE:-/app/backend/data/auth_users.json}
       LOCAL_STORAGE_PATH: ${LOCAL_STORAGE_PATH:-/app/backend/data/uploads}
-    volumes:
-      - ./backend:/app/backend
     ports:
       - "8001:8000"
-    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -34,6 +32,3 @@ services:
       VITE_AUTH_PROVIDER: ${VITE_AUTH_PROVIDER:-local}
     depends_on:
       - backend
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
