@@ -38,7 +38,7 @@ load_dotenv(os.path.join(backend_dir, ".env"))
 try:
     print("DEBUG: Tentando importar Base e Models...")
 
-    from backend.source.core.database import Base
+    from backend.source.core.database import Base, DATABASE_URL
     from backend.source.models.sql_models import *  # IMPORTANTE: Importe o model do User aqui para registrar no metadata
 
     print("DEBUG: Importação concluída.")
@@ -51,9 +51,14 @@ except ImportError as e:
 # -------------------------------------------------------------------------
 config = context.config
 
-db_url = os.getenv("DATABASE_URL")
+db_url = DATABASE_URL
 if not db_url:
     raise ValueError("DATABASE_URL is missing from .env")
+
+if hasattr(db_url, "render_as_string"):
+    db_url = db_url.render_as_string(hide_password=False)
+else:
+    db_url = str(db_url)
 
 if db_url.startswith("sqlite:///./"):
     relative_path = db_url.removeprefix("sqlite:///./")
