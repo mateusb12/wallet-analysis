@@ -24,8 +24,13 @@ services:
 
   frontend:
     build:
-      context: .
-      dockerfile: frontend/Dockerfile.dev
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_AUTH_PROVIDER: ${VITE_AUTH_PROVIDER:-local}
     environment:
       APP_ENV: ${APP_ENV:-production}
       VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
