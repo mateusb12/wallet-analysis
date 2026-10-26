@@ -35,7 +35,5 @@ services:
       APP_ENV: ${APP_ENV:-production}
       VITE_API_URL: ${VITE_API_URL:-http://localhost:8001}
       VITE_AUTH_PROVIDER: ${VITE_AUTH_PROVIDER:-local}
-    ports:
-      - "5173:80"
     depends_on:
       - backend
