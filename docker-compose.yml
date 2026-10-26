@@ -14,7 +14,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?AUTH_SECRET_KEY is required}
-      LOCAL_AUTH_STORE: ${LOCAL_AUTH_STORE:-/app/backend/data/auth_users.json}
       LOCAL_STORAGE_PATH: ${LOCAL_STORAGE_PATH:-/app/backend/data/uploads}
     ports:
       - "8001:8000"

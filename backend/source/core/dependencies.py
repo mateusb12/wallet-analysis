@@ -84,7 +84,9 @@ def get_reference_data_repository(
     return SupabaseReferenceDataRepository(get_supabase())
 
 
-def get_auth_provider() -> AuthProvider:
+def get_auth_provider(
+    db: Session = Depends(get_db),
+) -> AuthProvider:
     if os.getenv("AUTH_PROVIDER", "supabase").lower() == "local":
-        return LocalAuthProvider()
+        return LocalAuthProvider(db)
     return SupabaseAuthProvider(get_supabase())

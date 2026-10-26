@@ -137,7 +137,7 @@ Implementação atual:
 
 - `AUTH_PROVIDER=local` ativa autenticação local no backend.
 - `VITE_AUTH_PROVIDER=local` ativa a sessão local no frontend.
-- `LOCAL_AUTH_STORE` define o arquivo de usuários locais.
+- O modo local armazena usuários e hashes de senha na tabela `users` do banco configurado.
 - `AUTH_SECRET_KEY` assina os tokens locais e deve ser obrigatória em produção.
 - `LOCAL_STORAGE_PATH` define onde os avatares locais são gravados.
 - O login Google continua disponível apenas com o adapter Supabase.

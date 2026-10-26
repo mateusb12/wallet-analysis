@@ -116,6 +116,7 @@ class User(Base):
     id = Column(String(36), primary_key=True)
 
     email = Column(String, nullable=True)
+    password_hash = Column(Text, nullable=True)
     full_name = Column(String, nullable=True)
     avatar_url = Column(String, nullable=True)
 

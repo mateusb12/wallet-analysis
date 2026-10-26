@@ -54,7 +54,6 @@ Para rodar sem Supabase, configure no backend:
 ```env
 AUTH_PROVIDER=local
 AUTH_SECRET_KEY=uma-chave-secreta-forte
-LOCAL_AUTH_STORE=./data/auth_users.json
 LOCAL_STORAGE_PATH=./data/uploads
 ```
 
