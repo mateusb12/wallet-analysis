@@ -26,6 +26,24 @@ function getTypeBadgeClass(type) {
   }
 }
 
+function getZScoreTextClass(zScore) {
+  const value = Number.parseFloat(String(zScore).replace(',', '.'));
+
+  if (value <= -2) {
+    return 'text-green-700 dark:text-green-300';
+  }
+  if (value <= -1) {
+    return 'text-green-600 dark:text-green-400';
+  }
+  if (value < 1) {
+    return 'text-blue-600 dark:text-blue-400';
+  }
+  if (value < 2) {
+    return 'text-red-600 dark:text-red-400';
+  }
+  return 'text-red-700 dark:text-red-300';
+}
+
 function PricePositionCalculator() {
   const [selectedTicker, setSelectedTicker] = useState('');
   const [tickerList, setTickerList] = useState([]);
@@ -252,30 +270,34 @@ function PricePositionCalculator() {
                 Resultado para {selectedTicker} {windowLabel}:
               </h3>
 
-          <div className="text-gray-800 dark:text-gray-300 space-y-1">
-            <p>
-              <strong className="text-gray-900 dark:text-white">Preço atual:</strong> R${' '}
-              {result.current}
-            </p>
-            <p>
-              <strong className="text-gray-900 dark:text-white">Média:</strong> R$ {result.media}
-            </p>
-            <p>
-              <strong className="text-gray-900 dark:text-white">Z-Score:</strong> {result.zScore}
-            </p>
-            <p>
-              <strong className="text-gray-900 dark:text-white">Range:</strong> R$ {result.min} -{' '}
-              {result.max}
-            </p>
+              <div className="grid grid-cols-1 gap-x-8 gap-y-1 text-gray-800 dark:text-gray-300 md:grid-cols-2">
+                <p>
+                  <strong className="text-gray-900 dark:text-white">Preço atual:</strong> R${' '}
+                  {result.current}
+                </p>
+                <p>
+                  <strong className="text-gray-900 dark:text-white">Média:</strong> R${' '}
+                  {result.media}
+                </p>
+                <p>
+                  <strong className="text-gray-900 dark:text-white">Z-Score:</strong>{' '}
+                  {result.zScore}
+                </p>
+                <p>
+                  <strong className="text-gray-900 dark:text-white">Range:</strong> R$ {result.min}{' '}
+                  - {result.max}
+                </p>
 
-            <p className="mt-2 text-sm text-gray-700 dark:text-gray-400">
-              O preço esteve menor ou igual ao atual em{' '}
-              <strong className="text-gray-900 dark:text-white">{result.percentile}%</strong> dos
-              dias.
-            </p>
+                <p className="mt-2 text-sm text-gray-700 dark:text-gray-400 md:mt-4">
+                  O preço esteve menor ou igual ao atual em{' '}
+                  <strong className="text-gray-900 dark:text-white">{result.percentile}%</strong>{' '}
+                  dos dias.
+                </p>
 
-            <p className="mt-4 text-xl font-bold text-gray-900 dark:text-white">{result.status}</p>
-          </div>
+                <p className="mt-2 text-xl font-bold text-gray-900 dark:text-white md:mt-4 md:text-right">
+                  {result.status}
+                </p>
+              </div>
             </div>
           )}
 
@@ -333,7 +355,13 @@ function PricePositionCalculator() {
                         </span>
                       </td>
                       <td className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-200">
-                        {walletZScores[position.ticker] ?? '—'}
+                        {walletZScores[position.ticker] != null ? (
+                          <span className={getZScoreTextClass(walletZScores[position.ticker])}>
+                            {walletZScores[position.ticker]}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
                       </td>
                     </tr>
                   ))}
