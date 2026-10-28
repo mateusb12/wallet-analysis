@@ -1,7 +1,7 @@
 import { fetchFiiChartData, fetchB3Prices } from './b3service.js';
 import { getIfixRange } from './ifixService.js';
 import { getIbovRange } from './ibovService.js';
-import { getAuthHeaders } from './authClient.js';
+import { getAuthHeaders, handleAuthResponse } from './authClient.js';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -39,6 +39,8 @@ export const fetchDashboardData = async () => {
     method: 'GET',
     headers: headers,
   });
+
+  await handleAuthResponse(response);
 
   if (!response.ok) {
     // Se der 401, o throw vai capturar
@@ -134,6 +136,8 @@ export const fetchWalletPositions = async (forceRefresh = false) => {
       method: 'GET',
       headers: headers,
     });
+
+    await handleAuthResponse(response);
 
     if (!response.ok) throw new Error('Failed fetch');
     const data = await response.json();
