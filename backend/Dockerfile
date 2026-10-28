@@ -35,6 +35,7 @@ WORKDIR /app
 # Install dependencies from wheels
 COPY --from=builder /wheelhouse /wheelhouse
 RUN pip install --no-cache-dir /wheelhouse/*
+RUN playwright install --with-deps chromium
 
 # --- AQUI ESTÁ O TRUQUE PARA OS IMPORTS FUNCIONAREM ---
 # 1. Copiamos o código para uma subpasta 'backend' para criar a estrutura de pacote

@@ -57,6 +57,22 @@ export const systemService = {
   },
 };
 
+export const jobService = {
+  async getScraperStatus() {
+    const response = await fetch(`${API_URL}/internal/scraper/status`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Não foi possível consultar a job');
+    return data;
+  },
+
+  async runScraper() {
+    const response = await fetch(`${API_URL}/internal/scraper/run`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Não foi possível iniciar a job');
+    return data;
+  },
+};
+
 export const syncService = {
   async syncTicker(ticker, force = false) {
     const response = await fetch(`${API_URL}/sync/`, {

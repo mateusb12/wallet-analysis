@@ -55,7 +55,18 @@ Para rodar sem Supabase, configure no backend:
 AUTH_PROVIDER=local
 AUTH_SECRET_KEY=uma-chave-secreta-forte
 LOCAL_STORAGE_PATH=./data/uploads
+SCRAPER_TARGET_URL=https://example.com
 ```
+
+Para disparar manualmente o scraper e consultar seu estado:
+
+```bash
+curl -X POST http://localhost:8000/internal/scraper/run
+
+curl http://localhost:8000/internal/scraper/status
+```
+
+O disparo retorna imediatamente e a execução do Playwright acontece em segundo plano. Os estados possíveis são `idle`, `running`, `stopped` e `failed`.
 
 E no frontend:
 

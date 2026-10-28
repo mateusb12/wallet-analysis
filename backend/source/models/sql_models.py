@@ -150,3 +150,15 @@ class AssetClassificationCache(Base):
     source = Column(Text)
     updated_at = Column(DateTime(timezone=False), server_default=func.now())
     inserted_at = Column(DateTime(timezone=False), server_default=func.now())
+
+
+class ScraperJob(Base):
+    __tablename__ = "scraper_jobs"
+
+    # There is currently one scheduled scraper, so the job name is the singleton key.
+    name = Column(String, primary_key=True)
+    job_id = Column(String, nullable=True, index=True)
+    status = Column(String, nullable=False, default="idle")
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    error = Column(Text, nullable=True)

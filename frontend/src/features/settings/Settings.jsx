@@ -1,29 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../theme/ThemeContext.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { useDataConsistency } from '../../hooks/useDataConsistency.js';
 import { userService } from '../../services/userService.js';
+import { jobService } from '../../services/api.js';
 
-import DataConsistencyAlert from '../../components/DataConsistencyAlert.jsx';
 import ManualPriceSync from '../../components/ManualPriceSync.jsx';
 import ContributionsManager from './ContributionsManager.jsx';
+import { formatDateTimeLong } from '../../utils/dateUtils.js';
 
-import { RefreshCw } from 'lucide-react';
+import { CheckCircle2, Clock3, Loader2, Play, RefreshCw, XCircle } from 'lucide-react';
 
 export default function Settings() {
   const { theme, toggleTheme } = useTheme();
   const { user } = useAuth();
-  const { warnings } = useDataConsistency();
 
   const avatarInputRef = useRef(null);
 
-  const [apiKey, setApiKey] = useState('hg_29384...8s7d');
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [dbName, setDbName] = useState('');
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   const [existingPurchases, setExistingPurchases] = useState([]);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [jobStatus, setJobStatus] = useState({ status: 'idle' });
+  const [isStartingJob, setIsStartingJob] = useState(false);
+  const [jobError, setJobError] = useState('');
 
   const userEmail = user?.email || 'usuario@exemplo.com';
   const displayName = dbName || userEmail.split('@')[0];
@@ -35,6 +35,41 @@ export default function Settings() {
       loadUserProfile();
     }
   }, [user]);
+
+  useEffect(() => {
+    fetchJobStatus();
+  }, []);
+
+  useEffect(() => {
+    if (jobStatus.status !== 'running') return undefined;
+
+    const interval = setInterval(fetchJobStatus, 5000);
+    return () => clearInterval(interval);
+  }, [jobStatus.status]);
+
+  const fetchJobStatus = async () => {
+    try {
+      const status = await jobService.getScraperStatus();
+      setJobStatus(status);
+    } catch (error) {
+      setJobError(error.message);
+    }
+  };
+
+  const handleRunScraper = async () => {
+    setIsStartingJob(true);
+    setJobError('');
+
+    try {
+      const result = await jobService.runScraper();
+      setJobStatus((current) => ({ ...current, ...result }));
+      await fetchJobStatus();
+    } catch (error) {
+      setJobError(error.message);
+    } finally {
+      setIsStartingJob(false);
+    }
+  };
 
   const loadUserProfile = async () => {
     try {
@@ -82,7 +117,6 @@ export default function Settings() {
   };
 
   const fetchExistingPurchases = async () => {
-    setIsLoadingHistory(true);
     try {
       const response = await fetch(`${API_URL}/wallet/purchases?user_id=${user.id}`);
       if (response.ok) {
@@ -91,8 +125,6 @@ export default function Settings() {
       }
     } catch (error) {
       console.error('Failed to fetch history:', error);
-    } finally {
-      setIsLoadingHistory(false);
     }
   };
 
@@ -104,9 +136,6 @@ export default function Settings() {
           Gerencie suas preferências e configurações da conta
         </p>
       </div>
-
-      {}
-      <DataConsistencyAlert warnings={warnings} className="mb-8" />
 
       <div className="space-y-6">
         <ManualPriceSync />
@@ -245,66 +274,88 @@ export default function Settings() {
           </div>
         </section>
 
-        {}
         <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-                stroke="currentColor"
-                className="w-5 h-5 text-green-600"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M14.25 9.75L16.5 12l-2.25 2.25m-4.5 0L7.5 12l2.25-2.25M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z"
-                />
-              </svg>
-              Integridade de Dados & API
-            </h3>
-          </div>
-          <div className="p-6 space-y-4">
-            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">
-                  Status da Sincronização
-                </p>
-                <p className="text-xs text-gray-500">Verificação automática de datas</p>
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-500/10">
+                <Clock3 className="w-5 h-5 text-green-500" />
               </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`w-2.5 h-2.5 rounded-full ${warnings.length > 0 ? 'bg-red-500' : 'bg-green-500'}`}
-                ></span>
-                <span
-                  className={`text-sm font-medium ${warnings.length > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}
-                >
-                  {isLoadingHistory
-                    ? 'Verificando...'
-                    : warnings.length > 0
-                      ? 'Atenção Requerida'
-                      : 'Sistemas Operacionais'}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Jobs</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Execuções automáticas em segundo plano
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="p-6">
+            <div className="grid items-center gap-4 rounded-xl bg-gray-50 p-4 dark:bg-gray-700/50 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+              <div className="min-w-0">
+                <p className="font-medium text-gray-900 dark:text-white">Scraper de dados</p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Coleta e atualização dos dados do site
+                </p>
+              </div>
+              <div className="flex items-center gap-2 justify-self-start md:justify-self-center">
+                {jobStatus.status === 'running' ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                ) : jobStatus.status === 'failed' ? (
+                  <XCircle className="h-4 w-4 text-red-500" />
+                ) : jobStatus.status === 'stopped' ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                ) : (
+                  <span className="h-2.5 w-2.5 rounded-full bg-gray-400" />
+                )}
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                  {jobStatus.status === 'running'
+                    ? 'Executando'
+                    : jobStatus.status === 'failed'
+                      ? 'Falhou'
+                      : jobStatus.status === 'stopped'
+                        ? 'Concluída'
+                        : 'Parada'}
                 </span>
               </div>
+              <button
+                onClick={handleRunScraper}
+                disabled={isStartingJob || jobStatus.status === 'running'}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Play className="h-4 w-4" />
+                Executar agora
+              </button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Chave HG Brasil (Opcional)
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  className="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-                <button className="px-4 py-2 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600">
-                  Testar
-                </button>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 border-t border-gray-200 pt-4 dark:border-gray-700 sm:grid-cols-3">
+              <div className="rounded-lg border border-gray-200 px-4 py-3 dark:border-gray-700">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Iniciada em
+                </p>
+                <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+                  {formatDateTimeLong(jobStatus.started_at)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-gray-200 px-4 py-3 dark:border-gray-700">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Finalizada em
+                </p>
+                <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+                  {formatDateTimeLong(jobStatus.finished_at)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-gray-200 px-4 py-3 dark:border-gray-700">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Agendamento
+                </p>
+                <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+                  Diária via cron
+                </p>
               </div>
             </div>
+            {jobStatus.error && (
+              <p className="mt-4 text-sm text-red-600 dark:text-red-400">{jobStatus.error}</p>
+            )}
+            {jobError && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{jobError}</p>}
           </div>
         </section>
 

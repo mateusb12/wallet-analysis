@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { formatElapsedPeriod } from '../dateUtils.js';
+import { formatDateTimeLong, formatElapsedPeriod } from '../dateUtils.js';
+
+describe('formatDateTimeLong', () => {
+  it('formats date and time in Portuguese', () => {
+    const date = new Date(2026, 8, 28, 20, 48);
+
+    expect(formatDateTimeLong(date)).toBe('28 de Setembro às 20h48');
+  });
+});
 
 describe('formatElapsedPeriod', () => {
   it('formats complete months and remaining days', () => {

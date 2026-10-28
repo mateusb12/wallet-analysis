@@ -15,6 +15,7 @@ from backend.source.features.market_data.b3_router import b3_bp
 from backend.source.features.storage.storage_router import storage_bp
 from backend.source.features.users.user_router import user_bp
 from backend.source.features.wallet.wallet_router import wallet_bp
+from backend.source.features.scraper.scraper_router import scraper_bp
 
 # Updated imports pointing to the features folder
 
@@ -44,6 +45,7 @@ app.include_router(analysis_bp)
 app.include_router(wallet_bp)
 app.include_router(user_bp)
 app.include_router(storage_bp)
+app.include_router(scraper_bp)
 app.mount(
     "/uploads",
     StaticFiles(directory=os.getenv("LOCAL_STORAGE_PATH", "./data/uploads"), check_dir=False),

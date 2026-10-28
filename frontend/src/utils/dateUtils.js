@@ -33,9 +33,38 @@ export const formatFullDate = (dateInput) => {
   return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(date);
 };
 
+export const formatDateTimeLong = (dateInput) => {
+  if (!dateInput) return '—';
+
+  const value = dateInput instanceof Date ? dateInput : String(dateInput);
+  const hasTimezone =
+    value instanceof Date || value.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(value);
+  const date = value instanceof Date ? value : new Date(hasTimezone ? value : `${value}Z`);
+
+  if (isNaN(date.getTime())) return '—';
+
+  const parts = new Intl.DateTimeFormat('pt-BR', {
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+
+  const getPart = (type) => parts.find((part) => part.type === type)?.value || '';
+  const month = getPart('month');
+  const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1);
+
+  return `${getPart('day')} de ${capitalizedMonth} às ${getPart('hour')}h${getPart('minute')}`;
+};
+
 const parseDateAsUTC = (dateInput) => {
+  if (!dateInput) return null;
+
   if (dateInput instanceof Date) {
-    return new Date(Date.UTC(dateInput.getUTCFullYear(), dateInput.getUTCMonth(), dateInput.getUTCDate()));
+    return new Date(
+      Date.UTC(dateInput.getUTCFullYear(), dateInput.getUTCMonth(), dateInput.getUTCDate())
+    );
   }
 
   if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateInput)) {
@@ -54,7 +83,9 @@ const addCalendarMonths = (date, months) => {
   const targetMonth = result.getUTCMonth() + months;
   result.setUTCDate(1);
   result.setUTCMonth(targetMonth);
-  const lastDay = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();
+  const lastDay = new Date(
+    Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)
+  ).getUTCDate();
   result.setUTCDate(Math.min(date.getUTCDate(), lastDay));
   return result;
 };
