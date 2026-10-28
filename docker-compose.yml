@@ -4,29 +4,35 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      APP_ENV: development
-      # Essencial para o Python entender que /app contém módulos importáveis
+      APP_ENV: ${APP_ENV:-production}
       PYTHONPATH: /app
-    volumes:
-      # --- MUDANÇA CRÍTICA ---
-      # Montamos o código local DENTRO da pasta backend no container
-      # Isso garante que a estrutura seja idêntica à de produção (/app/backend)
-      - ./backend:/app/backend
+      DATABASE_URL: ${DATABASE_URL}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?AUTH_SECRET_KEY is required}
+      LOCAL_STORAGE_PATH: ${LOCAL_STORAGE_PATH:-/app/backend/data/uploads}
     ports:
-      - "8000:8000"
-    # O comando uvicorn backend.main:app agora funcionará perfeitamente
-    command: bash -c "pip install pydevd-pycharm==253.29346.142 && uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+      - "8001:8000"
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
   frontend:
     build:
-      context: .
-      dockerfile: frontend/Dockerfile.dev
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8001}
+        VITE_AUTH_PROVIDER: ${VITE_AUTH_PROVIDER:-local}
     environment:
-      APP_ENV: development
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    ports:
-      - "5173:5173"
+      APP_ENV: ${APP_ENV:-production}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8001}
+      VITE_AUTH_PROVIDER: ${VITE_AUTH_PROVIDER:-local}
+    depends_on:
+      - backend

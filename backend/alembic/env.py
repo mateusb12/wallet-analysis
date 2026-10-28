@@ -27,6 +27,9 @@ print(f"DEBUG: Backend Dir: {backend_dir}")
 # -------------------------------------------------------------------------
 # 2. LOAD ENVIRONMENT VARIABLES
 # -------------------------------------------------------------------------
+# Prefer the project-level environment used by the application. Keep the
+# backend-local file as a fallback for older setups.
+load_dotenv(os.path.join(project_root, ".env"))
 load_dotenv(os.path.join(backend_dir, ".env"))
 
 # -------------------------------------------------------------------------
@@ -35,7 +38,7 @@ load_dotenv(os.path.join(backend_dir, ".env"))
 try:
     print("DEBUG: Tentando importar Base e Models...")
 
-    from backend.source.core.database import Base
+    from backend.source.core.database import Base, DATABASE_URL
     from backend.source.models.sql_models import *  # IMPORTANTE: Importe o model do User aqui para registrar no metadata
 
     print("DEBUG: Importação concluída.")
@@ -48,9 +51,18 @@ except ImportError as e:
 # -------------------------------------------------------------------------
 config = context.config
 
-db_url = os.getenv("DATABASE_URL")
+db_url = DATABASE_URL
 if not db_url:
     raise ValueError("DATABASE_URL is missing from .env")
+
+if hasattr(db_url, "render_as_string"):
+    db_url = db_url.render_as_string(hide_password=False)
+else:
+    db_url = str(db_url)
+
+if db_url.startswith("sqlite:///./"):
+    relative_path = db_url.removeprefix("sqlite:///./")
+    db_url = f"sqlite:///{os.path.join(project_root, relative_path)}"
 
 config.set_main_option("sqlalchemy.url", db_url)
 
@@ -116,7 +128,8 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            include_object=include_object  # <--- Adicionado aqui
+            include_object=include_object,
+            render_as_batch=connection.dialect.name == "sqlite",
         )
 
         with context.begin_transaction():

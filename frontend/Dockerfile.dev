@@ -7,11 +7,11 @@ ENV HUSKY=0
 ENV NPM_CONFIG_IGNORE_SCRIPTS=true
 
 # Instala dependências
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # Copia código (mas será sobrescrito via volume)
-COPY frontend .
+COPY . .
 
 EXPOSE 5173
 

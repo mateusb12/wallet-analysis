@@ -1,0 +1,92 @@
+import os
+
+from fastapi import Depends
+from sqlalchemy.orm import Session
+
+from backend.source.core.database import engine, get_db
+from backend.source.core.db import get_supabase
+from backend.source.features.auth.auth_provider import AuthProvider, SupabaseAuthProvider
+from backend.source.features.auth.local_auth_provider import LocalAuthProvider
+from backend.source.persistence.sqlalchemy_repositories import (
+    SqlAlchemyUserRepository,
+    SqlAlchemyWalletRepository,
+)
+from backend.source.persistence.sqlalchemy_market_repositories import (
+    SqlAlchemyAnalysisRepository,
+    SqlAlchemyB3Repository,
+    SqlAlchemyMarketDataRepository,
+    SqlAlchemyReferenceDataRepository,
+)
+from backend.source.persistence.supabase_repositories import (
+    SupabaseAnalysisRepository,
+    SupabaseB3Repository,
+    SupabaseMarketDataRepository,
+    SupabaseReferenceDataRepository,
+)
+from backend.source.persistence.ports import (
+    AnalysisRepository,
+    B3Repository,
+    MarketDataRepository,
+    ReferenceDataRepository,
+)
+
+
+def get_user_repository(
+    db: Session = Depends(get_db),
+) -> SqlAlchemyUserRepository:
+    return SqlAlchemyUserRepository(db)
+
+
+def get_wallet_repository(
+    db: Session = Depends(get_db),
+) -> SqlAlchemyWalletRepository:
+    return SqlAlchemyWalletRepository(db)
+
+
+def _use_sqlalchemy_repositories() -> bool:
+    """Use the relational database configured for this application.
+
+    The previous check only recognized SQLite, which made a PostgreSQL
+    deployment fall through to the legacy Supabase repositories.
+    """
+    return engine.dialect.name in {"sqlite", "postgresql"}
+
+
+def get_market_data_repository(
+    db: Session = Depends(get_db),
+) -> MarketDataRepository:
+    if _use_sqlalchemy_repositories():
+        return SqlAlchemyMarketDataRepository(db)
+    return SupabaseMarketDataRepository(get_supabase())
+
+
+def get_analysis_repository(
+    db: Session = Depends(get_db),
+) -> AnalysisRepository:
+    if _use_sqlalchemy_repositories():
+        return SqlAlchemyAnalysisRepository(db)
+    return SupabaseAnalysisRepository(get_supabase())
+
+
+def get_b3_repository(
+    db: Session = Depends(get_db),
+) -> B3Repository:
+    if _use_sqlalchemy_repositories():
+        return SqlAlchemyB3Repository(db)
+    return SupabaseB3Repository(get_supabase())
+
+
+def get_reference_data_repository(
+    db: Session = Depends(get_db),
+) -> ReferenceDataRepository:
+    if _use_sqlalchemy_repositories():
+        return SqlAlchemyReferenceDataRepository(db)
+    return SupabaseReferenceDataRepository(get_supabase())
+
+
+def get_auth_provider(
+    db: Session = Depends(get_db),
+) -> AuthProvider:
+    if os.getenv("AUTH_PROVIDER", "supabase").lower() == "local":
+        return LocalAuthProvider(db)
+    return SupabaseAuthProvider(get_supabase())

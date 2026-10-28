@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient.js';
+import { getAccessToken } from './authClient.js';
 
 const getBaseUrl = () => {
   let url = import.meta.env.VITE_API_URL;
@@ -120,12 +120,7 @@ export const analysisService = {
   },
 
   async getOpportunities() {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    const token = session?.access_token;
-
-    if (!token) throw new Error('User not authenticated');
+    const token = await getAccessToken();
 
     const response = await fetch(`${API_URL}/analysis/opportunities`, {
       method: 'GET',

@@ -214,7 +214,14 @@ const WalletSkeleton = () => {
   );
 };
 
-const SummaryCard = ({ title, value, subtext, type = 'neutral', rawValue }) => {
+const SummaryCard = ({
+  title,
+  value,
+  subtext,
+  type = 'neutral',
+  rawValue,
+  secondaryItems = [],
+}) => {
   let colorClass = 'text-gray-900 dark:text-white';
   let iconColor = 'text-blue-500';
   let bgIcon = 'bg-blue-50 dark:bg-blue-900/20';
@@ -235,12 +242,21 @@ const SummaryCard = ({ title, value, subtext, type = 'neutral', rawValue }) => {
         <div>
           <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{title}</p>
           <p className={`text-2xl font-bold ${colorClass}`}>{value}</p>
+          {secondaryItems.map(({ label, value: secondaryValue }) => (
+            <p key={label} className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              {label}: {formatCurrency(secondaryValue)}
+            </p>
+          ))}
           {subtext && <p className="text-xs text-gray-400 mt-1">{subtext}</p>}
         </div>
         <div className={`p-3 rounded-xl border border-blue-400/30 ${bgIcon} ${iconColor}`}>
           {title.includes('Investido') && <Wallet className="w-6 h-6" />}
           {title.includes('Atual') && <TrendingUp className="w-6 h-6" />}
-          {(title.includes('Lucro') || title.includes('Prejuízo')) && (
+          {(title.includes('Lucro') ||
+            title.includes('Prejuízo') ||
+            title.includes('Valorização') ||
+            title.includes('Desvalorização') ||
+            title.includes('Retorno Total')) && (
             <DollarSign className="w-6 h-6" />
           )}
           {title.includes('%') && <Percent className="w-6 h-6" />}
@@ -851,10 +867,14 @@ function WalletDashboard() {
                 subtext={`Cotação Atual (${selectedAssetTicker ? selectedAssetTicker : CATEGORIES_CONFIG[activeTab].label})`}
               />
               <SummaryCard
-                title={periodStats.profit >= 0 ? 'Lucro (R$)' : 'Prejuízo (R$)'}
+                title="Retorno Total (R$)"
                 value={formatCurrency(periodStats.profit)}
                 rawValue={periodStats.profit}
                 type="profit"
+                secondaryItems={[
+                  { label: 'Valorização', value: periodStats.profit - periodStats.dividends },
+                  { label: 'Dividendos', value: periodStats.dividends },
+                ]}
                 subtext={periodStats.labelSuffix}
               />
               <SummaryCard

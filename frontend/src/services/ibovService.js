@@ -1,25 +1,16 @@
-import { supabase } from './supabaseClient.js';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export async function getIbovRange(startDate, endDate) {
-  const { data, error } = await supabase
-    .from('ibov_history')
-    .select('trade_date, close_value')
-    .gte('trade_date', startDate)
-    .lte('trade_date', endDate)
-    .order('trade_date', { ascending: true });
-
-  if (error) throw error;
+  const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
+  const response = await fetch(`${API_URL}/data/ibov?${params}`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.detail || 'Falha ao buscar IBOV');
   return data;
 }
 
 export async function getLastIbovDate() {
-  const { data, error } = await supabase
-    .from('ibov_history')
-    .select('trade_date')
-    .order('trade_date', { ascending: false })
-    .limit(1)
-    .single();
-
-  if (error) return null;
-  return data?.trade_date;
+  const response = await fetch(`${API_URL}/data/ibov/last`);
+  const data = await response.json();
+  if (!response.ok) return null;
+  return data.trade_date ?? null;
 }

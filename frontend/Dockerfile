@@ -20,11 +20,13 @@ COPY . .
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
 ARG VITE_API_URL
+ARG VITE_AUTH_PROVIDER
 
 # 2. Mapeia os argumentos para variáveis de ambiente para o Vite ler
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_AUTH_PROVIDER=$VITE_AUTH_PROVIDER
 # --- FIM DA CORREÇÃO ---
 
 # Build do Vite
@@ -37,6 +39,7 @@ FROM nginx:alpine AS production
 RUN rm -rf /usr/share/nginx/html/*
 
 COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

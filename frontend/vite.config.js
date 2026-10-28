@@ -10,5 +10,8 @@ export default defineConfig({
     setupFiles: './vitest.setup.js',
     css: false,
   },
+  server: {
+    allowedHosts: ['wallet-analysis.matbessa.com.br'],
+  },
   base: '/', // 👈 CORRETO para Fly.io / Nginx / Produção
 });

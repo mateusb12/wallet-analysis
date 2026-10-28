@@ -32,3 +32,48 @@ export const formatFullDate = (dateInput) => {
   const date = new Date(dateInput);
   return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(date);
 };
+
+const parseDateAsUTC = (dateInput) => {
+  if (dateInput instanceof Date) {
+    return new Date(Date.UTC(dateInput.getUTCFullYear(), dateInput.getUTCMonth(), dateInput.getUTCDate()));
+  }
+
+  if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateInput)) {
+    const [year, month, day] = dateInput.slice(0, 10).split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day));
+  }
+
+  const date = new Date(dateInput);
+  return isNaN(date.getTime())
+    ? null
+    : new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+};
+
+const addCalendarMonths = (date, months) => {
+  const result = new Date(date);
+  const targetMonth = result.getUTCMonth() + months;
+  result.setUTCDate(1);
+  result.setUTCMonth(targetMonth);
+  const lastDay = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();
+  result.setUTCDate(Math.min(date.getUTCDate(), lastDay));
+  return result;
+};
+
+export const formatElapsedPeriod = (startDateInput, endDateInput = new Date()) => {
+  const startDate = parseDateAsUTC(startDateInput);
+  const endDate = parseDateAsUTC(endDateInput);
+
+  if (!startDate || !endDate || startDate > endDate) return '0m0d';
+
+  let months =
+    (endDate.getUTCFullYear() - startDate.getUTCFullYear()) * 12 +
+    endDate.getUTCMonth() -
+    startDate.getUTCMonth();
+
+  if (addCalendarMonths(startDate, months) > endDate) months -= 1;
+
+  const monthDate = addCalendarMonths(startDate, months);
+  const days = Math.floor((endDate - monthDate) / 86400000);
+
+  return `${months}m${days}d`;
+};

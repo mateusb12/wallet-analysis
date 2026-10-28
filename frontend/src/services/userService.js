@@ -1,20 +1,25 @@
-import { supabase } from './supabaseClient';
+import { getAuthHeaders } from './authClient.js';
+import { uploadAvatar } from './storageClient.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-async function getAuthHeaders() {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-
-  if (!token) throw new Error('Usuário não autenticado');
-
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  };
-}
-
 export const userService = {
+  ensureProfile: async (user) => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_URL}/users/me`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        email: user.email,
+        full_name: user.user_metadata?.full_name || user.user_metadata?.name,
+        avatar_url: user.user_metadata?.avatar_url,
+      }),
+    });
+
+    if (!response.ok) throw new Error('Erro ao garantir perfil');
+    return response.json();
+  },
+
   getProfile: async () => {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_URL}/users/me`, {
@@ -39,18 +44,6 @@ export const userService = {
   },
 
   uploadAvatar: async (file, userId) => {
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${userId}-${Math.random()}.${fileExt}`;
-    const filePath = `${fileName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(filePath, file, { upsert: true });
-
-    if (uploadError) throw uploadError;
-
-    const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
-
-    return data.publicUrl;
+    return uploadAvatar(file, userId);
   },
 };

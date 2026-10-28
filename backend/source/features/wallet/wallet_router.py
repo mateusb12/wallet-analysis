@@ -3,12 +3,10 @@ import pandas as pd
 from datetime import datetime, date
 
 from fastapi import APIRouter, HTTPException, Depends, status
-from sqlalchemy.orm import Session
-from sqlalchemy import func, text, bindparam, tuple_
-
-from backend.source.core.database import get_db
+from backend.source.core.dependencies import get_wallet_repository
 from backend.source.features.auth.jwt_identity_extraction import get_current_user
-from backend.source.models.sql_models import AssetPurchase, CdiHistory, B3Price
+from backend.source.models.sql_models import AssetPurchase
+from backend.source.persistence.ports import WalletRepository
 from backend.source.features.wallet.wallet_schema import (
     ImportPurchasesRequest,
     AssetPurchaseResponse,
@@ -22,13 +20,19 @@ wallet_bp = APIRouter(prefix="/wallet", tags=["Wallet"])
 #  LÓGICA INTERNA (SERVICE) - AUXILIARES
 # ==========================================
 
-def _calculate_period_stats(profit: float, yield_pct: float, start_date: Optional[date]) -> Dict:
+def _calculate_period_stats(
+        profit: float,
+        yield_pct: float,
+        start_date: Optional[date],
+        dividends: float = 0.0,
+) -> Dict:
+    valuation = profit - dividends
     if not start_date:
         return {
-            "total": {"profit": profit, "yield": yield_pct},
-            "day": {"profit": 0, "yield": 0},
-            "month": {"profit": 0, "yield": 0},
-            "year": {"profit": 0, "yield": 0}
+            "total": {"profit": profit, "yield": yield_pct, "valuation": valuation, "dividends": dividends},
+            "day": {"profit": 0, "yield": 0, "valuation": 0, "dividends": 0},
+            "month": {"profit": 0, "yield": 0, "valuation": 0, "dividends": 0},
+            "year": {"profit": 0, "yield": 0, "valuation": 0, "dividends": 0}
         }
 
     today = datetime.now().date()
@@ -40,23 +44,33 @@ def _calculate_period_stats(profit: float, yield_pct: float, start_date: Optiona
 
     avg_day_profit = profit / days
     avg_day_yield = yield_pct / days
+    avg_day_dividends = dividends / days
+    avg_day_valuation = valuation / days
 
     return {
         "total": {
             "profit": round(profit, 2),
-            "yield": round(yield_pct, 2)
+            "yield": round(yield_pct, 2),
+            "valuation": round(valuation, 2),
+            "dividends": round(dividends, 2),
         },
         "day": {
             "profit": round(avg_day_profit, 2),
-            "yield": round(avg_day_yield, 4)
+            "yield": round(avg_day_yield, 4),
+            "valuation": round(avg_day_valuation, 2),
+            "dividends": round(avg_day_dividends, 2),
         },
         "month": {
             "profit": round(avg_day_profit * 30, 2),
-            "yield": round(avg_day_yield * 30, 2)
+            "yield": round(avg_day_yield * 30, 2),
+            "valuation": round(avg_day_valuation * 30, 2),
+            "dividends": round(avg_day_dividends * 30, 2),
         },
         "year": {
             "profit": round(avg_day_profit * 365, 2),
-            "yield": round(avg_day_yield * 365, 2)
+            "yield": round(avg_day_yield * 365, 2),
+            "valuation": round(avg_day_valuation * 365, 2),
+            "dividends": round(avg_day_dividends * 365, 2),
         }
     }
 
@@ -80,12 +94,35 @@ def _format_asset_age(first_purchase_date) -> str:
     if days > 0 or (years == 0 and months == 0): parts.append(f"{days}d")
     return " ".join(parts)
 
-def _calculate_history_logic(user_id: str, db: Session) -> List[Dict]:
-    purchases = db.query(AssetPurchase.ticker, AssetPurchase.qty, AssetPurchase.price, AssetPurchase.trade_date) \
-        .filter(AssetPurchase.user_id == user_id).order_by(AssetPurchase.trade_date.asc()).all()
+
+def _build_cdi_factors(benchmark_query, common_idx):
+    """Build CDI factors without applying a business-day rate on calendar gaps."""
+    factors = pd.Series(1.0, index=common_idx, dtype=float)
+    df_cdi = pd.DataFrame(benchmark_query, columns=['trade_date', 'value'])
+
+    if df_cdi.empty:
+        return factors.values
+
+    df_cdi['trade_date'] = pd.to_datetime(df_cdi['trade_date'])
+    df_cdi.set_index('trade_date', inplace=True)
+    df_cdi.sort_index(inplace=True)
+
+    observed_cdi = pd.to_numeric(df_cdi['value']).reindex(common_idx)
+    observed_dates = observed_cdi.notna()
+    factors.loc[observed_dates] = 1 + (observed_cdi.loc[observed_dates] / 100.0)
+    return factors.values
+
+def _calculate_history_logic(
+        user_id: str,
+        wallets: WalletRepository,
+        asset_type: Optional[str] = None,
+        benchmark: str = 'CDI',
+        ticker: Optional[str] = None,
+) -> List[Dict]:
+    purchases = wallets.get_history_purchases(user_id, asset_type, ticker)
     if not purchases: return []
 
-    df_purchases = pd.DataFrame(purchases, columns=['ticker', 'qty', 'price', 'trade_date'])
+    df_purchases = pd.DataFrame(purchases, columns=['ticker', 'qty', 'price', 'trade_date', 'type'])
     df_purchases['trade_date'] = pd.to_datetime(df_purchases['trade_date'])
     df_purchases['price'] = df_purchases['price'].astype(float)
     df_purchases['cash_flow'] = df_purchases['qty'] * df_purchases['price']
@@ -93,18 +130,31 @@ def _calculate_history_logic(user_id: str, db: Session) -> List[Dict]:
     start_date = df_purchases['trade_date'].min()
     unique_tickers = df_purchases['ticker'].unique().tolist()
 
-    prices_query = db.query(B3Price.ticker, B3Price.trade_date, B3Price.close) \
-        .filter(B3Price.ticker.in_(unique_tickers), B3Price.trade_date >= start_date).all()
-    cdi_query = db.query(CdiHistory.trade_date, CdiHistory.value) \
-        .filter(CdiHistory.trade_date >= start_date).all()
+    prices_query = wallets.get_prices_from(unique_tickers, start_date.date())
+    benchmark_query = wallets.get_cdi_from(start_date.date())
+    if benchmark == 'IBOV':
+        benchmark_query = wallets.get_ibov_from(start_date.date())
+    elif benchmark == 'IFIX':
+        benchmark_query = wallets.get_ifix_from(start_date.date())
+    elif benchmark == 'SP500':
+        benchmark_query = wallets.get_prices_from(['^GSPC'], start_date.date())
 
     if not prices_query: return []
 
-    df_prices = pd.DataFrame(prices_query, columns=['ticker', 'trade_date', 'close'])
+    df_prices = pd.DataFrame(
+        prices_query,
+        columns=['ticker', 'trade_date', 'close', 'dividend_value'],
+    )
     df_prices['trade_date'] = pd.to_datetime(df_prices['trade_date'])
     df_prices['close'] = pd.to_numeric(df_prices['close'])
+    df_prices['dividend_value'] = pd.to_numeric(df_prices['dividend_value'], errors='coerce').fillna(0.0)
 
     price_matrix = df_prices.pivot(index='trade_date', columns='ticker', values='close').resample('D').ffill()
+    dividend_matrix = df_prices.pivot(
+        index='trade_date',
+        columns='ticker',
+        values='dividend_value',
+    ).reindex(price_matrix.index).fillna(0.0)
     holdings_matrix = pd.DataFrame(0.0, index=price_matrix.index, columns=unique_tickers)
     daily_cash_flow = df_purchases.groupby('trade_date')['cash_flow'].sum()
 
@@ -117,50 +167,58 @@ def _calculate_history_logic(user_id: str, db: Session) -> List[Dict]:
     price_matrix = price_matrix.loc[common_idx]
     holdings_matrix = holdings_matrix.loc[common_idx]
     daily_portfolio = (holdings_matrix * price_matrix).sum(axis=1)
+    daily_dividends = (holdings_matrix * dividend_matrix.loc[common_idx]).sum(axis=1)
+    accumulated_dividends = daily_dividends.cumsum()
 
     aligned_cash_flow = daily_cash_flow.reindex(common_idx, fill_value=0.0)
-    df_cdi = pd.DataFrame(cdi_query, columns=['trade_date', 'value'])
-    cdi_factors_vals = [1.0] * len(common_idx)
-    if not df_cdi.empty:
-        df_cdi['trade_date'] = pd.to_datetime(df_cdi['trade_date'])
-        df_cdi.set_index('trade_date', inplace=True)
-        aligned_cdi = df_cdi.reindex(common_idx).fillna(0.0)
-        cdi_factors_series = 1 + (aligned_cdi['value'] / 100.0)
-        cdi_factors_vals = cdi_factors_series.values
-
     benchmark_values = []
+    if benchmark in {'IBOV', 'IFIX'}:
+        df_benchmark = pd.DataFrame(benchmark_query, columns=['trade_date', 'value'])
+        if not df_benchmark.empty:
+            df_benchmark['trade_date'] = pd.to_datetime(df_benchmark['trade_date'])
+            df_benchmark.set_index('trade_date', inplace=True)
+            prices = pd.to_numeric(df_benchmark['value']).reindex(common_idx).ffill()
+            benchmark_factors = (prices / prices.shift(1)).fillna(1.0).values
+        else:
+            benchmark_factors = [1.0] * len(common_idx)
+    elif benchmark == 'SP500':
+        df_benchmark = pd.DataFrame(
+            benchmark_query,
+            columns=['ticker', 'trade_date', 'value', 'dividend_value'],
+        )
+        if not df_benchmark.empty:
+            df_benchmark['trade_date'] = pd.to_datetime(df_benchmark['trade_date'])
+            df_benchmark['value'] = pd.to_numeric(df_benchmark['value'])
+            prices = df_benchmark.set_index('trade_date')['value'].sort_index()
+            prices = prices.reindex(common_idx).ffill()
+            benchmark_factors = (prices / prices.shift(1)).fillna(1.0).values
+        else:
+            benchmark_factors = [1.0] * len(common_idx)
+    else:
+        benchmark_factors = _build_cdi_factors(benchmark_query, common_idx)
+
     curr_bench = 0.0
     cash_flows_vals = aligned_cash_flow.values
-    limit = min(len(common_idx), len(cash_flows_vals), len(cdi_factors_vals))
+    limit = min(len(common_idx), len(cash_flows_vals), len(benchmark_factors))
     for i in range(limit):
-        curr_bench = (curr_bench * cdi_factors_vals[i]) + cash_flows_vals[i]
+        curr_bench = (curr_bench * benchmark_factors[i]) + cash_flows_vals[i]
         benchmark_values.append(curr_bench)
 
-    return [{"trade_date": common_idx[i].strftime("%Y-%m-%d"),
-             "portfolio_value": round(float(daily_portfolio.iloc[i]), 2),
-             "benchmark_value": round(float(benchmark_values[i]), 2)} for i in range(limit)]
+    return [{
+        "trade_date": common_idx[i].strftime("%Y-%m-%d"),
+        "portfolio_value": round(float(daily_portfolio.iloc[i]), 2),
+        "dividends_value": round(float(daily_dividends.iloc[i]), 2),
+        "dividends_accumulated": round(float(accumulated_dividends.iloc[i]), 2),
+        "benchmark_value": round(float(benchmark_values[i]), 2),
+    } for i in range(limit)]
 
 # Função auxiliar para calcular rentabilidade anual do ativo (ano fechado)
-def _get_yearly_prices(db: Session, tickers: List[str], start_year: int) -> Dict[str, Dict[int, float]]:
-    # 1. Estratégia: Pegar preços de Dezembro (após dia 20) de todos os anos relevantes
-    current_year = datetime.now().year
-
-    # Query SQL eficiente usando Window Function (PostgreSQL) ou filtragem simples
-    # Vamos usar filtragem simples para compatibilidade e simplicidade:
-    # Pegamos todas as cotações de Dezembro para os tickers alvo a partir do ano de início
-    sql = text("""
-               SELECT ticker, trade_date, adjusted_close
-               FROM b3_prices
-               WHERE ticker IN :tickers
-                 AND EXTRACT(YEAR FROM trade_date) >= :start_year
-                 AND EXTRACT(MONTH FROM trade_date) = 12
-                 AND EXTRACT(DAY FROM trade_date) > 20
-               ORDER BY trade_date ASC
-               """)
-
-    # Executa query
-    rows = db.execute(sql.bindparams(bindparam("tickers", expanding=True)),
-                      {"tickers": tickers, "start_year": start_year - 1}).fetchall()
+def _get_yearly_prices(
+        wallets: WalletRepository,
+        tickers: List[str],
+        start_year: int,
+) -> Dict[str, Dict[int, float]]:
+    rows = wallets.get_prices_from_previous_year(tickers, start_year)
 
     # Processa para pegar apenas a ÚLTIMA data de cada ano para cada ticker
     # map: ticker -> { 2021: 15.50, 2022: 18.20 }
@@ -169,6 +227,9 @@ def _get_yearly_prices(db: Session, tickers: List[str], start_year: int) -> Dict
     for r in rows:
         tck = r.ticker
         if not r.adjusted_close: continue
+
+        if r.trade_date.month != 12 or r.trade_date.day <= 20:
+            continue
 
         y = r.trade_date.year
         val = float(r.adjusted_close)
@@ -185,17 +246,19 @@ def _get_yearly_prices(db: Session, tickers: List[str], start_year: int) -> Dict
 
 @wallet_bp.get("/dashboard")
 def get_dashboard_data(
-        db: Session = Depends(get_db),
+        wallets: WalletRepository = Depends(get_wallet_repository),
         current_user: str = Depends(get_current_user)
 ):
     # 1. Buscar todas as compras
-    purchases = db.query(AssetPurchase).filter(AssetPurchase.user_id == current_user).all()
+    purchases = wallets.list_purchases(current_user)
 
     # Estrutura vazia
     empty_response = {
         "summary": {"total_invested": 0, "total_current": 0, "total_profit": 0, "total_profit_percent": 0},
         "period_projections": {k: _calculate_period_stats(0, 0, None) for k in ["total", "stock", "fii", "etf"]},
-        "positions": [], "history": [], "transactions": [], "allocation": {"stock": 0, "fii": 0, "etf": 0}
+        "positions": [], "history": [], "transactions": [],
+        "allocation": {"stock": 0, "fii": 0, "etf": 0},
+        "invested_by_type": {"stock": 0, "fii": 0, "etf": 0},
     }
 
     if not purchases:
@@ -211,8 +274,7 @@ def get_dashboard_data(
 
     if purchase_keys:
         try:
-            hist_rows = db.query(B3Price.ticker, B3Price.trade_date, B3Price.adjusted_close) \
-                .filter(tuple_(B3Price.ticker, B3Price.trade_date).in_(purchase_keys)).all()
+            hist_rows = wallets.get_adjusted_prices_for_purchases(purchase_keys)
 
             for r in hist_rows:
                 key = f"{r.ticker}_{r.trade_date}"
@@ -258,9 +320,7 @@ def get_dashboard_data(
         return empty_response
 
     # 4. Buscar Preços Atuais (Raw e Adjusted)
-    latest_prices = db.query(B3Price.ticker, B3Price.close, B3Price.adjusted_close, B3Price.name) \
-        .filter(B3Price.ticker.in_(active_tickers)) \
-        .order_by(B3Price.trade_date.desc()).all()
+    latest_prices = wallets.get_latest_prices(active_tickers)
 
     price_map_raw = {}
     price_map_adj = {}
@@ -277,16 +337,14 @@ def get_dashboard_data(
     # 4.1 Buscar Classificações
     classification_map = {}
     try:
-        stmt = text("SELECT ticker, detected_type, sector FROM asset_classification_cache WHERE ticker IN :tickers")
-        stmt = stmt.bindparams(bindparam("tickers", expanding=True))
-        cls_rows = db.execute(stmt, {"tickers": active_tickers}).fetchall()
+        cls_rows = wallets.get_classifications(active_tickers)
         for r in cls_rows:
             classification_map[r.ticker] = {"subtype": r.detected_type, "sector": r.sector}
     except Exception: pass
 
     # --- NOVO: BUSCAR PREÇOS ANUAIS (FECHAMENTO DE DEZEMBRO) PARA TOOLTIP ---
     # Busca desde o ano anterior ao início da carteira (para calcular a variação do primeiro ano)
-    yearly_closes_map = _get_yearly_prices(db, active_tickers, start_year_portfolio)
+    yearly_closes_map = _get_yearly_prices(wallets, active_tickers, start_year_portfolio)
     current_year = datetime.now().year
 
     # 5. Montar Lista Final e Totais
@@ -402,19 +460,63 @@ def get_dashboard_data(
         if total_current_global > 0:
             p['allocation_percent'] = round((p['total_value'] / total_current_global) * 100, 2)
 
-    total_profit_global = total_current_global - total_invested_global
-    total_profit_pct_global = (total_profit_global / total_invested_global * 100) if total_invested_global > 0 else 0
+    valuation_profit_global = total_current_global - total_invested_global
 
     start_date_global = min([p['min_date'] for p in pos_map.values()]) if pos_map else None
 
+    history_by_type = {
+        "stock": _calculate_history_logic(current_user, wallets, "stock", "IBOV"),
+        "fii": _calculate_history_logic(current_user, wallets, "fii", "IFIX"),
+        "etf": _calculate_history_logic(current_user, wallets, "etf", "SP500"),
+    }
+    history_total = _calculate_history_logic(current_user, wallets)
+
+    dividends_global = (
+        history_total[-1].get("dividends_accumulated", 0.0)
+        if history_total else 0.0
+    )
+    dividends_by_type = {
+        asset_type: (
+            history[-1].get("dividends_accumulated", 0.0)
+            if history else 0.0
+        )
+        for asset_type, history in history_by_type.items()
+    }
+
+    total_profit_global = valuation_profit_global + dividends_global
+    total_profit_pct_global = (total_profit_global / total_invested_global * 100) if total_invested_global > 0 else 0
+
     projections = {
-        "total": _calculate_period_stats(total_profit_global, total_profit_pct_global, start_date_global)
+        "total": _calculate_period_stats(
+            total_profit_global,
+            total_profit_pct_global,
+            start_date_global,
+            dividends_global,
+        )
     }
 
     for cat, stats in cat_stats.items():
-        c_profit = stats['current'] - stats['invested']
+        c_valuation = stats['current'] - stats['invested']
+        c_profit = c_valuation + dividends_by_type.get(cat, 0.0)
         c_yield = (c_profit / stats['invested'] * 100) if stats['invested'] > 0 else 0
-        projections[cat] = _calculate_period_stats(c_profit, c_yield, stats['start_date'])
+        projections[cat] = _calculate_period_stats(
+            c_profit,
+            c_yield,
+            stats['start_date'],
+            dividends_by_type.get(cat, 0.0),
+        )
+
+    benchmark_by_type = {"stock": "IBOV", "fii": "IFIX", "etf": "SP500"}
+    history_by_ticker = {
+        ticker: _calculate_history_logic(
+            current_user,
+            wallets,
+            position["type"],
+            benchmark_by_type.get(position["type"], "CDI"),
+            ticker,
+        )
+        for ticker, position in pos_map.items()
+    }
 
     return {
         "summary": {
@@ -425,23 +527,28 @@ def get_dashboard_data(
         },
         "period_projections": projections,
         "positions": positions_list,
-        "history": _calculate_history_logic(current_user, db),
+        "history": history_total,
+        "history_by_type": history_by_type,
+        "history_by_ticker": history_by_ticker,
         "transactions": transactions_list,
-        "allocation": {k: round(v, 2) for k, v in allocation_by_type.items()}
+        "allocation": {k: round(v, 2) for k, v in allocation_by_type.items()},
+        "invested_by_type": {
+            k: round(v['invested'], 2) for k, v in cat_stats.items()
+        },
     }
 
 # --- OUTROS ENDPOINTS (CRUD) PERMANECEM IGUAIS ---
 @wallet_bp.get("/performance/history", response_model=List[HistoryPoint])
 def get_wallet_history(
-        db: Session = Depends(get_db),
+        wallets: WalletRepository = Depends(get_wallet_repository),
         current_user: str = Depends(get_current_user)
 ):
-    return _calculate_history_logic(current_user, db)
+    return _calculate_history_logic(current_user, wallets)
 
 @wallet_bp.post("/import")
 def import_purchases(
         payload: ImportPurchasesRequest,
-        db: Session = Depends(get_db),
+        wallets: WalletRepository = Depends(get_wallet_repository),
         current_user: str = Depends(get_current_user)
 ):
     try:
@@ -457,26 +564,22 @@ def import_purchases(
                 trade_date=item.trade_date
             )
             new_records.append(record)
-        if new_records:
-            db.add_all(new_records)
-            db.commit()
+        wallets.add_purchases(new_records)
         return {"success": True, "count": len(new_records), "message": "Import successful"}
     except Exception as e:
-        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 @wallet_bp.get("/purchases", response_model=List[AssetPurchaseResponse])
 def get_user_purchases(
-        db: Session = Depends(get_db),
+        wallets: WalletRepository = Depends(get_wallet_repository),
         current_user: str = Depends(get_current_user)
 ):
-    purchases = db.query(AssetPurchase).filter(AssetPurchase.user_id == current_user).all()
-    return purchases
+    return wallets.list_purchases(current_user)
 
 @wallet_bp.post("/purchases", response_model=AssetPurchaseResponse, status_code=status.HTTP_201_CREATED)
 def create_purchase(
         payload: AssetPurchaseInput,
-        db: Session = Depends(get_db),
+        wallets: WalletRepository = Depends(get_wallet_repository),
         current_user: str = Depends(get_current_user)
 ):
     try:
@@ -489,22 +592,18 @@ def create_purchase(
             price=payload.price,
             trade_date=payload.trade_date
         )
-        db.add(new_purchase)
-        db.commit()
-        db.refresh(new_purchase)
-        return new_purchase
+        return wallets.save_purchase(new_purchase)
     except Exception as e:
-        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 @wallet_bp.put("/purchases/{purchase_id}", response_model=AssetPurchaseResponse)
 def update_purchase(
         purchase_id: int,
         payload: AssetPurchaseInput,
-        db: Session = Depends(get_db),
+        wallets: WalletRepository = Depends(get_wallet_repository),
         current_user: str = Depends(get_current_user)
 ):
-    purchase = db.query(AssetPurchase).filter(AssetPurchase.id == purchase_id).first()
+    purchase = wallets.get_purchase(purchase_id)
     if not purchase:
         raise HTTPException(status_code=404, detail="Aporte não encontrado")
     if purchase.user_id != current_user:
@@ -516,28 +615,23 @@ def update_purchase(
         purchase.qty = payload.qty
         purchase.price = payload.price
         purchase.trade_date = payload.trade_date
-        db.commit()
-        db.refresh(purchase)
-        return purchase
+        return wallets.save_purchase(purchase)
     except Exception as e:
-        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 @wallet_bp.delete("/purchases/{purchase_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_purchase(
         purchase_id: int,
-        db: Session = Depends(get_db),
+        wallets: WalletRepository = Depends(get_wallet_repository),
         current_user: str = Depends(get_current_user)
 ):
-    purchase = db.query(AssetPurchase).filter(AssetPurchase.id == purchase_id).first()
+    purchase = wallets.get_purchase(purchase_id)
     if not purchase:
         raise HTTPException(status_code=404, detail="Aporte não encontrado")
     if purchase.user_id != current_user:
         raise HTTPException(status_code=403, detail="Não autorizado a deletar este registro")
     try:
-        db.delete(purchase)
-        db.commit()
+        wallets.delete_purchase(purchase)
         return None
     except Exception as e:
-        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))

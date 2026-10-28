@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { fetchDashboardData } from '../../services/walletDataService.js';
+import { formatElapsedPeriod } from '../../utils/dateUtils.js';
 
 import iconStocks from '../../assets/stocks.png';
 import iconEtf from '../../assets/etf.png';
@@ -69,7 +70,7 @@ export const useWalletDashboardData = (user) => {
   }, [user?.id]);
 
   const safeData = useMemo(() => {
-    const defaultStats = { profit: 0, yield: 0 };
+    const defaultStats = { profit: 0, yield: 0, valuation: 0, dividends: 0 };
     const defaultProjections = {
       total: defaultStats,
       day: defaultStats,
@@ -89,6 +90,7 @@ export const useWalletDashboardData = (user) => {
       history: [],
       transactions: [],
       allocation: { stock: 0, fii: 0, etf: 0 },
+      invested_by_type: { stock: 0, fii: 0, etf: 0 },
     };
 
     const adaptedPositions = raw.positions.map((p) => {
@@ -130,7 +132,12 @@ export const useWalletDashboardData = (user) => {
     const categoryProjections =
       safeData.period_projections?.[activeTab] || safeData.period_projections?.total;
 
-    const stats = categoryProjections?.[profitPeriod] || { profit: 0, yield: 0 };
+    const stats = categoryProjections?.[profitPeriod] || {
+      profit: 0,
+      yield: 0,
+      valuation: 0,
+      dividends: 0,
+    };
 
     let current = 0;
     let invested = 0;
@@ -140,13 +147,20 @@ export const useWalletDashboardData = (user) => {
       invested = safeData.summary.total_invested;
     } else {
       current = safeData.allocation[activeTab] || 0;
-
-      const totalCategoryProfit = categoryProjections?.total?.profit || 0;
-      invested = current - totalCategoryProfit;
+      invested = safeData.invested_by_type?.[activeTab] || 0;
     }
 
+    const relevantTransactions = (safeData.transactions || []).filter(
+      (transaction) =>
+        activeTab === 'total' || (transaction.asset_type || transaction.type) === activeTab
+    );
+    const earliestPurchaseDate = relevantTransactions
+      .map((transaction) => transaction.trade_date)
+      .filter(Boolean)
+      .sort()[0];
+
     const labels = {
-      total: '(Acumulado)',
+      total: `(${formatElapsedPeriod(earliestPurchaseDate)})`,
       day: '(Média por Dia)',
       month: '(Média por Mês)',
       year: '(Projeção Anual)',
@@ -157,6 +171,8 @@ export const useWalletDashboardData = (user) => {
       current,
       profit: stats.profit,
       yield: stats.yield,
+      valuation: stats.valuation ?? stats.profit - (stats.dividends || 0),
+      dividends: stats.dividends || 0,
       labelSuffix: labels[profitPeriod],
     };
   }, [safeData, activeTab, profitPeriod]);
@@ -198,6 +214,23 @@ export const useWalletDashboardData = (user) => {
   }, [safeData, selectedAssetTicker, activeTab, filteredPositions]);
 
   const showEmptyState = (safeData.positions.length === 0 && !loading) || debugShowEmpty;
+  const earliestPurchaseDate = safeData.transactions
+    .map((transaction) => transaction.trade_date)
+    .filter(Boolean)
+    .sort()[0] || null;
+
+  const chartHistory =
+    selectedAssetTicker
+      ? safeData.history_by_ticker?.[selectedAssetTicker] || []
+      : activeTab === 'total'
+      ? safeData.history
+      : safeData.history_by_type?.[activeTab] || [];
+
+  const chartEarliestPurchaseDate = safeData.transactions
+    .filter((transaction) => activeTab === 'total' || transaction.type === activeTab)
+    .map((transaction) => transaction.trade_date)
+    .filter(Boolean)
+    .sort()[0] || null;
 
   return {
     setActiveTab,
@@ -225,6 +258,7 @@ export const useWalletDashboardData = (user) => {
     periodStats: {
       profit: dashboardStats.profit,
       yield: dashboardStats.yield,
+      dividends: dashboardStats.dividends,
       labelSuffix: dashboardStats.labelSuffix,
     },
 
@@ -239,11 +273,11 @@ export const useWalletDashboardData = (user) => {
     },
 
     currentPieData,
-    displayedHistory: safeData.history,
+    displayedHistory: chartHistory,
     chartEvents,
 
     availablePeriods: PROFIT_PERIODS,
-    earliestPurchaseDate: safeData.history.length > 0 ? safeData.history[0].trade_date : null,
+    earliestPurchaseDate: chartEarliestPurchaseDate,
     showEmptyState,
     dataWarnings: [],
     assetsHistoryMap: {},

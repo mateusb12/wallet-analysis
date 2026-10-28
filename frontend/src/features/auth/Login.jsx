@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../theme/ThemeContext';
 import { authService, systemService } from '../../services/api';
-import { supabase } from '../../services/supabaseClient';
+import { signInWithGoogle } from '../../services/authClient.js';
 import { useAuth } from './AuthContext';
-import { Wifi, WifiOff, Loader2, Sun, Moon } from 'lucide-react';
+import { Wifi, WifiOff, Loader2, Sun, Moon, Eye, EyeOff } from 'lucide-react';
 
 export default function Login({ onSwitchToRegister }) {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState({ type: '', content: '' });
   const [apiStatus, setApiStatus] = useState('checking');
+  const [tooltipPosition, setTooltipPosition] = useState(null);
 
   const { theme, toggleTheme } = useTheme();
   const { setBackendSession } = useAuth();
+  const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
 
   useEffect(() => {
     let mounted = true;
@@ -30,17 +33,7 @@ export default function Login({ onSwitchToRegister }) {
 
   const handleGoogleLogin = async () => {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
-      });
-      if (error) throw error;
+      await signInWithGoogle();
     } catch (error) {
       console.error('Erro Google:', error);
       setMessage({ type: 'error', content: error.message });
@@ -78,10 +71,34 @@ export default function Login({ onSwitchToRegister }) {
     if (apiStatus === 'online') {
       return (
         <div
-          className={`${baseClasses} bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50`}
+          className="relative flex flex-col items-center gap-1 group"
+          onMouseMove={(event) =>
+            setTooltipPosition({ x: event.clientX + 16, y: event.clientY + 16 })
+          }
+          onMouseLeave={() => setTooltipPosition(null)}
         >
-          <Wifi className="w-3 h-3" />
-          <span>Servidor Online</span>
+          <div
+            title={`Servidor da API: ${apiUrl}`}
+            aria-label={`Servidor da API: ${apiUrl}`}
+            className={`${baseClasses} cursor-help bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50`}
+          >
+            <Wifi className="w-3 h-3" />
+            <span>Servidor Online</span>
+          </div>
+          <div
+            className="pointer-events-none fixed left-0 top-0 z-50 w-max max-w-xs rounded-lg bg-gray-900 px-3 py-2 text-left text-[11px] normal-case text-white shadow-lg"
+            style={
+              tooltipPosition
+                ? { left: tooltipPosition.x, top: tooltipPosition.y }
+                : { display: 'none' }
+            }
+          >
+            <div className="font-semibold">API conectada</div>
+            <div className="mt-0.5 break-all text-gray-300">{apiUrl}</div>
+          </div>
+          <span className="max-w-full truncate text-[10px] text-gray-500 dark:text-gray-400" title={apiUrl}>
+            API: {apiUrl}
+          </span>
         </div>
       );
     }
@@ -97,7 +114,7 @@ export default function Login({ onSwitchToRegister }) {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-950 p-4 transition-colors duration-300">
-      <div className="relative w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800 transition-colors duration-300 p-8 pt-12">
+      <div className="relative w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-visible border border-gray-100 dark:border-gray-800 transition-colors duration-300 p-8 pt-12">
         <button
           onClick={toggleTheme}
           className="absolute top-6 right-6 p-2 rounded-full text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200"
@@ -179,14 +196,25 @@ export default function Login({ onSwitchToRegister }) {
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 ml-1">
               Senha
             </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full h-12 px-4 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white transition-all placeholder-gray-400"
-              placeholder="••••••••"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full h-12 px-4 pr-12 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white transition-all placeholder-gray-400"
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((visible) => !visible)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                title={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+              >
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
+            </div>
             <div className="flex justify-end mt-2">
               <button
                 type="button"
