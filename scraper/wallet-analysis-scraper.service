@@ -5,7 +5,7 @@ After=graphical-session.target
 [Service]
 Type=simple
 WorkingDirectory=/home/mateus/Desktop/Javascript/wallet-analysis/scraper
-ExecStart=/home/mateus/.nvm/versions/node/v24.13.0/bin/node /home/mateus/Desktop/Javascript/wallet-analysis/scraper/agent.js
+ExecStart=/home/mateus/.nvm/versions/node/v24.13.0/bin/node --env-file-if-exists=/home/mateus/Desktop/Javascript/wallet-analysis/.env --env-file-if-exists=/home/mateus/Desktop/Javascript/wallet-analysis/backend/.env --env-file-if-exists=/home/mateus/Desktop/Javascript/wallet-analysis/frontend/.env /home/mateus/Desktop/Javascript/wallet-analysis/scraper/agent.js
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/run/user/1000/gdm/Xauthority
 Restart=on-failure

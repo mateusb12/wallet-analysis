@@ -8,6 +8,8 @@ const targetUrl = process.env.SCRAPER_TARGET_URL || 'https://www.investidor.b3.c
 const scraperDir = dirname(fileURLToPath(import.meta.url));
 const userDataDir = resolve(process.env.SCRAPER_PROFILE_DIR || resolve(scraperDir, 'browser_profile'));
 const browserChannel = process.env.SCRAPER_BROWSER_CHANNEL || 'chrome';
+const b3Cpf = process.env.B3_CPF;
+const b3Password = process.env.B3_PASSWORD;
 
 let context = null;
 let status = 'idle';
@@ -47,6 +49,70 @@ function attachRequestCapture(page) {
   });
 }
 
+async function findInput(page, patterns, type = null) {
+  const inputs = page.locator('input');
+  const count = await inputs.count();
+
+  for (let index = 0; index < count; index += 1) {
+    const input = inputs.nth(index);
+    const attributes = await input.evaluate((element) => ({
+      type: element.getAttribute('type') || 'text',
+      name: element.getAttribute('name') || '',
+      id: element.getAttribute('id') || '',
+      placeholder: element.getAttribute('placeholder') || '',
+      ariaLabel: element.getAttribute('aria-label') || '',
+    }));
+    const searchableText = Object.values(attributes).join(' ').toLowerCase();
+
+    if ((!type || attributes.type.toLowerCase() === type) && patterns.some((pattern) => searchableText.includes(pattern))) {
+      return input;
+    }
+  }
+
+  return null;
+}
+
+async function markDebugInput(input) {
+  if (!input) return;
+  await input.evaluate((element) => {
+    element.style.setProperty('border', '3px solid red', 'important');
+    element.style.setProperty('box-shadow', '0 0 0 2px rgba(255, 0, 0, 0.25)', 'important');
+  });
+}
+
+async function clickLoginButton(page) {
+  const button = page.getByRole('button', { name: /entrar|continuar|avançar/i }).first();
+  if (await button.count() && await button.isVisible()) {
+    await button.click();
+    return true;
+  }
+  return false;
+}
+
+async function loginToB3(page) {
+  if (!page.url().includes('/login')) return;
+
+  const cpfInput = await findInput(page, ['cpf', 'documento', 'identificação']);
+  console.log(`Campo CPF detectado: ${Boolean(cpfInput)}`);
+  await markDebugInput(cpfInput);
+  if (!cpfInput || !b3Cpf) return;
+
+  await cpfInput.fill(b3Cpf);
+  console.log('CPF preenchido.');
+  await clickLoginButton(page);
+  console.log('Botão Entrar clicado.');
+
+  await page.waitForTimeout(1000);
+  const passwordInput = await findInput(page, ['senha', 'password'], 'password');
+  console.log(`Campo senha detectado: ${Boolean(passwordInput)}`);
+  if (!passwordInput || !b3Password) return;
+
+  await passwordInput.fill(b3Password);
+  console.log('Senha preenchida.');
+  await clickLoginButton(page);
+  console.log('Botão Entrar da senha clicado.');
+}
+
 async function runScraper() {
   if (context) return;
 
@@ -68,6 +134,9 @@ async function runScraper() {
     for (const existingPage of context.pages()) attachRequestCapture(existingPage);
     context.on('page', attachRequestCapture);
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1500);
+    console.log(`URL após navegação: ${page.url()}`);
+    await loginToB3(page);
   } catch (cause) {
     error = cause instanceof Error ? cause.message : String(cause);
     status = 'failed';

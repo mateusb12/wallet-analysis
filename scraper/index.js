@@ -6,6 +6,8 @@ const targetUrl = process.argv[2] || process.env.SCRAPER_TARGET_URL || 'https://
 const scraperDir = dirname(fileURLToPath(import.meta.url));
 const userDataDir = resolve(process.env.SCRAPER_PROFILE_DIR || resolve(scraperDir, 'browser_profile'));
 const browserChannel = process.env.SCRAPER_BROWSER_CHANNEL || 'chrome';
+const b3Cpf = process.env.B3_CPF;
+const b3Password = process.env.B3_PASSWORD;
 
 console.log(`Abrindo ${targetUrl}`);
 console.log(`Perfil: ${userDataDir}`);
@@ -20,6 +22,29 @@ const context = await chromium.launchPersistentContext(userDataDir, {
 
 const page = context.pages()[0] || await context.newPage();
 await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
+
+if (b3Cpf && b3Password && page.url().includes('/login')) {
+  const cpfInput = page.locator(
+    'input[placeholder*="CPF" i], input[name*="cpf" i], input[id*="cpf" i]'
+  ).first();
+  const passwordInput = page.locator('input[type="password"]').first();
+
+  if (await cpfInput.count()) {
+    await cpfInput.evaluate((element) => {
+      element.style.setProperty('border', '3px solid red', 'important');
+      element.style.setProperty('box-shadow', '0 0 0 2px rgba(255, 0, 0, 0.25)', 'important');
+    });
+    await cpfInput.fill(b3Cpf);
+    if (!(await passwordInput.count())) {
+      await page.getByRole('button', { name: /entrar|continuar|avançar/i }).first().click();
+      await page.waitForTimeout(1000);
+    }
+    if (await passwordInput.count()) {
+      await passwordInput.fill(b3Password);
+      await page.getByRole('button', { name: /entrar|continuar|avançar/i }).first().click();
+    }
+  }
+}
 console.log('Navegador aberto. Pressione Ctrl+C para fechar.');
 
 let closing = false;

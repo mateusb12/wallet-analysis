@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node index.js",
-    "agent": "node agent.js"
+    "dev": "node --env-file-if-exists=../.env --env-file-if-exists=../backend/.env --env-file-if-exists=../frontend/.env index.js",
+    "agent": "node --env-file-if-exists=../.env --env-file-if-exists=../backend/.env --env-file-if-exists=../frontend/.env agent.js"
   },
   "dependencies": {
     "playwright": "^1.58.0"

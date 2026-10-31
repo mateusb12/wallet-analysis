@@ -29,3 +29,8 @@ systemctl --user restart wallet-analysis-scraper.service
 ```
 
 O serviço está definido em `wallet-analysis-scraper.service` e usa `agent.js`.
+
+O login da B3 pode ser automatizado com `B3_CPF` e `B3_PASSWORD` no `.env` da
+raiz do projeto. Os valores nunca são escritos nos logs. Se a B3 solicitar
+CAPTCHA ou autenticação adicional, a janela permanece aberta para conclusão
+manual.
