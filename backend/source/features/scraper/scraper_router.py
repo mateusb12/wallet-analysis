@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import json
 from datetime import datetime, timezone
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -11,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.source.core.database import get_db
+from backend.source.core.database import SessionLocal, get_db
 from backend.source.models.sql_models import ScraperJob
 
 scraper_bp = APIRouter(prefix="/internal/scraper", tags=["scraper"])
@@ -33,12 +34,36 @@ def notify_local_agent(path: str) -> None:
         ) from error
 
 
+def read_local_agent(path: str) -> dict[str, Any]:
+    if os.getenv("APP_ENV", "production").lower() != "development":
+        return {"requests": []}
+    try:
+        with urlopen(f"{LOCAL_AGENT_URL}{path}", timeout=5) as response:
+            return json.load(response)
+    except URLError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Agente local do scraper não está disponível.",
+        ) from error
+
+
 def stop_local_scraper() -> None:
     if os.getenv("APP_ENV", "production").lower() == "development":
         try:
             notify_local_agent("/pause")
         except HTTPException:
             pass
+        db = SessionLocal()
+        try:
+            current_state = db.scalar(
+                select(ScraperJob).where(ScraperJob.name == SCRAPER_NAME)
+            )
+            if current_state is not None and current_state.status == "running":
+                current_state.status = "paused"
+                current_state.finished_at = datetime.now(timezone.utc)
+                db.commit()
+        finally:
+            db.close()
 
 
 @scraper_bp.post("/run", status_code=status.HTTP_202_ACCEPTED)
@@ -129,3 +154,8 @@ def scraper_status(db: Session = Depends(get_db)) -> dict[str, Any]:
         "finished_at": current_state.finished_at,
         "error": current_state.error,
     }
+
+
+@scraper_bp.get("/requests")
+def scraper_requests() -> dict[str, Any]:
+    return read_local_agent("/requests")

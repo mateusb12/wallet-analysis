@@ -78,6 +78,13 @@ export const jobService = {
     if (!response.ok) throw new Error(data.detail || 'Não foi possível pausar a job');
     return data;
   },
+
+  async getScraperRequests() {
+    const response = await fetch(`${API_URL}/internal/scraper/requests`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Não foi possível consultar as requisições');
+    return data.requests || [];
+  },
 };
 
 export const syncService = {

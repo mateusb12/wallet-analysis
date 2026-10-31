@@ -24,6 +24,13 @@ export default function Settings() {
   const [jobStatus, setJobStatus] = useState({ status: 'idle' });
   const [isStartingJob, setIsStartingJob] = useState(false);
   const [jobError, setJobError] = useState('');
+  const [scraperRequests, setScraperRequests] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('wallet-analysis:scraper-requests') || '[]');
+    } catch {
+      return [];
+    }
+  });
 
   const userEmail = user?.email || 'usuario@exemplo.com';
   const displayName = dbName || userEmail.split('@')[0];
@@ -47,6 +54,22 @@ export default function Settings() {
     return () => clearInterval(interval);
   }, [jobStatus.status]);
 
+  useEffect(() => {
+    if (jobStatus.status !== 'running') return undefined;
+    const refreshRequests = async () => {
+      try {
+        const requests = await jobService.getScraperRequests();
+        setScraperRequests(requests);
+        localStorage.setItem('wallet-analysis:scraper-requests', JSON.stringify(requests));
+      } catch (error) {
+        setJobError(error.message);
+      }
+    };
+    refreshRequests();
+    const interval = setInterval(refreshRequests, 1000);
+    return () => clearInterval(interval);
+  }, [jobStatus.status]);
+
   const fetchJobStatus = async () => {
     try {
       const status = await jobService.getScraperStatus();
@@ -59,6 +82,8 @@ export default function Settings() {
   const handleRunScraper = async () => {
     setIsStartingJob(true);
     setJobError('');
+    setScraperRequests([]);
+    localStorage.removeItem('wallet-analysis:scraper-requests');
 
     try {
       const result = await jobService.runScraper();
@@ -384,6 +409,41 @@ export default function Settings() {
               <p className="mt-4 text-sm text-red-600 dark:text-red-400">{jobStatus.error}</p>
             )}
             {jobError && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{jobError}</p>}
+
+            <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">Requisições capturadas</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Atualização em tempo real durante a execução</p>
+                </div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">{scraperRequests.length}</span>
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-700/50 dark:text-gray-400">
+                    <tr>
+                      <th className="px-3 py-2">Método</th>
+                      <th className="px-3 py-2">URL</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">Tipo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scraperRequests.slice(-50).reverse().map((request) => (
+                      <tr key={request.id} className="border-t border-gray-200 dark:border-gray-700">
+                        <td className="whitespace-nowrap px-3 py-2 font-medium text-gray-900 dark:text-white">{request.method}</td>
+                        <td className="max-w-[34rem] truncate px-3 py-2 text-gray-600 dark:text-gray-300" title={request.url}>{request.url}</td>
+                        <td className={`whitespace-nowrap px-3 py-2 ${request.failed ? 'text-red-500' : 'text-gray-600 dark:text-gray-300'}`}>{request.failed ? 'Falhou' : request.status || '...'}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-500 dark:text-gray-400">{request.resourceType}</td>
+                      </tr>
+                    ))}
+                    {scraperRequests.length === 0 && (
+                      <tr><td colSpan="4" className="px-3 py-6 text-center text-gray-500 dark:text-gray-400">Nenhuma requisição capturada ainda.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
 

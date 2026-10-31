@@ -10,12 +10,48 @@ const browserChannel = process.env.SCRAPER_BROWSER_CHANNEL || 'chrome';
 let context = null;
 let status = 'idle';
 let error = null;
+let requestEntries = [];
+let requestSequence = 0;
+
+function attachRequestCapture(page) {
+  page.on('request', (request) => {
+    const entry = {
+      id: ++requestSequence,
+      method: request.method(),
+      url: request.url(),
+      resourceType: request.resourceType(),
+      status: null,
+      startedAt: new Date().toISOString(),
+      durationMs: null,
+      failed: false,
+    };
+    requestEntries.push(entry);
+    if (requestEntries.length > 500) requestEntries.shift();
+    request.__scraperEntry = entry;
+  });
+
+  page.on('response', (response) => {
+    const entry = response.request().__scraperEntry;
+    if (!entry) return;
+    entry.status = response.status();
+    entry.durationMs = Date.now() - new Date(entry.startedAt).getTime();
+  });
+
+  page.on('requestfailed', (request) => {
+    const entry = request.__scraperEntry;
+    if (!entry) return;
+    entry.failed = true;
+    entry.durationMs = Date.now() - new Date(entry.startedAt).getTime();
+  });
+}
 
 async function runScraper() {
   if (context) return;
 
   status = 'running';
   error = null;
+  requestEntries = [];
+  requestSequence = 0;
 
   try {
     context = await chromium.launchPersistentContext(userDataDir, {
@@ -27,6 +63,8 @@ async function runScraper() {
     });
 
     const page = context.pages()[0] || await context.newPage();
+    for (const existingPage of context.pages()) attachRequestCapture(existingPage);
+    context.on('page', attachRequestCapture);
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
   } catch (cause) {
     error = cause instanceof Error ? cause.message : String(cause);
@@ -52,6 +90,11 @@ const server = createServer(async (request, response) => {
   try {
     if (request.method === 'GET' && request.url === '/status') {
       sendJson(response, 200, { status, error });
+      return;
+    }
+
+    if (request.method === 'GET' && request.url === '/requests') {
+      sendJson(response, 200, { requests: requestEntries });
       return;
     }
 
