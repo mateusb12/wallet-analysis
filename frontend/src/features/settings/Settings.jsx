@@ -10,6 +10,48 @@ import { formatDateTimeLong } from '../../utils/dateUtils.js';
 
 import { CheckCircle2, Clock3, Loader2, Play, RefreshCw, XCircle } from 'lucide-react';
 
+const monthNumbers = {
+  janeiro: '01', fevereiro: '02', março: '03', marco: '03', abril: '04', maio: '05', junho: '06',
+  julho: '07', agosto: '08', setembro: '09', outubro: '10', novembro: '11', dezembro: '12',
+};
+
+const normalizeDate = (value) => {
+  if (!value) return '';
+  const text = String(value).trim().toLowerCase();
+  const brazilianDate = text.match(/(\d{1,2})\s+de\s+([a-zà-ÿ]+)\s+de\s+(\d{4})/i);
+  if (brazilianDate) {
+    const month = monthNumbers[brazilianDate[2].normalize('NFD').replace(/[\u0300-\u036f]/g, '')];
+    if (month) return `${brazilianDate[3]}-${month}-${brazilianDate[1].padStart(2, '0')}`;
+  }
+  const isoDate = text.match(/^\d{4}-\d{2}-\d{2}/);
+  if (isoDate) return isoDate[0];
+  const slashDate = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return slashDate ? `${slashDate[3]}-${slashDate[2]}-${slashDate[1]}` : text;
+};
+
+const normalizeTicker = (value) => String(value || '').match(/\b[A-Z]{4}\d{1,2}\b/i)?.[0].toUpperCase() || '';
+
+const parseBrazilianNumber = (value) => {
+  const text = String(value || '').replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
+  const number = Number(text);
+  return Number.isFinite(number) ? number : null;
+};
+
+const isContributionRegistered = (contribution, purchases) => {
+  const ticker = normalizeTicker(contribution.product);
+  const date = normalizeDate(contribution.date);
+  const quantity = parseBrazilianNumber(contribution.quantity);
+  const price = parseBrazilianNumber(contribution.price);
+  if (!ticker || !date || quantity === null || quantity < 0) return false;
+
+  return purchases.some((purchase) => {
+    if (String(purchase.ticker || '').toUpperCase() !== ticker) return false;
+    if (normalizeDate(purchase.trade_date) !== date) return false;
+    if (Math.abs(Number(purchase.qty) - quantity) > 0.0001) return false;
+    return price === null || Math.abs(Number(purchase.price) - price) <= 0.01;
+  });
+};
+
 export default function Settings() {
   const { theme, toggleTheme } = useTheme();
   const { user } = useAuth();
@@ -467,6 +509,7 @@ export default function Settings() {
                 <div>
                   <p className="font-medium text-gray-900 dark:text-white">Aportes capturados</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Movimentações encontradas no extrato da B3</p>
+                  <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">Laranja: ainda não cadastrado</p>
                 </div>
                 <span className="text-sm text-gray-500 dark:text-gray-400">{scraperContributions.length}</span>
               </div>
@@ -483,7 +526,17 @@ export default function Settings() {
                   </thead>
                   <tbody>
                     {scraperContributions.map((contribution, index) => (
-                      <tr key={contribution.id || index} className="border-t border-gray-200 dark:border-gray-700">
+                      <tr
+                        key={contribution.id || index}
+                        className={`border-t border-gray-200 dark:border-gray-700 ${
+                          isContributionRegistered(contribution, existingPurchases)
+                            ? ''
+                            : 'bg-orange-500/10 dark:bg-orange-500/15'
+                        }`}
+                        title={isContributionRegistered(contribution, existingPurchases)
+                          ? 'Aporte já cadastrado'
+                          : 'Aporte ainda não cadastrado'}
+                      >
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.date || '—'}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.movement || '—'}</td>
                         <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.product || '—'}</td>

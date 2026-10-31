@@ -240,6 +240,7 @@ async function extractContributions(page) {
       const movementIndex = indexOf(/movimenta/i);
       const productIndex = indexOf(/produto/i);
       const quantityIndex = indexOf(/quantidade/i);
+      const priceIndex = indexOf(/preço unitário|preco unitario|preço|preco/i);
       const totalIndex = indexOf(/valor total|total/i);
 
       for (const row of tableRows.slice(headerRowIndex + 1)) {
@@ -252,6 +253,7 @@ async function extractContributions(page) {
           movement: valueAt(movementIndex),
           product: valueAt(productIndex),
           quantity: valueAt(quantityIndex),
+          price: valueAt(priceIndex),
           total: valueAt(totalIndex),
         });
       }
