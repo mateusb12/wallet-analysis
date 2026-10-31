@@ -85,6 +85,13 @@ export const jobService = {
     if (!response.ok) throw new Error(data.detail || 'Não foi possível consultar as requisições');
     return data.requests || [];
   },
+
+  async getScraperContributions() {
+    const response = await fetch(`${API_URL}/internal/scraper/contributions`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Não foi possível consultar os aportes');
+    return data.contributions || [];
+  },
 };
 
 export const syncService = {

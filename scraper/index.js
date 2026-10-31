@@ -30,10 +30,6 @@ if (b3Cpf && b3Password && page.url().includes('/login')) {
   const passwordInput = page.locator('input[type="password"]').first();
 
   if (await cpfInput.count()) {
-    await cpfInput.evaluate((element) => {
-      element.style.setProperty('border', '3px solid red', 'important');
-      element.style.setProperty('box-shadow', '0 0 0 2px rgba(255, 0, 0, 0.25)', 'important');
-    });
     await cpfInput.fill(b3Cpf);
     if (!(await passwordInput.count())) {
       await page.getByRole('button', { name: /entrar|continuar|avançar/i }).first().click();

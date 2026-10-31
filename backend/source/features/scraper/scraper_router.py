@@ -137,6 +137,10 @@ def pause_scraper(db: Session = Depends(get_db)) -> dict[str, Any]:
 
 @scraper_bp.get("/status")
 def scraper_status(db: Session = Depends(get_db)) -> dict[str, Any]:
+    local_progress = None
+    if os.getenv("APP_ENV", "production").lower() == "development":
+        local_progress = read_local_agent("/status").get("progress")
+
     current_state = db.get(ScraperJob, SCRAPER_NAME)
     if current_state is None:
         return {
@@ -145,6 +149,7 @@ def scraper_status(db: Session = Depends(get_db)) -> dict[str, Any]:
             "started_at": None,
             "finished_at": None,
             "error": None,
+            "progress": local_progress,
         }
 
     return {
@@ -153,9 +158,15 @@ def scraper_status(db: Session = Depends(get_db)) -> dict[str, Any]:
         "started_at": current_state.started_at,
         "finished_at": current_state.finished_at,
         "error": current_state.error,
+        "progress": local_progress,
     }
 
 
 @scraper_bp.get("/requests")
 def scraper_requests() -> dict[str, Any]:
     return read_local_agent("/requests")
+
+
+@scraper_bp.get("/contributions")
+def scraper_contributions() -> dict[str, Any]:
+    return read_local_agent("/contributions")

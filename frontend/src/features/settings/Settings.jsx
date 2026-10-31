@@ -21,12 +21,25 @@ export default function Settings() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   const [existingPurchases, setExistingPurchases] = useState([]);
-  const [jobStatus, setJobStatus] = useState({ status: 'idle' });
+  const [jobStatus, setJobStatus] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('wallet-analysis:scraper-job-status') || '{"status":"idle"}');
+    } catch {
+      return { status: 'idle' };
+    }
+  });
   const [isStartingJob, setIsStartingJob] = useState(false);
   const [jobError, setJobError] = useState('');
   const [scraperRequests, setScraperRequests] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('wallet-analysis:scraper-requests') || '[]');
+    } catch {
+      return [];
+    }
+  });
+  const [scraperContributions, setScraperContributions] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('wallet-analysis:scraper-contributions') || '[]');
     } catch {
       return [];
     }
@@ -50,7 +63,7 @@ export default function Settings() {
   useEffect(() => {
     if (jobStatus.status !== 'running') return undefined;
 
-    const interval = setInterval(fetchJobStatus, 5000);
+    const interval = setInterval(fetchJobStatus, 1000);
     return () => clearInterval(interval);
   }, [jobStatus.status]);
 
@@ -70,10 +83,27 @@ export default function Settings() {
     return () => clearInterval(interval);
   }, [jobStatus.status]);
 
+  useEffect(() => {
+    if (jobStatus.status !== 'running') return undefined;
+    const refreshContributions = async () => {
+      try {
+        const contributions = await jobService.getScraperContributions();
+        setScraperContributions(contributions);
+        localStorage.setItem('wallet-analysis:scraper-contributions', JSON.stringify(contributions));
+      } catch (error) {
+        setJobError(error.message);
+      }
+    };
+    refreshContributions();
+    const interval = setInterval(refreshContributions, 1000);
+    return () => clearInterval(interval);
+  }, [jobStatus.status]);
+
   const fetchJobStatus = async () => {
     try {
       const status = await jobService.getScraperStatus();
       setJobStatus(status);
+      localStorage.setItem('wallet-analysis:scraper-job-status', JSON.stringify(status));
     } catch (error) {
       setJobError(error.message);
     }
@@ -83,11 +113,27 @@ export default function Settings() {
     setIsStartingJob(true);
     setJobError('');
     setScraperRequests([]);
+    setScraperContributions([]);
     localStorage.removeItem('wallet-analysis:scraper-requests');
+    localStorage.removeItem('wallet-analysis:scraper-contributions');
+    localStorage.setItem(
+      'wallet-analysis:scraper-job-status',
+      JSON.stringify({
+        ...jobStatus,
+        status: 'running',
+        error: null,
+        finished_at: null,
+        progress: { current: 0, total: 1, label: 'Iniciando execução' },
+      })
+    );
 
     try {
       const result = await jobService.runScraper();
-      setJobStatus((current) => ({ ...current, ...result }));
+      setJobStatus((current) => {
+        const nextStatus = { ...current, ...result };
+        localStorage.setItem('wallet-analysis:scraper-job-status', JSON.stringify(nextStatus));
+        return nextStatus;
+      });
       await fetchJobStatus();
     } catch (error) {
       setJobError(error.message);
@@ -102,7 +148,11 @@ export default function Settings() {
 
     try {
       const result = await jobService.pauseScraper();
-      setJobStatus((current) => ({ ...current, ...result }));
+      setJobStatus((current) => {
+        const nextStatus = { ...current, ...result };
+        localStorage.setItem('wallet-analysis:scraper-job-status', JSON.stringify(nextStatus));
+        return nextStatus;
+      });
       await fetchJobStatus();
     } catch (error) {
       setJobError(error.message);
@@ -348,7 +398,9 @@ export default function Settings() {
                 )}
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
                   {jobStatus.status === 'running'
-                    ? 'Executando'
+                    ? jobStatus.progress
+                      ? `${jobStatus.progress.current}/${jobStatus.progress.total} — ${jobStatus.progress.label}`
+                      : 'Executando'
                     : jobStatus.status === 'failed'
                       ? 'Falhou'
                       : jobStatus.status === 'paused'
@@ -409,6 +461,43 @@ export default function Settings() {
               <p className="mt-4 text-sm text-red-600 dark:text-red-400">{jobStatus.error}</p>
             )}
             {jobError && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{jobError}</p>}
+
+            <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">Aportes capturados</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Movimentações encontradas no extrato da B3</p>
+                </div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">{scraperContributions.length}</span>
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-700/50 dark:text-gray-400">
+                    <tr>
+                      <th className="px-3 py-2">Data</th>
+                      <th className="px-3 py-2">Movimentação</th>
+                      <th className="px-3 py-2">Produto</th>
+                      <th className="px-3 py-2">Quantidade</th>
+                      <th className="px-3 py-2">Valor total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scraperContributions.map((contribution, index) => (
+                      <tr key={contribution.id || index} className="border-t border-gray-200 dark:border-gray-700">
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.date || '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.movement || '—'}</td>
+                        <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.product || '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.quantity || '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.total || '—'}</td>
+                      </tr>
+                    ))}
+                    {scraperContributions.length === 0 && (
+                      <tr><td colSpan="5" className="px-3 py-6 text-center text-gray-500 dark:text-gray-400">Nenhum aporte capturado ainda.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
             <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
               <div className="mb-3 flex items-center justify-between">
