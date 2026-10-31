@@ -10,6 +10,10 @@ const userDataDir = resolve(process.env.SCRAPER_PROFILE_DIR || resolve(scraperDi
 const browserChannel = process.env.SCRAPER_BROWSER_CHANNEL || 'chrome';
 const b3Cpf = process.env.B3_CPF;
 const b3Password = process.env.B3_PASSWORD;
+const browserArgs = [
+  '--disable-blink-features=AutomationControlled',
+  '--disable-dev-shm-usage',
+];
 
 let context = null;
 let status = 'idle';
@@ -82,11 +86,204 @@ async function findInput(page, patterns, type = null) {
 
     const matchesType = !type || attributes.type.toLowerCase() === type;
     const matchesPattern = patterns.length === 0 || patterns.some((pattern) => searchableText.includes(pattern));
-    if (matchesType && (type === 'password' || matchesPattern)) {
+    const isVisible = await input.isVisible().catch(() => false);
+    const isEnabled = await input.isEnabled().catch(() => false);
+    if (isVisible && isEnabled && matchesType && (type === 'password' || matchesPattern)) {
       return input;
     }
   }
 
+  return null;
+}
+
+async function waitForInput(page, patterns, type = null, timeout = 10000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const input = await findInput(page, patterns, type);
+    if (input) return input;
+    await page.waitForTimeout(250);
+  }
+  return null;
+}
+
+async function findDateInput(page, labelPattern) {
+  const inputs = page.locator('input');
+  const count = await inputs.count();
+
+  for (let index = 0; index < count; index += 1) {
+    const input = inputs.nth(index);
+    const matches = await input.evaluate((element, patternSource) => {
+      const pattern = new RegExp(patternSource, 'i');
+      const context = [
+        element.getAttribute('name') || '',
+        element.getAttribute('id') || '',
+        element.getAttribute('placeholder') || '',
+        element.getAttribute('aria-label') || '',
+        element.parentElement?.textContent || '',
+      ].join(' ');
+      return pattern.test(context);
+    }, labelPattern.source);
+    if (matches && await input.isVisible().catch(() => false)) return input;
+  }
+
+  return null;
+}
+
+async function waitForDateInput(page, labelPattern, timeout = 10000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const input = await findDateInput(page, labelPattern);
+    if (input) return input;
+    await page.waitForTimeout(200);
+  }
+  return null;
+}
+
+async function selectDateFromPicker(page, dateInput, targetDate, debugLabel = 'data-inicial') {
+  await markDebugTarget(dateInput, debugLabel);
+  const dateField = dateInput.locator('xpath=..');
+  const calendarTriggers = dateField.locator('button, [role="button"]');
+  let calendarTrigger = null;
+  for (let index = 0; index < await calendarTriggers.count(); index += 1) {
+    const candidate = calendarTriggers.nth(index);
+    if (await candidate.isVisible().catch(() => false)) {
+      calendarTrigger = candidate;
+      break;
+    }
+  }
+  if (calendarTrigger) {
+    await markDebugTarget(calendarTrigger, 'trigger-calendario');
+    await calendarTrigger.click();
+  } else {
+    await dateInput.click();
+  }
+
+  const comboboxes = page.locator('input[role="combobox"][aria-haspopup="listbox"]:visible');
+  const comboboxCount = await comboboxes.count();
+  const monthSelector = comboboxCount > 0 ? comboboxes.nth(0) : null;
+  const yearSelector = comboboxCount > 1 ? comboboxes.nth(1) : null;
+  if (!monthSelector || !yearSelector) {
+    await dumpCalendarControls(page);
+    throw new Error('Os comboboxes de mês e ano da B3 não apareceram no DOM.');
+  }
+
+  await markDebugTarget(monthSelector, 'seletor-mes');
+  await monthSelector.click();
+  const monthAbbreviations = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const monthNames = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  const monthOption = page.locator(`a[role="option"][aria-label="${monthAbbreviations[targetDate.month - 1]}"]:visible`).last();
+  if (!(await monthOption.count()) || !(await monthOption.isVisible().catch(() => false))) {
+    throw new Error(`A opção ${monthAbbreviations[targetDate.month - 1]} não apareceu no DOM do mês da B3.`);
+  }
+  await markDebugTarget(monthOption, `opcao-mes-${monthAbbreviations[targetDate.month - 1]}`);
+  await monthOption.click();
+
+  await markDebugTarget(yearSelector, 'seletor-ano');
+  await yearSelector.click();
+  const yearOption = page.locator(`a[role="option"][aria-label="${targetDate.year}"]:visible`).last();
+  if (!(await yearOption.count()) || !(await yearOption.isVisible().catch(() => false))) {
+    throw new Error(`${targetDate.year} não apareceu no DOM do ano da B3.`);
+  }
+  await markDebugTarget(yearOption, `opcao-ano-${targetDate.year}`);
+  await yearOption.click();
+
+  await page.waitForTimeout(300);
+  const calendarTitle = page.getByText(new RegExp(`${monthNames[targetDate.month - 1]}\\s+de\\s+${targetDate.year}`, 'i')).last();
+  if (!(await calendarTitle.count()) || !(await calendarTitle.isVisible().catch(() => false))) {
+    throw new Error('O calendário da B3 não confirmou janeiro de 2025 no DOM.');
+  }
+
+  const day = page.locator('body *:visible').filter({ hasText: new RegExp(`^\\s*${targetDate.day}\\s*$`) }).last();
+  if (!(await day.count()) || !(await day.isVisible().catch(() => false))) {
+    throw new Error('O calendário da B3 abriu, mas o dia 1 não foi encontrado no DOM.');
+  }
+  await markDebugTarget(day, `dia-${targetDate.day}`);
+  await day.click();
+
+  const expectedDay = String(targetDate.day).padStart(2, '0');
+  const expectedMonth = String(targetDate.month).padStart(2, '0');
+  const expectedValues = [`${expectedDay}/${expectedMonth}/${targetDate.year}`, `${targetDate.year}-${expectedMonth}-${expectedDay}`];
+  const actualValue = await dateInput.inputValue();
+  if (!expectedValues.includes(actualValue)) {
+    throw new Error(`A data inicial não foi confirmada pelo DOM: ${actualValue || '(vazia)'}.`);
+  }
+}
+
+async function markDebugTarget(locator, label) {
+  await locator.evaluate((element, targetLabel) => {
+    let target = element;
+    for (let level = 0; level < 4; level += 1) {
+      const rect = target.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) break;
+      target = target.parentElement || target;
+    }
+    target.scrollIntoView({ block: 'center', inline: 'center' });
+    target.style.setProperty('border', '3px solid red', 'important');
+    target.style.setProperty('outline', '3px solid red', 'important');
+    target.setAttribute('data-scraper-debug-target', targetLabel);
+  }, label);
+  console.log(`Debug border aplicada: ${label}`);
+}
+
+async function dumpCalendarControls(page) {
+  const controls = await page.locator('body *:visible').evaluateAll((elements) => elements
+    .map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        tag: element.tagName,
+        className: typeof element.className === 'string' ? element.className : '',
+        role: element.getAttribute('role') || '',
+        ariaLabel: element.getAttribute('aria-label') || '',
+        text: (element.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 50),
+        rect: [Math.round(rect.left), Math.round(rect.top), Math.round(rect.width), Math.round(rect.height)],
+      };
+    })
+    .filter((element) => element.rect[0] < 650 && element.rect[1] > 100 && element.rect[1] < 650)
+    .filter((element) => element.rect[2] > 0 && element.rect[3] > 0)
+    .filter((element) => element.role || element.ariaLabel || element.text === 'Out' || element.text === '2026' || /select|month|year|calendar|date/i.test(element.className))
+    .slice(-40));
+  console.log(`Controles do calendário no DOM: ${JSON.stringify(controls)}`);
+}
+
+async function findVisibleControl(page, labelPattern) {
+  const controls = page.locator('button, [role="button"], input[type="submit"], a');
+  const count = await controls.count();
+
+  for (let index = 0; index < count; index += 1) {
+    const control = controls.nth(index);
+    const matches = await control.evaluate((element, patternSource) => {
+      const pattern = new RegExp(patternSource, 'i');
+      const text = [
+        element.textContent || '',
+        element.getAttribute('aria-label') || '',
+        element.getAttribute('title') || '',
+        element.getAttribute('value') || '',
+      ].join(' ').replace(/\s+/g, ' ').trim();
+      return pattern.test(text);
+    }, labelPattern.source);
+    if (matches && await control.isVisible().catch(() => false)) return control;
+  }
+
+  return null;
+}
+
+async function waitForVisibleControl(page, labelPattern, timeout = 10000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const control = await findVisibleControl(page, labelPattern);
+    if (control) return control;
+    await page.waitForTimeout(200);
+  }
+  return null;
+}
+
+async function waitForEnabledControl(page, labelPattern, timeout = 10000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const control = await findVisibleControl(page, labelPattern);
+    if (control && await control.isEnabled().catch(() => false)) return control;
+    await page.waitForTimeout(200);
+  }
   return null;
 }
 
@@ -117,7 +314,7 @@ async function loginToB3(page) {
   if (!isLoginPage(page)) return;
 
   setProgress(1, 10, 'Tentando fazer login');
-  const cpfInput = await findInput(page, ['cpf', 'documento', 'identificação']);
+  const cpfInput = await waitForInput(page, ['cpf', 'documento', 'identificação']);
   console.log(`Campo CPF detectado: ${Boolean(cpfInput)}`);
   if (!cpfInput || !b3Cpf) return;
 
@@ -128,8 +325,7 @@ async function loginToB3(page) {
   await clickLoginButton(page);
   console.log('Botão Entrar clicado.');
 
-  await page.waitForTimeout(1500);
-  const passwordInput = await findInput(page, ['senha', 'password'], 'password');
+  const passwordInput = await waitForInput(page, ['senha', 'password'], 'password');
   console.log(`Campo senha detectado: ${Boolean(passwordInput)}`);
   if (!passwordInput || !b3Password) return;
 
@@ -150,13 +346,18 @@ async function loginToB3(page) {
 
 async function configureMovementFilters(page) {
   const movementUrl = 'https://www.investidor.b3.com.br/extrato/movimentacao';
+  let movementLoaded = false;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     setProgress(4, 12, 'Abrindo extratos');
     console.log('Abrindo Extratos > Movimentação.');
     await page.goto(movementUrl, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(5000);
+    console.log(`URL após abrir movimentação: ${safeUrl(page)}`);
 
-    if (!isLoginPage(page)) break;
+    if (!isLoginPage(page) && page.url().includes('/extrato/movimentacao')) {
+      movementLoaded = true;
+      break;
+    }
 
     setProgress(5, 12, 'Refazendo login');
     console.log('B3 pediu login novamente ao abrir Movimentação.');
@@ -165,10 +366,12 @@ async function configureMovementFilters(page) {
       (url) => !url.toString().includes('/login') && !url.toString().includes('b2clogin.com'),
       { timeout: 15000 }
     ).catch(() => null);
+    await page.waitForTimeout(1500);
+    console.log(`URL após refazer login: ${safeUrl(page)}`);
   }
 
-  if (isLoginPage(page)) {
-    throw new Error('A B3 não concluiu o login ao abrir Movimentação.');
+  if (!movementLoaded) {
+    throw new Error('A B3 não abriu a página de movimentação após o login.');
   }
 
   const cookieButton = page.getByRole('button', { name: /permitir todos/i }).first();
@@ -178,32 +381,58 @@ async function configureMovementFilters(page) {
     console.log('Banner de cookies fechado.');
   }
 
-  const filterButton = page.locator('button').filter({ hasText: /filter icon|filtrar/i }).first();
   setProgress(6, 12, 'Abrindo filtros');
-  console.log(`Filtro inicial detectado: ${Boolean(await filterButton.count())}`);
-  if (await filterButton.count()) {
-    await filterButton.evaluate((element) => element.click());
-    console.log('Filtro inicial clicado.');
-  }
+  const filterButton = await waitForVisibleControl(page, /filtrar/i);
+  console.log(`Filtro inicial detectado: ${Boolean(filterButton)}`);
+  if (!filterButton) throw new Error('Não foi possível localizar o botão para abrir os filtros da B3.');
+  await filterButton.click({ timeout: 10000 });
+  console.log('Filtro inicial clicado.');
 
-  await page.waitForTimeout(1000);
-  const twelveMonths = page.getByText(/12\s*(meses|months)/i).first();
-  setProgress(7, 12, 'Selecionando 12 meses');
-  console.log(`Opção 12 meses detectada: ${Boolean(await twelveMonths.count())}`);
-  if (await twelveMonths.count()) {
-    await twelveMonths.evaluate((element) => element.click());
-    console.log('Opção 12 meses selecionada.');
-  }
+  setProgress(7, 12, 'Selecionando período desde 01/01/2025');
+  const startDateInput = await waitForDateInput(page, /data\s*inicial|in[ií]cio/, 10000);
+  if (!startDateInput) throw new Error('Não foi possível localizar a data inicial dos filtros da B3.');
+  const endDateInput = await waitForDateInput(page, /data\s*final|fim/, 10000);
+  if (!endDateInput) throw new Error('Não foi possível localizar a data final dos filtros da B3.');
+  const endDateValue = await endDateInput.inputValue();
+  const endDateMatch = endDateValue.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!endDateMatch) throw new Error(`A data final inicial da B3 não tem formato reconhecido: ${endDateValue || '(vazia)'}.`);
+  const endDate = {
+    day: Number(endDateMatch[1]),
+    month: Number(endDateMatch[2]),
+    year: Number(endDateMatch[3]),
+  };
 
-  const applyButton = page.locator('button').filter({ hasText: /apply|filtrar/i }).last();
+  await selectDateFromPicker(page, startDateInput, { year: 2025, month: 1, day: 1 });
+  console.log('Data inicial selecionada: 01/01/2025.');
+
+  await selectDateFromPicker(page, endDateInput, endDate, 'data-final');
+  console.log(`Data final selecionada: ${endDateValue}.`);
+
+  const applyButton = await waitForEnabledControl(page, /^(apply|filtrar)$/i, 10000);
   setProgress(8, 12, 'Aplicando filtro');
-  console.log(`Filtro final detectado: ${Boolean(await applyButton.count())}`);
-  if (await applyButton.count()) {
-    await applyButton.evaluate((element) => element.click());
-    console.log('Filtro final clicado.');
-  }
+  const hasApplyButton = Boolean(applyButton);
+  console.log(`Filtro final detectado: ${hasApplyButton}`);
+  if (!hasApplyButton) throw new Error('Não foi possível localizar o botão para aplicar os filtros da B3.');
+  await applyButton.evaluate((element) => {
+    element.scrollIntoView({ block: 'center', inline: 'center' });
+    element.style.setProperty('border', '3px solid red', 'important');
+    element.style.setProperty('outline', '3px solid red', 'important');
+    element.setAttribute('data-scraper-debug', 'apply-filter-target');
+  });
+  console.log('Borda vermelha aplicada no botão FILTRAR.');
+  await page.waitForTimeout(500);
+  await applyButton.click({ force: true, timeout: 10000 });
+  console.log('Filtro final clicado.');
 
-  await page.waitForTimeout(1500);
+  const backButton = await waitForVisibleControl(page, /^\s*voltar\s*$/i, 10000);
+  setProgress(9, 12, 'Voltando para movimentações');
+  const hasBackButton = Boolean(backButton);
+  console.log(`Botão voltar detectado: ${hasBackButton}`);
+  if (!hasBackButton) throw new Error('Não foi possível localizar o botão Voltar dos filtros da B3.');
+  await backButton.evaluate((element) => element.click());
+  await page.waitForLoadState('domcontentloaded').catch(() => null);
+  console.log(`Tela após voltar: ${safeUrl(page)}`);
+
   contributionEntries = await extractContributions(page);
   console.log(`Aportes capturados: ${contributionEntries.length}`);
   setProgress(12, 12, 'Movimentações carregadas');
@@ -264,7 +493,12 @@ async function extractContributions(page) {
 }
 
 async function runScraper() {
-  if (context || status === 'running') return;
+  if (status === 'running') return;
+  if (context) {
+    const previousContext = context;
+    context = null;
+    await previousContext.close().catch(() => null);
+  }
 
   status = 'running';
   error = null;
@@ -278,7 +512,7 @@ async function runScraper() {
       headless: false,
       channel: browserChannel,
       ignoreHTTPSErrors: true,
-      args: ['--disable-blink-features=AutomationControlled'],
+      args: browserArgs,
       ignoreDefaultArgs: ['--enable-automation'],
     });
     const currentContext = context;
@@ -310,7 +544,8 @@ async function runScraper() {
     if (status === 'paused') return;
     error = cause instanceof Error ? cause.message : String(cause);
     status = 'failed';
-    await closeScraper();
+    // Mantemos o navegador aberto para inspeção manual. Uma nova execução
+    // fecha este contexto falho antes de iniciar outro.
     throw cause;
   }
 }

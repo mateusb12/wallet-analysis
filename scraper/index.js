@@ -8,6 +8,10 @@ const userDataDir = resolve(process.env.SCRAPER_PROFILE_DIR || resolve(scraperDi
 const browserChannel = process.env.SCRAPER_BROWSER_CHANNEL || 'chrome';
 const b3Cpf = process.env.B3_CPF;
 const b3Password = process.env.B3_PASSWORD;
+const browserArgs = [
+  '--disable-blink-features=AutomationControlled',
+  '--disable-dev-shm-usage',
+];
 
 console.log(`Abrindo ${targetUrl}`);
 console.log(`Perfil: ${userDataDir}`);
@@ -16,7 +20,7 @@ const context = await chromium.launchPersistentContext(userDataDir, {
   headless: false,
   channel: browserChannel,
   ignoreHTTPSErrors: true,
-  args: ['--disable-blink-features=AutomationControlled'],
+  args: browserArgs,
   ignoreDefaultArgs: ['--enable-automation'],
 });
 
