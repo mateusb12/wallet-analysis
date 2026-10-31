@@ -34,7 +34,10 @@ async def run() -> int:
     db.commit()
 
     try:
-        target_url = os.getenv("SCRAPER_TARGET_URL", "https://www.google.com")
+        target_url = os.getenv(
+            "SCRAPER_TARGET_URL",
+            "https://www.investidor.b3.com.br/",
+        )
         headless = os.getenv("APP_ENV", "production").lower() == "production"
         profile_dir = os.getenv(
             "SCRAPER_PROFILE_DIR",

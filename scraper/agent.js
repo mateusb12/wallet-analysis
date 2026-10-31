@@ -1,10 +1,12 @@
 import { createServer } from 'node:http';
 import { chromium } from 'playwright';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const port = Number(process.env.SCRAPER_AGENT_PORT || 8765);
-const targetUrl = process.env.SCRAPER_TARGET_URL || 'https://www.google.com';
-const userDataDir = resolve(process.env.SCRAPER_PROFILE_DIR || './browser_profile');
+const targetUrl = process.env.SCRAPER_TARGET_URL || 'https://www.investidor.b3.com.br/';
+const scraperDir = dirname(fileURLToPath(import.meta.url));
+const userDataDir = resolve(process.env.SCRAPER_PROFILE_DIR || resolve(scraperDir, 'browser_profile'));
 const browserChannel = process.env.SCRAPER_BROWSER_CHANNEL || 'chrome';
 
 let context = null;
