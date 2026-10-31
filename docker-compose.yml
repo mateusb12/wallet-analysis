@@ -4,7 +4,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      APP_ENV: ${APP_ENV:-production}
+      APP_ENV: ${APP_ENV:-development}
+      DISPLAY: ${DISPLAY:-}
+      XAUTHORITY: /tmp/.Xauthority
       PYTHONPATH: /app
       DATABASE_URL: ${DATABASE_URL}
       POSTGRES_HOST: ${POSTGRES_HOST}
@@ -15,8 +17,12 @@ services:
       AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?AUTH_SECRET_KEY is required}
       LOCAL_STORAGE_PATH: ${LOCAL_STORAGE_PATH:-/app/backend/data/uploads}
+      SCRAPER_LOCAL_AGENT_URL: ${SCRAPER_LOCAL_AGENT_URL:-http://host.docker.internal:8765}
     ports:
       - "8001:8000"
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${XAUTHORITY:-/run/user/1000/gdm/Xauthority}:/tmp/.Xauthority:ro
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
     extra_hosts:
       - "host.docker.internal:host-gateway"

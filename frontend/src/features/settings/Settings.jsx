@@ -71,6 +71,21 @@ export default function Settings() {
     }
   };
 
+  const handlePauseScraper = async () => {
+    setIsStartingJob(true);
+    setJobError('');
+
+    try {
+      const result = await jobService.pauseScraper();
+      setJobStatus((current) => ({ ...current, ...result }));
+      await fetchJobStatus();
+    } catch (error) {
+      setJobError(error.message);
+    } finally {
+      setIsStartingJob(false);
+    }
+  };
+
   const loadUserProfile = async () => {
     try {
       const profile = await userService.getProfile();
@@ -301,7 +316,7 @@ export default function Settings() {
                   <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
                 ) : jobStatus.status === 'failed' ? (
                   <XCircle className="h-4 w-4 text-red-500" />
-                ) : jobStatus.status === 'stopped' ? (
+                ) : jobStatus.status === 'paused' || jobStatus.status === 'stopped' ? (
                   <CheckCircle2 className="h-4 w-4 text-green-500" />
                 ) : (
                   <span className="h-2.5 w-2.5 rounded-full bg-gray-400" />
@@ -311,19 +326,32 @@ export default function Settings() {
                     ? 'Executando'
                     : jobStatus.status === 'failed'
                       ? 'Falhou'
-                      : jobStatus.status === 'stopped'
-                        ? 'Concluída'
+                      : jobStatus.status === 'paused'
+                        ? 'Pausada'
+                        : jobStatus.status === 'stopped'
+                          ? 'Concluída'
                         : 'Parada'}
                 </span>
               </div>
-              <button
-                onClick={handleRunScraper}
-                disabled={isStartingJob || jobStatus.status === 'running'}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Play className="h-4 w-4" />
-                Executar agora
-              </button>
+              {jobStatus.status === 'running' ? (
+                <button
+                  onClick={handlePauseScraper}
+                  disabled={isStartingJob}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span className="h-3 w-3 rounded-sm bg-current" />
+                  Pausar
+                </button>
+              ) : (
+                <button
+                  onClick={handleRunScraper}
+                  disabled={isStartingJob}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Play className="h-4 w-4" />
+                  Executar agora
+                </button>
+              )}
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-3 border-t border-gray-200 pt-4 dark:border-gray-700 sm:grid-cols-3">

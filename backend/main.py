@@ -15,7 +15,7 @@ from backend.source.features.market_data.b3_router import b3_bp
 from backend.source.features.storage.storage_router import storage_bp
 from backend.source.features.users.user_router import user_bp
 from backend.source.features.wallet.wallet_router import wallet_bp
-from backend.source.features.scraper.scraper_router import scraper_bp
+from backend.source.features.scraper.scraper_router import scraper_bp, stop_local_scraper
 
 # Updated imports pointing to the features folder
 
@@ -51,6 +51,11 @@ app.mount(
     StaticFiles(directory=os.getenv("LOCAL_STORAGE_PATH", "./data/uploads"), check_dir=False),
     name="uploads",
 )
+
+
+@app.on_event("shutdown")
+def shutdown_scraper_agent():
+    stop_local_scraper()
 
 @app.get("/")
 def health_check():

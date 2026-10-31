@@ -1,0 +1,12 @@
+{
+  "name": "wallet-analysis-scraper",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node index.js",
+    "agent": "node agent.js"
+  },
+  "dependencies": {
+    "playwright": "^1.58.0"
+  }
+}

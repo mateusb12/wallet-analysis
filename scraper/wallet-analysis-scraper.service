@@ -1,0 +1,14 @@
+[Unit]
+Description=Wallet Analysis local scraper agent
+After=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/mateus/Desktop/Javascript/wallet-analysis/scraper
+ExecStart=/home/mateus/.nvm/versions/node/v24.13.0/bin/node /home/mateus/Desktop/Javascript/wallet-analysis/scraper/agent.js
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/run/user/1000/gdm/Xauthority
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

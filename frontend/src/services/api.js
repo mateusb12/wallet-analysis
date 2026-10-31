@@ -71,6 +71,13 @@ export const jobService = {
     if (!response.ok) throw new Error(data.detail || 'Não foi possível iniciar a job');
     return data;
   },
+
+  async pauseScraper() {
+    const response = await fetch(`${API_URL}/internal/scraper/pause`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Não foi possível pausar a job');
+    return data;
+  },
 };
 
 export const syncService = {

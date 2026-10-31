@@ -34,15 +34,38 @@ async def run() -> int:
     db.commit()
 
     try:
-        target_url = os.getenv("SCRAPER_TARGET_URL", "about:blank")
+        target_url = os.getenv("SCRAPER_TARGET_URL", "https://www.google.com")
+        headless = os.getenv("APP_ENV", "production").lower() == "production"
+        profile_dir = os.getenv(
+            "SCRAPER_PROFILE_DIR",
+            "/tmp/wallet-analysis-scraper-profile",
+        )
         async with async_playwright() as playwright:
-            browser = await playwright.chromium.launch(headless=True)
-            page = await browser.new_page()
+            context = await playwright.chromium.launch_persistent_context(
+                profile_dir,
+                headless=headless,
+                args=["--disable-blink-features=AutomationControlled"],
+                ignore_default_args=["--enable-automation"],
+            )
+            page = context.pages[0] if context.pages else await context.new_page()
             await page.goto(target_url, wait_until="domcontentloaded")
             print(f"Playwright abriu {target_url} para a job {job_id}.")
-            await browser.close()
 
-        job.status = "stopped"
+            while True:
+                await asyncio.sleep(1)
+                db.expire_all()
+                current_state = db.scalar(
+                    select(ScraperJob).where(
+                        ScraperJob.name == SCRAPER_NAME,
+                        ScraperJob.job_id == job_id,
+                    )
+                )
+                if current_state is None or current_state.status == "paused":
+                    break
+
+            await context.close()
+
+        job.status = "paused"
         job.finished_at = datetime.now(timezone.utc)
         job.error = None
         db.commit()
