@@ -87,23 +87,64 @@ const getConfirmedSettlementDate = (contribution) => {
   return confirmedSettlementDates[key] || null;
 };
 
-const findRegisteredPurchase = (contribution, purchases) => {
+const isSettlementForNegotiation = (negotiationDate, settlementDate) => {
+  if (!negotiationDate || !settlementDate) return false;
+
+  const negotiationTime = Date.parse(`${negotiationDate}T00:00:00Z`);
+  const settlementTime = Date.parse(`${settlementDate}T00:00:00Z`);
+  const daysUntilSettlement = (settlementTime - negotiationTime) / 86400000;
+
+  return daysUntilSettlement >= 0 && daysUntilSettlement <= 5;
+};
+
+const findPurchaseMatch = (contribution, purchases) => {
   const ticker = normalizeTicker(contribution.product);
   const date = normalizeDate(contribution.date);
   const quantity = parseBrazilianNumber(contribution.quantity);
   const price = parseBrazilianNumber(contribution.price);
   if (!ticker || !date || quantity === null || quantity < 0) return null;
 
+  const expectedSettlementDate = normalizeDate(
+    contribution.settlement_date || getConfirmedSettlementDate(contribution),
+  );
+
   return purchases.find((purchase) => {
     if (String(purchase.ticker || '').toUpperCase() !== ticker) return false;
-    const purchaseTradeDate = normalizeDate(purchase.trade_date);
-    const matchesDate = purchaseTradeDate
-      ? purchaseTradeDate === date
-      : normalizeDate(purchase.settlement_date) === date;
-    if (!matchesDate) return false;
     if (Math.abs(Number(purchase.qty) - quantity) > 0.0001) return false;
-    return price === null || Math.abs(Number(purchase.price) - price) <= 0.01;
+    if (price !== null && Math.abs(Number(purchase.price) - price) > 0.01) return false;
+
+    const purchaseTradeDate = normalizeDate(purchase.trade_date);
+    const purchaseSettlementDate = normalizeDate(purchase.settlement_date);
+    return purchaseTradeDate === date
+      || purchaseSettlementDate === expectedSettlementDate
+      || (!purchaseTradeDate && isSettlementForNegotiation(date, purchaseSettlementDate));
   }) || null;
+};
+
+const getPurchaseMatchStatus = (contribution, purchase) => {
+  const contributionDate = normalizeDate(contribution.date);
+  const expectedSettlementDate = normalizeDate(
+    contribution.settlement_date || getConfirmedSettlementDate(contribution),
+  );
+  const purchaseTradeDate = normalizeDate(purchase?.trade_date);
+  const purchaseSettlementDate = normalizeDate(purchase?.settlement_date);
+
+  const tradeDateMatched = Boolean(purchaseTradeDate && purchaseTradeDate === contributionDate);
+  const settlementDateMatched = Boolean(
+    purchaseSettlementDate && (
+      (expectedSettlementDate && purchaseSettlementDate === expectedSettlementDate)
+      || (!purchaseTradeDate && contributionDate && (() => {
+        return isSettlementForNegotiation(contributionDate, purchaseSettlementDate);
+      })())
+    ),
+  );
+
+  return { tradeDateMatched, settlementDateMatched };
+};
+
+const findRegisteredPurchase = (contribution, purchases) => {
+  const purchase = findPurchaseMatch(contribution, purchases);
+  return purchase ? { purchase, ...getPurchaseMatchStatus(contribution, purchase) } : null;
 };
 
 const formatIsoDate = (value) => {
@@ -712,26 +753,39 @@ export default function Settings() {
                   </thead>
                   <tbody>
                     {scraperContributions.map((contribution, index) => {
-                      const registeredPurchase = findRegisteredPurchase(contribution, existingPurchases);
+                      const purchaseMatch = findRegisteredPurchase(contribution, existingPurchases);
+                      const registeredPurchase = purchaseMatch?.purchase;
+                      const tradeDateMissing = purchaseMatch && !purchaseMatch.tradeDateMatched;
+                      const settlementDateMissing = purchaseMatch && !purchaseMatch.settlementDateMatched;
                       return (
                       <tr
                         key={contribution.id || index}
-                        className={`border-t border-gray-200 dark:border-gray-700 ${
-                          registeredPurchase ? '' : 'bg-orange-500/10 dark:bg-orange-500/15'
-                        }`}
-                        title={registeredPurchase ? 'Aporte já cadastrado' : 'Aporte ainda não cadastrado'}
+                        className="border-t border-gray-200 dark:border-gray-700"
+                        title={registeredPurchase ? 'Aporte encontrado no SQL' : 'Aporte ainda não cadastrado'}
                       >
-                        <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.date || '—'}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">
+                        <td className={`whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300 ${
+                          tradeDateMissing || !purchaseMatch ? 'bg-orange-500/10 dark:bg-orange-500/15' : ''
+                        }`}>
+                          {contribution.date || '—'}
+                        </td>
+                        <td className={`whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300 ${
+                          settlementDateMissing || !purchaseMatch ? 'bg-orange-500/10 dark:bg-orange-500/15' : ''
+                        }`}>
                           {formatIsoDate(registeredPurchase?.settlement_date || getConfirmedSettlementDate(contribution))}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2">
                           <span className={`rounded-full px-2 py-1 text-xs font-medium ${
-                            registeredPurchase
+                            purchaseMatch && purchaseMatch.tradeDateMatched && purchaseMatch.settlementDateMatched
                               ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                              : 'bg-orange-500/10 text-orange-700 dark:text-orange-300'
+                              : purchaseMatch
+                                ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300'
+                                : 'bg-orange-500/10 text-orange-700 dark:text-orange-300'
                           }`}>
-                            {registeredPurchase ? 'Cadastrado' : 'Pendente'}
+                            {purchaseMatch && purchaseMatch.tradeDateMatched && purchaseMatch.settlementDateMatched
+                              ? 'Completo'
+                              : purchaseMatch
+                                ? 'Parcial'
+                                : 'Pendente'}
                           </span>
                         </td>
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.movement || '—'}</td>
