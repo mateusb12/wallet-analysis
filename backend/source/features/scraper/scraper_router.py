@@ -170,3 +170,8 @@ def scraper_requests() -> dict[str, Any]:
 @scraper_bp.get("/contributions")
 def scraper_contributions() -> dict[str, Any]:
     return read_local_agent("/contributions")
+
+
+@scraper_bp.get("/dividends")
+def scraper_dividends() -> dict[str, Any]:
+    return read_local_agent("/dividends")

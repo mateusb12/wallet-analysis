@@ -86,6 +86,13 @@ export default function Settings() {
       return [];
     }
   });
+  const [scraperDividends, setScraperDividends] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('wallet-analysis:scraper-dividends') || '[]');
+    } catch {
+      return [];
+    }
+  });
 
   const userEmail = user?.email || 'usuario@exemplo.com';
   const displayName = dbName || userEmail.split('@')[0];
@@ -141,6 +148,22 @@ export default function Settings() {
     return () => clearInterval(interval);
   }, [jobStatus.status]);
 
+  useEffect(() => {
+    if (jobStatus.status !== 'running') return undefined;
+    const refreshDividends = async () => {
+      try {
+        const dividends = await jobService.getScraperDividends();
+        setScraperDividends(dividends);
+        localStorage.setItem('wallet-analysis:scraper-dividends', JSON.stringify(dividends));
+      } catch (error) {
+        setJobError(error.message);
+      }
+    };
+    refreshDividends();
+    const interval = setInterval(refreshDividends, 1000);
+    return () => clearInterval(interval);
+  }, [jobStatus.status]);
+
   const fetchJobStatus = async () => {
     try {
       const status = await jobService.getScraperStatus();
@@ -156,8 +179,10 @@ export default function Settings() {
     setJobError('');
     setScraperRequests([]);
     setScraperContributions([]);
+    setScraperDividends([]);
     localStorage.removeItem('wallet-analysis:scraper-requests');
     localStorage.removeItem('wallet-analysis:scraper-contributions');
+    localStorage.removeItem('wallet-analysis:scraper-dividends');
     localStorage.setItem(
       'wallet-analysis:scraper-job-status',
       JSON.stringify({
@@ -507,8 +532,45 @@ export default function Settings() {
             <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
               <div className="mb-3 flex items-center justify-between">
                 <div>
+                  <p className="font-medium text-gray-900 dark:text-white">Dividendos capturados</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Proventos encontrados na aba Movimentação da B3</p>
+                </div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">{scraperDividends.length}</span>
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-700/50 dark:text-gray-400">
+                    <tr>
+                      <th className="px-3 py-2">Data</th>
+                      <th className="px-3 py-2">Movimentação</th>
+                      <th className="px-3 py-2">Produto</th>
+                      <th className="px-3 py-2">Quantidade</th>
+                      <th className="px-3 py-2">Valor total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scraperDividends.map((dividend, index) => (
+                      <tr key={dividend.id || index} className="border-t border-gray-200 dark:border-gray-700">
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{dividend.date || '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{dividend.movement || '—'}</td>
+                        <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{dividend.product || '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{dividend.quantity || '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{dividend.total || '—'}</td>
+                      </tr>
+                    ))}
+                    {scraperDividends.length === 0 && (
+                      <tr><td colSpan="5" className="px-3 py-6 text-center text-gray-500 dark:text-gray-400">Nenhum dividendo capturado ainda.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
                   <p className="font-medium text-gray-900 dark:text-white">Aportes capturados</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Movimentações encontradas no extrato da B3</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Compras encontradas na aba Negociação da B3</p>
                   <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">Laranja: ainda não cadastrado</p>
                 </div>
                 <span className="text-sm text-gray-500 dark:text-gray-400">{scraperContributions.length}</span>

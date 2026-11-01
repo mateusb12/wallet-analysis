@@ -92,6 +92,13 @@ export const jobService = {
     if (!response.ok) throw new Error(data.detail || 'Não foi possível consultar os aportes');
     return data.contributions || [];
   },
+
+  async getScraperDividends() {
+    const response = await fetch(`${API_URL}/internal/scraper/dividends`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Não foi possível consultar os dividendos');
+    return data.dividends || [];
+  },
 };
 
 export const syncService = {

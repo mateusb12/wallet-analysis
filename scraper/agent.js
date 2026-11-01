@@ -21,6 +21,7 @@ let error = null;
 let requestEntries = [];
 let requestSequence = 0;
 let contributionEntries = [];
+let dividendEntries = [];
 let progress = { current: 0, total: 1, label: 'Aguardando execução' };
 
 function setProgress(current, total, label) {
@@ -464,6 +465,11 @@ async function configureMovementFilters(page) {
   setProgress(9, 12, 'Movimentações filtradas');
   console.log(`Filtro aplicado; intervalo exibido: ${expectedRange}`);
 
+  await waitForMovementRows(page);
+  const movementRows = await collectCurrentTabRows(page, waitForMovementRows);
+  dividendEntries = movementRows.filter((row) => /dividendo|juros sobre capital|jcp|rendimento|amortização|amortizacao|bonificação|bonificacao/i.test(row.movement));
+  console.log(`Dividendos capturados na aba Movimentação: ${dividendEntries.length}`);
+
   console.log(`Filtros de movimentação aplicados: ${safeUrl(page)}`);
 }
 
@@ -525,10 +531,16 @@ async function configureNegotiationFilters(page) {
   setProgress(11, 12, 'Filtro de Negociação aplicado; aguardando operações');
   await waitForNegotiationRows(page);
 
+  contributionEntries = await collectCurrentTabRows(page, waitForNegotiationRows);
+  console.log(`Aportes capturados na aba Negociação: ${contributionEntries.length}`);
+  setProgress(12, 12, 'Aportes e dividendos carregados');
+}
+
+async function collectCurrentTabRows(page, waitForRows) {
   const collected = [];
   const seen = new Set();
   for (let pageNumber = 0; pageNumber < 500; pageNumber += 1) {
-    const pageRows = await extractContributions(page);
+    const pageRows = await extractStatementRows(page);
     for (const row of pageRows) {
       if (!seen.has(row.id)) {
         seen.add(row.id);
@@ -539,11 +551,24 @@ async function configureNegotiationFilters(page) {
     if (!(await next.count()) || !(await next.isVisible().catch(() => false)) || !(await next.isEnabled().catch(() => false))) break;
     await next.click();
     await page.waitForTimeout(500);
-    await waitForNegotiationRows(page);
+    await waitForRows(page);
   }
-  contributionEntries = collected;
-  console.log(`Aportes capturados na aba Negociação: ${contributionEntries.length}`);
-  setProgress(12, 12, 'Aportes da Negociação carregados');
+  return collected;
+}
+
+async function waitForMovementRows(page) {
+  setDebugAction('Aguardando movimentações presentes no DOM', 'Movimentação', 'table tr com produto, quantidade e valor total');
+  await page.waitForFunction(() => {
+    const cellSelector = ':scope > th, :scope > td, :scope > [role="cell"], :scope > [role="gridcell"]';
+    return [...document.querySelectorAll('table')].some((table) => {
+      const rows = [...table.querySelectorAll('tr')];
+      const headerIndex = rows.findIndex((row) => {
+        const text = [...row.querySelectorAll(cellSelector)].map((cell) => cell.textContent || '').join(' ').toLowerCase();
+        return text.includes('movimenta') && text.includes('produto') && text.includes('quantidade');
+      });
+      return headerIndex >= 0 && rows.slice(headerIndex + 1).some((row) => [...row.querySelectorAll(cellSelector)].some((cell) => (cell.textContent || '').trim()));
+    });
+  }, null, { timeout: 15000 });
 }
 
 async function waitForNegotiationRows(page) {
@@ -561,7 +586,7 @@ async function waitForNegotiationRows(page) {
   }, null, { timeout: 15000 });
 }
 
-async function extractContributions(page) {
+async function extractStatementRows(page) {
   return page.evaluate(() => {
     const normalize = (value) => value.replace(/\s+/g, ' ').trim();
     const datePattern = /\b\d{1,2}\s+de\s+[A-Za-zÀ-ÿ]+\s+de\s+\d{4}\b|\b\d{2}\/\d{2}\/\d{4}\b/i;
@@ -630,6 +655,7 @@ async function runScraper() {
   requestEntries = [];
   requestSequence = 0;
   contributionEntries = [];
+  dividendEntries = [];
 
   try {
     context = await chromium.launchPersistentContext(userDataDir, {
@@ -702,6 +728,11 @@ const server = createServer(async (request, response) => {
 
     if (request.method === 'GET' && request.url === '/contributions') {
       sendJson(response, 200, { contributions: contributionEntries });
+      return;
+    }
+
+    if (request.method === 'GET' && request.url === '/dividends') {
+      sendJson(response, 200, { dividends: dividendEntries });
       return;
     }
 
