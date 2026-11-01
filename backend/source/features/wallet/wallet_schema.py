@@ -10,19 +10,29 @@ class AssetPurchaseBase(BaseModel):
     type: str
     qty: float
     price: float
-    trade_date: date
+    trade_date: Optional[date] = None
+    settlement_date: Optional[date] = None
 
 # Usado na lista do Import
 class AssetPurchaseCreate(AssetPurchaseBase):
-    pass
+    trade_date: date
 
 # Usado para criar/editar um único aporte
 class AssetPurchaseInput(AssetPurchaseBase):
-    pass
+    trade_date: date
 
 # Request do Import em massa
 class ImportPurchasesRequest(BaseModel):
     purchases: List[AssetPurchaseCreate]
+
+
+class B3PurchaseInput(AssetPurchaseBase):
+    trade_date: date
+    settlement_date: date
+
+
+class SyncB3PurchasesRequest(BaseModel):
+    purchases: List[B3PurchaseInput]
 
 # Resposta para o frontend
 class AssetPurchaseResponse(AssetPurchaseBase):

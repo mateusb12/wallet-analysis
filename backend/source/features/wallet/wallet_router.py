@@ -1,5 +1,6 @@
 from typing import List, Dict, Optional
 import pandas as pd
+import re
 from datetime import datetime, date
 
 from fastapi import APIRouter, HTTPException, Depends, status
@@ -11,6 +12,7 @@ from backend.source.features.wallet.wallet_schema import (
     ImportPurchasesRequest,
     AssetPurchaseResponse,
     AssetPurchaseInput,
+    SyncB3PurchasesRequest,
     HistoryPoint
 )
 
@@ -265,11 +267,16 @@ def get_dashboard_data(
         return empty_response
 
     # Identificar Data Inicial Global da Carteira para buscar histórico anual
-    min_trade_date = min([p.trade_date for p in purchases])
+    effective_dates = [p.trade_date or p.settlement_date for p in purchases]
+    min_trade_date = min(d for d in effective_dates if d is not None)
     start_year_portfolio = min_trade_date.year if isinstance(min_trade_date, date) else min_trade_date.year
 
     # 2. Buscar Histórico de Preços Ajustados (Para cálculo de Total Return da posição)
-    purchase_keys = list({(p.ticker, p.trade_date) for p in purchases})
+    purchase_keys = list({
+        (p.ticker, p.trade_date or p.settlement_date)
+        for p in purchases
+        if p.trade_date or p.settlement_date
+    })
     history_map = {}
 
     if purchase_keys:
@@ -287,14 +294,15 @@ def get_dashboard_data(
     transactions_list = []
 
     for p in purchases:
+        purchase_date = p.trade_date or p.settlement_date
         # Adiciona à lista de transações
         transactions_list.append({
             "ticker": p.ticker, "price": float(p.price), "qty": p.qty,
-            "trade_date": p.trade_date, "type": "buy", "asset_type": p.type
+            "trade_date": purchase_date, "type": "buy", "asset_type": p.type
         })
 
         price_raw = float(p.price)
-        hist_key = f"{p.ticker}_{p.trade_date}"
+        hist_key = f"{p.ticker}_{purchase_date}"
         price_adj = history_map.get(hist_key, price_raw)
         if not price_adj or price_adj <= 0: price_adj = price_raw
 
@@ -304,15 +312,15 @@ def get_dashboard_data(
                 'cost_raw': 0.0,
                 'cost_adjusted': 0.0,
                 'type': p.type,
-                'min_date': p.trade_date
+                'min_date': purchase_date
             }
 
         pos = pos_map[p.ticker]
         pos['qty'] += p.qty
         pos['cost_raw'] += (p.qty * price_raw)
         pos['cost_adjusted'] += (p.qty * price_adj)
-        if p.trade_date < pos['min_date']:
-            pos['min_date'] = p.trade_date
+        if purchase_date and purchase_date < pos['min_date']:
+            pos['min_date'] = purchase_date
 
     active_tickers = [t for t, d in pos_map.items() if d['qty'] > 0.0001]
 
@@ -561,7 +569,8 @@ def import_purchases(
                 type=item.type.lower(),
                 qty=item.qty,
                 price=item.price,
-                trade_date=item.trade_date
+                trade_date=item.trade_date,
+                settlement_date=item.settlement_date,
             )
             new_records.append(record)
         wallets.add_purchases(new_records)
@@ -575,6 +584,88 @@ def get_user_purchases(
         current_user: str = Depends(get_current_user)
 ):
     return wallets.list_purchases(current_user)
+
+
+@wallet_bp.post("/purchases/sync-b3")
+def sync_b3_purchases(
+        payload: SyncB3PurchasesRequest,
+        wallets: WalletRepository = Depends(get_wallet_repository),
+        current_user: str = Depends(get_current_user)
+):
+    """Persist B3 trades while keeping trade and settlement dates distinct.
+
+    Existing rows from before settlement_date was introduced have that field
+    backfilled from their old date. When such a row matches a B3 trade by
+    settlement date, this endpoint repairs its trade_date in place.
+    """
+    existing = list(wallets.list_purchases(current_user))
+    matched_existing: set[int] = set()
+    new_purchases = []
+    created_count = 0
+    reconciled_count = 0
+    skipped_count = 0
+
+    for item in payload.purchases:
+        ticker = item.ticker.strip().upper()
+        if re.fullmatch(r"[A-Z]{4}\d{1,2}F", ticker):
+            ticker = ticker[:-1]
+        match_index = None
+        legacy_index = None
+
+        for index, purchase in enumerate(existing):
+            if index in matched_existing:
+                continue
+            if purchase.ticker.upper() != ticker:
+                continue
+            if abs(float(purchase.qty) - item.qty) > 0.0001:
+                continue
+            if abs(float(purchase.price) - item.price) > 0.01:
+                continue
+
+            if (purchase.trade_date == item.trade_date
+                    and purchase.settlement_date == item.settlement_date):
+                match_index = index
+                break
+
+            if (purchase.trade_date is None
+                    and purchase.settlement_date == item.settlement_date):
+                legacy_index = index
+
+        if match_index is not None:
+            matched_existing.add(match_index)
+            skipped_count += 1
+            continue
+
+        if legacy_index is not None:
+            purchase = existing[legacy_index]
+            purchase.trade_date = item.trade_date
+            purchase.settlement_date = item.settlement_date
+            purchase.name = item.name or purchase.name or ticker
+            purchase.type = item.type.lower()
+            wallets.save_purchase(purchase)
+            matched_existing.add(legacy_index)
+            reconciled_count += 1
+            continue
+
+        new_purchases.append(AssetPurchase(
+            user_id=current_user,
+            ticker=ticker,
+            name=item.name or ticker,
+            type=item.type.lower(),
+            qty=item.qty,
+            price=item.price,
+            trade_date=item.trade_date,
+            settlement_date=item.settlement_date,
+        ))
+        created_count += 1
+
+    wallets.add_purchases(new_purchases)
+    return {
+        "created": created_count,
+        "reconciled": reconciled_count,
+        "skipped": skipped_count,
+        "total": len(payload.purchases),
+    }
 
 @wallet_bp.post("/purchases", response_model=AssetPurchaseResponse, status_code=status.HTTP_201_CREATED)
 def create_purchase(
@@ -590,7 +681,8 @@ def create_purchase(
             type=payload.type.lower(),
             qty=payload.qty,
             price=payload.price,
-            trade_date=payload.trade_date
+            trade_date=payload.trade_date,
+            settlement_date=payload.settlement_date,
         )
         return wallets.save_purchase(new_purchase)
     except Exception as e:
@@ -615,6 +707,7 @@ def update_purchase(
         purchase.qty = payload.qty
         purchase.price = payload.price
         purchase.trade_date = payload.trade_date
+        purchase.settlement_date = payload.settlement_date
         return wallets.save_purchase(purchase)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

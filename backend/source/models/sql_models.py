@@ -102,7 +102,8 @@ class AssetPurchase(Base):
 
     qty = Column(Float, nullable=False)
     price = Column(Numeric(10, 2), nullable=False)
-    trade_date = Column(Date, nullable=False)
+    trade_date = Column(Date, nullable=True)
+    settlement_date = Column(Date, nullable=True)
 
     # Audit fields
     created_at = Column(DateTime(timezone=True), server_default=func.now())

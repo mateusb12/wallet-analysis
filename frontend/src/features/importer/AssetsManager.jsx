@@ -138,7 +138,7 @@ export default function AssetsManager() {
       if (!sameQty) return false;
       const samePrice = Math.abs(Number(dbItem.price) - Number(row.price)) < 0.05;
       if (!samePrice) return false;
-      const dbDateString = toStandardDate(dbItem.trade_date);
+      const dbDateString = toStandardDate(dbItem.trade_date || dbItem.settlement_date);
       if (dbDateString === rowDateString) return true;
       const d1 = new Date(dbDateString);
       const d2 = new Date(rowDateString);
@@ -171,7 +171,9 @@ export default function AssetsManager() {
   const handleEditClick = (item) => {
     setEditingId(item.id);
     setEditForm({
-      date: item.trade_date ? item.trade_date.split('T')[0] : '',
+      date: (item.trade_date || item.settlement_date)
+        ? (item.trade_date || item.settlement_date).split('T')[0]
+        : '',
       price: item.price,
       qty: item.qty,
       type: item.type,

@@ -3,6 +3,7 @@ import { useTheme } from '../theme/ThemeContext.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { userService } from '../../services/userService.js';
 import { jobService } from '../../services/api.js';
+import { getWalletPurchases } from '../../services/walletDataService.js';
 
 import ManualPriceSync from '../../components/ManualPriceSync.jsx';
 import ContributionsManager from './ContributionsManager.jsx';
@@ -14,6 +15,10 @@ const monthNumbers = {
   janeiro: '01', fevereiro: '02', março: '03', marco: '03', abril: '04', maio: '05', junho: '06',
   julho: '07', agosto: '08', setembro: '09', outubro: '10', novembro: '11', dezembro: '12',
 };
+const monthNames = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
 
 const normalizeDate = (value) => {
   if (!value) return '';
@@ -29,7 +34,10 @@ const normalizeDate = (value) => {
   return slashDate ? `${slashDate[3]}-${slashDate[2]}-${slashDate[1]}` : text;
 };
 
-const normalizeTicker = (value) => String(value || '').match(/\b[A-Z]{4}\d{1,2}\b/i)?.[0].toUpperCase() || '';
+const normalizeTicker = (value) => {
+  const match = String(value || '').match(/\b[A-Z]{4}\d{1,2}F?\b/i)?.[0].toUpperCase() || '';
+  return match.endsWith('F') ? match.slice(0, -1) : match;
+};
 
 const parseBrazilianNumber = (value) => {
   const text = String(value || '').replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
@@ -37,19 +45,48 @@ const parseBrazilianNumber = (value) => {
   return Number.isFinite(number) ? number : null;
 };
 
-const isContributionRegistered = (contribution, purchases) => {
+const confirmedSettlementDates = {
+  '2026-10-26|BBAS3|11|17.78': '2026-10-28',
+  '2026-10-26|BBAS3|56|17.91': '2026-10-28',
+  '2026-10-26|MDIA3|45|16.34': '2026-10-28',
+  '2026-10-05|AUPO11|1|111.63': '2026-10-06',
+};
+
+const getConfirmedSettlementDate = (contribution) => {
+  const ticker = normalizeTicker(contribution.product);
+  const quantity = parseBrazilianNumber(contribution.quantity);
+  const price = parseBrazilianNumber(contribution.price);
+  if (!ticker || quantity === null || price === null) return null;
+
+  const key = `${normalizeDate(contribution.date)}|${ticker}|${quantity}|${price.toFixed(2)}`;
+  return confirmedSettlementDates[key] || null;
+};
+
+const findRegisteredPurchase = (contribution, purchases) => {
   const ticker = normalizeTicker(contribution.product);
   const date = normalizeDate(contribution.date);
   const quantity = parseBrazilianNumber(contribution.quantity);
   const price = parseBrazilianNumber(contribution.price);
-  if (!ticker || !date || quantity === null || quantity < 0) return false;
+  if (!ticker || !date || quantity === null || quantity < 0) return null;
 
-  return purchases.some((purchase) => {
+  return purchases.find((purchase) => {
     if (String(purchase.ticker || '').toUpperCase() !== ticker) return false;
-    if (normalizeDate(purchase.trade_date) !== date) return false;
+    const purchaseTradeDate = normalizeDate(purchase.trade_date);
+    const matchesDate = purchaseTradeDate
+      ? purchaseTradeDate === date
+      : normalizeDate(purchase.settlement_date) === date;
+    if (!matchesDate) return false;
     if (Math.abs(Number(purchase.qty) - quantity) > 0.0001) return false;
     return price === null || Math.abs(Number(purchase.price) - price) <= 0.01;
-  });
+  }) || null;
+};
+
+const formatIsoDate = (value) => {
+  const normalized = normalizeDate(value);
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return '—';
+  const [, year, month, day] = match;
+  return `${Number(day)} de ${monthNames[Number(month) - 1]} de ${year}`;
 };
 
 export default function Settings() {
@@ -96,8 +133,6 @@ export default function Settings() {
 
   const userEmail = user?.email || 'usuario@exemplo.com';
   const displayName = dbName || userEmail.split('@')[0];
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
   useEffect(() => {
     if (user?.id) {
       fetchExistingPurchases();
@@ -275,11 +310,8 @@ export default function Settings() {
 
   const fetchExistingPurchases = async () => {
     try {
-      const response = await fetch(`${API_URL}/wallet/purchases?user_id=${user.id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setExistingPurchases(data);
-      }
+      const purchases = await getWalletPurchases();
+      setExistingPurchases(purchases);
     } catch (error) {
       console.error('Failed to fetch history:', error);
     }
@@ -579,7 +611,8 @@ export default function Settings() {
                 <table className="min-w-full text-left text-sm">
                   <thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-700/50 dark:text-gray-400">
                     <tr>
-                      <th className="px-3 py-2">Data</th>
+                      <th className="px-3 py-2">Data negociação (B3)</th>
+                      <th className="px-3 py-2">Data liquidação</th>
                       <th className="px-3 py-2">Movimentação</th>
                       <th className="px-3 py-2">Produto</th>
                       <th className="px-3 py-2">Quantidade</th>
@@ -587,27 +620,29 @@ export default function Settings() {
                     </tr>
                   </thead>
                   <tbody>
-                    {scraperContributions.map((contribution, index) => (
+                    {scraperContributions.map((contribution, index) => {
+                      const registeredPurchase = findRegisteredPurchase(contribution, existingPurchases);
+                      return (
                       <tr
                         key={contribution.id || index}
                         className={`border-t border-gray-200 dark:border-gray-700 ${
-                          isContributionRegistered(contribution, existingPurchases)
-                            ? ''
-                            : 'bg-orange-500/10 dark:bg-orange-500/15'
+                          registeredPurchase ? '' : 'bg-orange-500/10 dark:bg-orange-500/15'
                         }`}
-                        title={isContributionRegistered(contribution, existingPurchases)
-                          ? 'Aporte já cadastrado'
-                          : 'Aporte ainda não cadastrado'}
+                        title={registeredPurchase ? 'Aporte já cadastrado' : 'Aporte ainda não cadastrado'}
                       >
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.date || '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">
+                          {formatIsoDate(registeredPurchase?.settlement_date || getConfirmedSettlementDate(contribution))}
+                        </td>
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.movement || '—'}</td>
                         <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.product || '—'}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.quantity || '—'}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.total || '—'}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {scraperContributions.length === 0 && (
-                      <tr><td colSpan="5" className="px-3 py-6 text-center text-gray-500 dark:text-gray-400">Nenhum aporte capturado ainda.</td></tr>
+                      <tr><td colSpan="6" className="px-3 py-6 text-center text-gray-500 dark:text-gray-400">Nenhum aporte capturado ainda.</td></tr>
                     )}
                   </tbody>
                 </table>

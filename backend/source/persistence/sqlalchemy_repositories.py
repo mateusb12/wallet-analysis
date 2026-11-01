@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from datetime import date
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from backend.source.models.sql_models import (
@@ -105,12 +105,16 @@ class SqlAlchemyWalletRepository:
             asset_type: str | None = None,
             ticker: str | None = None,
     ) -> Sequence:
+        effective_trade_date = func.coalesce(
+            AssetPurchase.trade_date,
+            AssetPurchase.settlement_date,
+        )
         query = (
             self._session.query(
                 AssetPurchase.ticker,
                 AssetPurchase.qty,
                 AssetPurchase.price,
-                AssetPurchase.trade_date,
+                effective_trade_date.label("trade_date"),
                 AssetPurchase.type,
             )
             .filter(AssetPurchase.user_id == user_id)
@@ -119,7 +123,7 @@ class SqlAlchemyWalletRepository:
             query = query.filter(AssetPurchase.type == asset_type)
         if ticker:
             query = query.filter(AssetPurchase.ticker == ticker)
-        return query.order_by(AssetPurchase.trade_date.asc()).all()
+        return query.order_by(effective_trade_date.asc()).all()
 
     def get_prices_from(self, tickers: Sequence[str], start_date: date) -> Sequence:
         return (
