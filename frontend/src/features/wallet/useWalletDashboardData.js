@@ -164,13 +164,24 @@ export const useWalletDashboardData = (user) => {
       year: '(Projeção Anual)',
     };
 
+    const numericInvested = Number(invested) || 0;
+    const numericProfit = Number(stats.profit) || 0;
+    const numericDividends = Number(stats.dividends) || 0;
+    const numericValuation = Number.isFinite(Number(stats.valuation))
+      ? Number(stats.valuation)
+      : numericProfit - numericDividends;
+
     return {
-      invested,
+      invested: numericInvested,
       current,
-      profit: stats.profit,
-      yield: stats.yield,
-      valuation: stats.valuation ?? stats.profit - (stats.dividends || 0),
-      dividends: stats.dividends || 0,
+      profit: numericProfit,
+      yield: Number(stats.yield) || 0,
+      valuation: numericValuation,
+      dividends: numericDividends,
+      valuationPercent: numericInvested > 0
+        ? (numericValuation / numericInvested) * 100
+        : 0,
+      dividendsPercent: numericInvested > 0 ? (numericDividends / numericInvested) * 100 : 0,
       labelSuffix: labels[profitPeriod],
     };
   }, [safeData, activeTab, profitPeriod]);
@@ -257,6 +268,8 @@ export const useWalletDashboardData = (user) => {
     periodStats: {
       profit: dashboardStats.profit,
       yield: dashboardStats.yield,
+      valuationPercent: dashboardStats.valuationPercent,
+      dividendsPercent: dashboardStats.dividendsPercent,
       dividends: dashboardStats.dividends,
       labelSuffix: dashboardStats.labelSuffix,
     },

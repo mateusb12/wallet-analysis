@@ -242,9 +242,9 @@ const SummaryCard = ({
         <div>
           <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{title}</p>
           <p className={`text-2xl font-bold ${colorClass}`}>{value}</p>
-          {secondaryItems.map(({ label, value: secondaryValue }) => (
+          {secondaryItems.map(({ label, value: secondaryValue, format = 'currency' }) => (
             <p key={label} className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              {label}: {formatCurrency(secondaryValue)}
+              {label}: {format === 'percent' ? formatPercent(secondaryValue) : formatCurrency(secondaryValue)}
             </p>
           ))}
           {subtext && <p className="text-xs text-gray-400 mt-1">{subtext}</p>}
@@ -882,6 +882,10 @@ function WalletDashboard() {
                 value={formatPercent(periodStats.yield)}
                 rawValue={periodStats.yield}
                 type="profit"
+                secondaryItems={[
+                  { label: 'Valorização', value: periodStats.valuationPercent, format: 'percent' },
+                  { label: 'Dividendos', value: periodStats.dividendsPercent, format: 'percent' },
+                ]}
                 subtext={periodStats.labelSuffix}
               />
             </div>
