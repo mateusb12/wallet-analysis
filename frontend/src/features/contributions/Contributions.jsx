@@ -333,7 +333,7 @@ export default function Contributions() {
     </div>
   );
 
-  const ContributionRow = ({ item }) => {
+  const ContributionRow = ({ item, index }) => {
     const timeData = getDetailedTimeElapsed(item.trade_date);
     const maturation = getMaturationInfo(item.trade_date);
 
@@ -400,6 +400,9 @@ export default function Contributions() {
 
     return (
       <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors border-b border-gray-100 dark:border-gray-800 last:border-0">
+        <td className="px-3 py-4 text-center text-xs font-mono text-gray-400 dark:text-gray-500 whitespace-nowrap">
+          #{index + 1}
+        </td>
         <td className="px-6 py-4 text-center whitespace-nowrap text-gray-600 dark:text-gray-300">
           {formatChartDate(item.trade_date)}
         </td>
@@ -595,6 +598,7 @@ export default function Contributions() {
             <table className="w-full text-sm text-left">
               <thead className="sticky top-0 z-20 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
                 <tr>
+                  <th className="px-3 py-3 text-center">#</th>
                   <th className="px-6 py-3 text-center">Data</th>
                   <th className="px-6 py-3 text-center">Ativo</th>
                   <th className="px-6 py-3 text-center">Tipo</th>
@@ -669,10 +673,12 @@ export default function Contributions() {
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {viewMode === 'flat' ? (
                   processedPurchases.length > 0 ? (
-                    sortedPurchases.map((item) => <ContributionRow key={item.id} item={item} />)
+                    sortedPurchases.map((item, index) => (
+                      <ContributionRow key={item.id} item={item} index={index} />
+                    ))
                   ) : (
                     <tr>
-                      <td colSpan="12" className="p-8 text-center text-gray-500">
+                      <td colSpan="13" className="p-8 text-center text-gray-500">
                         Nenhum aporte.
                       </td>
                     </tr>
@@ -683,7 +689,7 @@ export default function Contributions() {
                     return (
                       <React.Fragment key={ticker}>
                         <tr className="bg-gray-100 dark:bg-gray-900 border-y border-gray-300 dark:border-gray-600">
-                          <td colSpan="12" className="px-6 py-2">
+                          <td colSpan="13" className="px-6 py-2">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3">
                                 <Tag size={16} className="text-gray-500" />
@@ -730,14 +736,18 @@ export default function Contributions() {
                           </td>
                         </tr>
                         {group.items.map((item) => (
-                          <ContributionRow key={item.id} item={item} />
+                          <ContributionRow
+                            key={item.id}
+                            item={item}
+                            index={sortedPurchases.findIndex((purchase) => purchase.id === item.id)}
+                          />
                         ))}
                       </React.Fragment>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan="12" className="p-8 text-center text-gray-500">
+                    <td colSpan="13" className="p-8 text-center text-gray-500">
                       Nenhum aporte.
                     </td>
                   </tr>
