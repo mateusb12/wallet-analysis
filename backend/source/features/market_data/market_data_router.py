@@ -576,7 +576,7 @@ def sync_cdi(
         last_date = market_data.get_last_cdi_date()
         if last_date and not requested_start:
             last_date_obj = datetime.strptime(last_date, "%Y-%m-%d").date()
-            start_date_obj = min(default_start, last_date_obj + timedelta(days=1))
+            start_date_obj = max(default_start, last_date_obj + timedelta(days=1))
 
         if start_date_obj > today:
             return {"success": True, "action": "up_to_date", "message": "CDI já atualizado."}

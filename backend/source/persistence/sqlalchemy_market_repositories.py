@@ -137,16 +137,15 @@ class SqlAlchemyMarketDataRepository:
         return _iso(row[0]) if row else None
 
     def upsert_cdi_history(self, records: Sequence[dict[str, Any]]) -> None:
+        if not records:
+            return
+        dates = [_date_value(record["trade_date"]) for record in records]
+        rows = self._session.query(CdiHistory).filter(CdiHistory.trade_date.in_(dates)).all()
+        rows_by_date = {row.trade_date: row for row in rows}
         for record in records:
             trade_date = _date_value(record["trade_date"])
-            row = (
-                self._session.query(CdiHistory)
-                .filter(CdiHistory.trade_date == trade_date)
-                .one_or_none()
-            )
-            if row is None:
-                row = CdiHistory(trade_date=trade_date)
-                self._session.add(row)
+            row = rows_by_date.get(trade_date) or CdiHistory(trade_date=trade_date)
+            self._session.add(row)
             _assign(row, record)
         self._session.commit()
 

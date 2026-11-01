@@ -2,8 +2,10 @@ import pandas as pd
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Header
 from backend.source.core.db import get_supabase
+from backend.source.core.dependencies import get_analysis_repository, get_wallet_repository
 from backend.source.features.analysis.analysis_schema import SimulationRequest
 from backend.source.features.auth.jwt_identity_extraction import get_current_user
+from backend.source.persistence.ports import AnalysisRepository, WalletRepository
 
 analysis_bp = APIRouter(prefix="/analysis", tags=["Analysis"])
 
@@ -239,53 +241,27 @@ def simulate_fii(payload: SimulationRequest):
 
 
 @analysis_bp.get("/opportunities")
-def get_investment_opportunities(user_id: str = Depends(get_current_user)):
+def get_investment_opportunities(
+    user_id: str = Depends(get_current_user),
+    wallets: WalletRepository = Depends(get_wallet_repository),
+    analysis: AnalysisRepository = Depends(get_analysis_repository),
+):
     print(f"\n--- DEBUG: Analysis for Authenticated User {user_id} ---")
-    supabase = get_supabase()
 
-    # 1. Fetch User's Wallet Tickers
-    wallet_response = supabase.table("asset_purchases") \
-        .select("ticker") \
-        .eq("user_id", user_id) \
-        .execute()
-
-    if not wallet_response.data:
+    # 1. Fetch User's Wallet Tickers from the configured repository.
+    purchases = wallets.list_purchases(user_id)
+    if not purchases:
         print("DEBUG: User has no assets.")
         return []
 
-    my_tickers = list(set([row['ticker'] for row in wallet_response.data]))
+    my_tickers = sorted({purchase.ticker for purchase in purchases})
     print(f"DEBUG: Analyzing {len(my_tickers)} assets: {my_tickers}")
 
-    # 2. Fetch Price History
-    start_date = (datetime.now() - timedelta(days=540)).strftime('%Y-%m-%d')
-
+    # 2. Fetch only the recent history needed by MM200/CAGR.
     all_data = []
-    offset = 0
-    batch_size = 1000
-
-    while True:
-        try:
-            response = supabase.table("b3_prices") \
-                .select("ticker,trade_date,close,adjusted_close") \
-                .gte("trade_date", start_date) \
-                .in_("ticker", my_tickers) \
-                .range(offset, offset + batch_size - 1) \
-                .execute()
-
-            rows = response.data
-            if not rows:
-                break
-
-            all_data.extend(rows)
-            count_received = len(rows)
-            offset += count_received
-
-            if count_received < batch_size:
-                break
-
-        except Exception as e:
-            print(f"CRITICAL ERROR: {str(e)}")
-            break
+    for ticker in my_tickers:
+        rows = analysis.get_price_history(ticker, 1300)
+        all_data.extend({"ticker": ticker, **row} for row in rows)
 
     if not all_data:
         # Retorna lista vazia se não houver dados de preço,
