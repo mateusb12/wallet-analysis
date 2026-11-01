@@ -823,13 +823,18 @@ const WalletBalancer = () => {
                       <div
                         className={`
                           w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-300
-                          ${isExpanded || isPriority ? 'bg-gray-800 text-white shadow-md' : 'bg-gray-100 text-gray-500 group-hover/card:bg-blue-50 group-hover/card:text-blue-600'}
+                          ${isExpanded || isPriority ? 'text-white' : 'text-gray-500 group-hover/card:text-blue-600'}
                         `}
                       >
-                        {assetClass === 'fii' && <Layers className="w-5 h-5" />}
-                        {assetClass === 'acoes' && <Activity className="w-5 h-5" />}
-                        {assetClass === 'etf' && <PieChart className="w-5 h-5" />}
-                        {assetClass === 'outros' && <AlertTriangle className="w-5 h-5" />}
+                        {MACRO_ICONS[assetClass] ? (
+                          <AssetIcon
+                            src={MACRO_ICONS[assetClass]}
+                            alt={assetClass}
+                            className="w-8 h-8"
+                          />
+                        ) : (
+                          <AlertTriangle className="w-5 h-5" />
+                        )}
                       </div>
 
                       <div>
