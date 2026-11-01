@@ -21,7 +21,7 @@ ASSET_SCHEMA = {
         "label": "ETFs",
         "categories": [
             "Ações Internacionais",
-            "Pós-fixados",
+            "Baixa Volatilidade",
             "Inflação",
             "Imobiliários",
             "Outros",

@@ -83,14 +83,14 @@ CLASSIFICATION_OVERRIDES: Dict[str, Dict[str, str]] = {
         "reasoning": "Override: ETF global diversificado."
     },
     "LFTB11": {
-        "detected_type": "ETF - Juros Pós-fixados",
-        "sector": "Pós-fixados",
-        "reasoning": "Override: ETF de títulos pós-fixados."
+        "detected_type": "ETF - Baixa Volatilidade",
+        "sector": "Baixa Volatilidade",
+        "reasoning": "Override: ETF de títulos públicos com volatilidade relativamente controlada."
     },
     "AUPO11": {
-        "detected_type": "ETF - Juros Pós-fixados",
-        "sector": "Pós-fixados",
-        "reasoning": "Override: ETF de títulos pós-fixados."
+        "detected_type": "ETF - Baixa Volatilidade",
+        "sector": "Baixa Volatilidade",
+        "reasoning": "Override: ETF de títulos públicos com volatilidade relativamente controlada."
     },
     "IMAB11": {
         "detected_type": "ETF - Juros Reais",
@@ -799,6 +799,8 @@ def classify_ticker(
             cached_sector = cached.get("sector", "Outros")
             if cached_sector == "Multiestratégia":
                 cached_sector = "Outros"
+            elif cached_sector in ["Pós-fixados", "Renda Fixa"]:
+                cached_sector = "Baixa Volatilidade"
             return {
                 "ticker": cached.get("ticker", ticker_up),
                 "detected_type": cached.get("detected_type", "Indefinido"),

@@ -451,7 +451,7 @@ const DEFAULT_TARGETS = {
     },
     etf: {
       'Ações Internacionais': 45,
-      'Pós-fixados': 25,
+      'Baixa Volatilidade': 25,
       Inflação: 15,
       Imobiliários: 10,
       Outros: 5,

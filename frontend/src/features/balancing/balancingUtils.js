@@ -1,7 +1,7 @@
 export const BALANCING_SCHEMA = {
   fii: ['Tijolo', 'Papel', 'Desenvolvimento', 'Outros'],
   acoes: ['Bancos e Seguradoras', 'Alimentos', 'Indústria', 'Outros'],
-  etf: ['Ações Internacionais', 'Pós-fixados', 'Inflação', 'Imobiliários', 'Outros'],
+  etf: ['Ações Internacionais', 'Baixa Volatilidade', 'Inflação', 'Imobiliários', 'Outros'],
   outros: ['Indefinido'],
 };
 
@@ -10,6 +10,8 @@ export const LEGACY_SUBTYPE_MAP = {
   Híbrido: 'Outros',
   'Fundos de Fundos': 'Outros',
   Multiestratégia: 'Outros',
+  'Pós-fixados': 'Baixa Volatilidade',
+  'Renda Fixa': 'Baixa Volatilidade',
   'Perenes (Renda/Defesa)': 'Outros',
   'Cíclicas (Valor/Crescimento)': 'Outros',
   'Base Global': 'Ações Internacionais',
