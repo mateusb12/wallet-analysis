@@ -548,11 +548,11 @@ def get_dashboard_data(
         })
 
     # 6. Finalização
-    positions_list.sort(key=lambda x: x['total_value'], reverse=True)
+    positions_list.sort(key=lambda x: x['total_value'] or 0, reverse=True)
 
     for p in positions_list:
         if total_current_global > 0:
-            p['allocation_percent'] = round((p['total_value'] / total_current_global) * 100, 2)
+            p['allocation_percent'] = round(((p['total_value'] or 0) / total_current_global) * 100, 2)
 
     valuation_profit_global = total_current_global - total_invested_global
 
