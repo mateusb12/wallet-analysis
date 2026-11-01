@@ -464,24 +464,101 @@ async function configureMovementFilters(page) {
   setProgress(9, 12, 'Movimentações filtradas');
   console.log(`Filtro aplicado; intervalo exibido: ${expectedRange}`);
 
-  setDebugAction('Aguardando linhas da tabela no DOM', 'movimentações do extrato', 'table tr com células de dados');
+  console.log(`Filtros de movimentação aplicados: ${safeUrl(page)}`);
+}
+
+async function configureNegotiationFilters(page) {
+  setProgress(10, 12, 'Abrindo Negociação para capturar aportes');
+  const negotiationTab = page.getByRole('tab', { name: /negociação/i });
+  if (!(await negotiationTab.count()) || !(await negotiationTab.isVisible().catch(() => false))) {
+    throw new Error('A aba Negociação não está presente e visível no DOM da B3.');
+  }
+  await markDebugTarget(negotiationTab, 'aba-negociacao-aportes');
+  await negotiationTab.click();
+  await page.waitForURL(/\/extrato\/negociacao/, { timeout: 10000 }).catch(() => null);
+  await page.waitForTimeout(500);
+
+  const filterButton = await waitForVisibleControl(page, /filtrar/i);
+  if (!filterButton) throw new Error('O botão Filtrar da aba Negociação não está presente no DOM.');
+  await markDebugTarget(filterButton, 'abrir-filtros-negociacao');
+  await filterButton.click({ timeout: 10000 });
+
+  const dialog = page.locator('[role="dialog"]:visible').last();
+  await dialog.waitFor({ state: 'visible', timeout: 10000 });
+  const dateFields = [
+    { selector: '#datepicker-composto_start', expected: '01/01/2025', picker: { year: 2025, month: 1, day: 1 }, label: 'data-inicial-negociacao' },
+    { selector: '#datepicker-composto_end', expected: '30/10/2026', picker: { year: 2026, month: 10, day: 30 }, label: 'data-final-negociacao' },
+  ];
+
+  for (const field of dateFields) {
+    const input = dialog.locator(field.selector);
+    const present = await input.count().catch(() => 0);
+    if (!present || !(await input.isVisible().catch(() => false)) || !(await input.isEnabled().catch(() => false))) {
+      throw new Error(`Campo ${field.selector} não está presente, visível e habilitado no DOM dos filtros de Negociação.`);
+    }
+    const current = (await input.inputValue()).trim();
+    if (current === field.expected) {
+      console.log(`Negociação ${field.selector}: DOM já contém ${field.expected}; nenhuma ação necessária.`);
+      setDebugAction('DOM já corresponde; sem ação', field.expected, field.selector, { present: true, visible: true, enabled: true, actualValue: current });
+      continue;
+    }
+    console.log(`Negociação ${field.selector}: DOM contém ${current || '(vazio)'}; selecionando ${field.expected}.`);
+    await selectDateFromPicker(page, input, field.picker, field.label);
+    const updated = (await input.inputValue()).trim();
+    if (updated !== field.expected) {
+      throw new Error(`DOM não confirmou ${field.expected} em ${field.selector}; valor atual: ${updated || '(vazio)'}.`);
+    }
+  }
+
+  const applyButtons = page
+    .locator('button:visible, [role="button"]:visible, input[type="submit"]:visible, a:visible')
+    .filter({ hasText: /^(apply|filtrar)$/i });
+  const count = await applyButtons.count();
+  const applyButton = count ? applyButtons.last() : null;
+  if (!applyButton || !(await applyButton.isVisible().catch(() => false)) || !(await applyButton.isEnabled().catch(() => false))) {
+    throw new Error('O botão Filtrar da aba Negociação não está presente, visível e habilitado no DOM.');
+  }
+  await markDebugTarget(applyButton, 'aplicar-filtros-negociacao');
+  await applyButton.click({ force: true, timeout: 10000 });
+  await dialog.waitFor({ state: 'hidden', timeout: 15000 });
+  await page.getByText('Exibindo: 01/01/2025 - 30/10/2026', { exact: true }).last().waitFor({ state: 'visible', timeout: 15000 });
+  setProgress(11, 12, 'Filtro de Negociação aplicado; aguardando operações');
+  await waitForNegotiationRows(page);
+
+  const collected = [];
+  const seen = new Set();
+  for (let pageNumber = 0; pageNumber < 500; pageNumber += 1) {
+    const pageRows = await extractContributions(page);
+    for (const row of pageRows) {
+      if (!seen.has(row.id)) {
+        seen.add(row.id);
+        collected.push(row);
+      }
+    }
+    const next = page.getByRole('button', { name: /próxima página/i });
+    if (!(await next.count()) || !(await next.isVisible().catch(() => false)) || !(await next.isEnabled().catch(() => false))) break;
+    await next.click();
+    await page.waitForTimeout(500);
+    await waitForNegotiationRows(page);
+  }
+  contributionEntries = collected;
+  console.log(`Aportes capturados na aba Negociação: ${contributionEntries.length}`);
+  setProgress(12, 12, 'Aportes da Negociação carregados');
+}
+
+async function waitForNegotiationRows(page) {
+  setDebugAction('Aguardando operações presentes no DOM', 'Negociação', 'table tr com código, quantidade e valor total');
   await page.waitForFunction(() => {
     const cellSelector = ':scope > th, :scope > td, :scope > [role="cell"], :scope > [role="gridcell"]';
     return [...document.querySelectorAll('table')].some((table) => {
       const rows = [...table.querySelectorAll('tr')];
       const headerIndex = rows.findIndex((row) => {
         const text = [...row.querySelectorAll(cellSelector)].map((cell) => cell.textContent || '').join(' ').toLowerCase();
-        return text.includes('movimenta') && text.includes('produto');
+        return text.includes('movimenta') && text.includes('negociação') && text.includes('quantidade');
       });
-      const hasData = rows.slice(headerIndex + 1).some((row) => [...row.querySelectorAll(cellSelector)].some((cell) => (cell.textContent || '').trim()));
-      return headerIndex >= 0 && hasData;
+      return headerIndex >= 0 && rows.slice(headerIndex + 1).some((row) => [...row.querySelectorAll(cellSelector)].some((cell) => (cell.textContent || '').trim()));
     });
-  }, null, { timeout: 15000 }).catch(() => null);
-
-  contributionEntries = await extractContributions(page);
-  console.log(`Aportes capturados: ${contributionEntries.length}`);
-  setProgress(12, 12, 'Movimentações carregadas');
-  console.log(`Filtros de movimentação aplicados: ${safeUrl(page)}`);
+  }, null, { timeout: 15000 });
 }
 
 async function extractContributions(page) {
@@ -496,12 +573,14 @@ async function extractContributions(page) {
         .map((cell) => normalize(cell.textContent || ''));
       const headerRowIndex = tableRows.findIndex((row) => {
         const text = cellsOf(row).join(' ').toLowerCase();
-        return text.includes('movimenta') && text.includes('produto');
+        return text.includes('movimenta') && (text.includes('produto') || text.includes('negociação'));
       });
       if (headerRowIndex < 0) continue;
       const headerCells = cellsOf(tableRows[headerRowIndex]);
 
       let date = '';
+      const tableHeaderDate = table.closest('b3-table')?.querySelector('.table__left-information, [id^="left_info_tabela-extrato_top"]')?.textContent;
+      if (tableHeaderDate) date = normalize(tableHeaderDate);
       let node = table;
       for (let depth = 0; node && depth < 8 && !date; depth += 1, node = node.parentElement) {
         for (let previous = node.previousElementSibling; previous && !date; previous = previous.previousElementSibling) {
@@ -512,7 +591,7 @@ async function extractContributions(page) {
 
       const indexOf = (pattern) => headerCells.findIndex((header) => pattern.test(header));
       const movementIndex = indexOf(/movimenta/i);
-      const productIndex = indexOf(/produto/i);
+      const productIndex = indexOf(/produto|cód\. de negociação/i);
       const quantityIndex = indexOf(/quantidade/i);
       const priceIndex = indexOf(/preço unitário|preco unitario|preço|preco/i);
       const totalIndex = indexOf(/valor total|total/i);
@@ -585,6 +664,7 @@ async function runScraper() {
     }
     if (!isLoginPage(page)) {
       await configureMovementFilters(page);
+      await configureNegotiationFilters(page);
     }
   } catch (cause) {
     if (status === 'paused') return;
