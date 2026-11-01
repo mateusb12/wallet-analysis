@@ -225,6 +225,31 @@ async function markDebugTarget(locator, label) {
   console.log(`Debug border aplicada: ${label}`);
 }
 
+async function rejectCookieBanner(page) {
+  const cookieDialog = page
+    .locator('[role="alertdialog"], [aria-modal="true"]')
+    .filter({ hasText: /privacidade|cookies/i });
+
+  if (!(await cookieDialog.count())) {
+    console.log('Diálogo de cookies não encontrado no DOM.');
+    return false;
+  }
+
+  const rejectButton = page
+    .locator('button:visible, [role="button"]:visible')
+    .filter({ hasText: /rejeitar todos os cookies/i })
+    .first();
+
+  if (!(await rejectButton.count())) {
+    throw new Error('Diálogo de cookies encontrado no DOM, mas o botão “Rejeitar todos os cookies” não foi encontrado.');
+  }
+
+  await markDebugTarget(rejectButton, 'rejeitar-todos-os-cookies');
+  await rejectButton.click({ timeout: 10000 });
+  console.log('Cookies rejeitados pelo diálogo da B3.');
+  return true;
+}
+
 async function dumpCalendarControls(page) {
   const controls = await page.locator('body *:visible').evaluateAll((elements) => elements
     .map((element) => {
@@ -352,6 +377,7 @@ async function configureMovementFilters(page) {
     console.log('Abrindo Extratos > Movimentação.');
     await page.goto(movementUrl, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(5000);
+    await rejectCookieBanner(page);
     console.log(`URL após abrir movimentação: ${safeUrl(page)}`);
 
     if (!isLoginPage(page) && page.url().includes('/extrato/movimentacao')) {
@@ -372,13 +398,6 @@ async function configureMovementFilters(page) {
 
   if (!movementLoaded) {
     throw new Error('A B3 não abriu a página de movimentação após o login.');
-  }
-
-  const cookieButton = page.getByRole('button', { name: /permitir todos/i }).first();
-  if (await cookieButton.count()) {
-    await cookieButton.evaluate((element) => element.click());
-    await page.waitForTimeout(1000);
-    console.log('Banner de cookies fechado.');
   }
 
   setProgress(6, 12, 'Abrindo filtros');
@@ -531,6 +550,7 @@ async function runScraper() {
     context.on('page', attachRequestCapture);
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1500);
+    await rejectCookieBanner(page);
     console.log(`URL após navegação: ${safeUrl(page)}`);
     await loginToB3(page);
     if (isLoginPage(page)) {
