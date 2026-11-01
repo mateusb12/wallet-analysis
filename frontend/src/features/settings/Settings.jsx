@@ -717,6 +717,7 @@ export default function Settings() {
                   <thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-700/50 dark:text-gray-400">
                     <tr>
                       <th className="px-3 py-2">Data</th>
+                      <th className="px-3 py-2">Data de corte</th>
                       <th className="px-3 py-2">Tipo</th>
                       <th className="px-3 py-2">Produto</th>
                       <th className="px-3 py-2">Quantidade</th>
@@ -736,6 +737,9 @@ export default function Settings() {
                         title={registeredProvento ? 'Provento cadastrado no SQL' : 'Provento pendente no SQL'}
                       >
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{dividend.date || '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">
+                          {registeredProvento?.ex_date || '—'}
+                        </td>
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{dividend.movement || '—'}</td>
                         <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{dividend.product || '—'}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{dividend.quantity || '—'}</td>
@@ -753,7 +757,7 @@ export default function Settings() {
                       );
                     })}
                     {scraperDividends.length === 0 && (
-                      <tr><td colSpan="6" className="px-3 py-6 text-center text-gray-500 dark:text-gray-400">Nenhum provento encontrado ainda.</td></tr>
+                      <tr><td colSpan="7" className="px-3 py-6 text-center text-gray-500 dark:text-gray-400">Nenhum provento encontrado ainda.</td></tr>
                     )}
                   </tbody>
                 </table>

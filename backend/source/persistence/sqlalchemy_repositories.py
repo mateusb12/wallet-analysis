@@ -69,6 +69,18 @@ class SqlAlchemyWalletRepository:
             .all()
         )
 
+    def save_proventos(self, proventos: Sequence[Provento]) -> Sequence[Provento]:
+        if not proventos:
+            return proventos
+
+        try:
+            self._session.add_all(proventos)
+            self._session.commit()
+            return proventos
+        except Exception:
+            self._session.rollback()
+            raise
+
     def add_purchases(self, purchases: Sequence[AssetPurchase]) -> Sequence[AssetPurchase]:
         if not purchases:
             return purchases

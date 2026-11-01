@@ -22,6 +22,9 @@ class WalletRepository(Protocol):
     def list_proventos(self, user_id: str) -> Sequence[Provento]:
         ...
 
+    def save_proventos(self, proventos: Sequence[Provento]) -> Sequence[Provento]:
+        ...
+
     def add_purchases(self, purchases: Sequence[AssetPurchase]) -> Sequence[AssetPurchase]:
         ...
 

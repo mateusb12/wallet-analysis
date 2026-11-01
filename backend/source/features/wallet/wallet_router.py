@@ -20,6 +20,7 @@ from backend.source.features.wallet.wallet_schema import (
 from backend.source.features.wallet.dividend_calculator import (
     calculate_dividend_series,
     calculate_purchase_dividends,
+    resolve_provento_ex_dates,
 )
 from backend.source.features.wallet.history_data import load_history_data
 
@@ -386,6 +387,14 @@ def get_dashboard_data(
     else:
         history_prices = []
         history_benchmarks = {key: [] for key in ("CDI", "IBOV", "IFIX", "SP500")}
+
+    resolved_ex_dates = resolve_provento_ex_dates(proventos, history_prices)
+    if resolved_ex_dates and hasattr(wallets, 'save_proventos'):
+        wallets.save_proventos(proventos)
+
+    dividend_by_purchase = calculate_purchase_dividends(purchases, proventos)
+    for purchase_index, transaction in enumerate(transactions_list):
+        transaction["dividend_value"] = round(dividend_by_purchase[purchase_index], 2)
 
     # 4. Buscar Preços Atuais (Raw e Adjusted)
     latest_prices = wallets.get_latest_prices(active_tickers)

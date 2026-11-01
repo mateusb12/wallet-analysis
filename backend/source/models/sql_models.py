@@ -115,6 +115,7 @@ class Provento(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, index=True, nullable=False)
     date = Column(Date, index=True, nullable=False)
+    ex_date = Column(Date, index=True, nullable=True)
     type = Column(String, nullable=False)
     product = Column(String, nullable=False)
     quantity = Column(Float, nullable=False)

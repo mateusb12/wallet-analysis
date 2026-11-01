@@ -10,6 +10,7 @@ from backend.source.features.wallet.wallet_router import (
     _calculate_purchase_dividends,
     get_dashboard_data,
 )
+from backend.source.features.wallet.dividend_calculator import resolve_provento_ex_dates
 
 
 class CdiFactorsTest(unittest.TestCase):
@@ -64,12 +65,36 @@ class PurchaseDividendAllocationTest(unittest.TestCase):
             SimpleNamespace(
                 product='BBAS3',
                 date=date(2026, 3, 1),
+                ex_date=date(2026, 2, 20),
                 quantity=10,
                 total_value=50,
             )
         ]
 
         self.assertEqual(_calculate_purchase_dividends(purchases, proventos), [10.0, 40.0])
+
+    def test_does_not_allocate_without_ex_date(self):
+        purchases = [SimpleNamespace(
+            ticker='MDIA3', qty=45, trade_date=date(2026, 10, 26), settlement_date=None,
+        )]
+        proventos = [SimpleNamespace(
+            product='MDIA3', date=date(2026, 10, 30), ex_date=None,
+            quantity=3, total_value=0.09,
+        )]
+
+        self.assertEqual(_calculate_purchase_dividends(purchases, proventos), [0.0])
+
+    def test_resolves_ex_date_from_price_history(self):
+        provento = SimpleNamespace(
+            product='MDIA3', date=date(2026, 10, 30), ex_date=None,
+            quantity=3, total_value=0.09,
+        )
+        prices = [SimpleNamespace(
+            ticker='MDIA3', trade_date=date(2026, 10, 23), dividend_value=0.03,
+        )]
+
+        self.assertEqual(resolve_provento_ex_dates([provento], prices), 1)
+        self.assertEqual(provento.ex_date, date(2026, 10, 23))
 
 
 if __name__ == '__main__':

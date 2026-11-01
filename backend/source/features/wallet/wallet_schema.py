@@ -47,6 +47,7 @@ class AssetPurchaseResponse(AssetPurchaseBase):
 class ProventoResponse(BaseModel):
     id: int
     date: date
+    ex_date: Optional[date] = None
     type: str
     product: str
     quantity: float
