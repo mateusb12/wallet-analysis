@@ -2,28 +2,29 @@ ASSET_SCHEMA = {
     "fii": {
         "label": "Fundos Imobiliários",
         "categories": [
-            "Renda Imobiliária",
-            "Crédito Imobiliário",
-            "Desenvolvimento Imobiliário",
+            "Tijolo",
+            "Papel",
+            "Desenvolvimento",
+            "Multiestratégia",
             "Outros",
         ]
     },
     "acoes": {
         "label": "Ações",
         "categories": [
-            "Financeiro Brasileiro",
-            "Consumo Essencial",
-            "Indústria Global",
+            "Bancos e Seguradoras",
+            "Alimentos",
+            "Indústria",
             "Outros",
         ]
     },
     "etf": {
         "label": "ETFs",
         "categories": [
-            "Ações Globais",
-            "Juros Pós-fixados",
-            "Juros Reais",
-            "Mercado Imobiliário",
+            "Ações Internacionais",
+            "Pós-fixados",
+            "Inflação",
+            "Imobiliários",
             "Outros",
         ]
     }

@@ -46,9 +46,10 @@ export const MACRO_ICONS = {
 };
 
 export const FII_SUBTYPE_ICONS = {
-  'Renda Imobiliária': tijolo,
-  'Crédito Imobiliário': papel,
-  'Desenvolvimento Imobiliário': desenvolvimento,
+  Tijolo: tijolo,
+  Papel: papel,
+  Desenvolvimento: desenvolvimento,
+  Multiestratégia: hibrido,
   Outros: hibrido,
 };
 
@@ -66,19 +67,19 @@ const AssetIcon = ({ src, alt, className = '' }) => {
 };
 
 const FII_DESCRIPTIONS = {
-  'Renda Imobiliária': {
+  Tijolo: {
     title: 'Imóveis Físicos (Renda e Valorização)',
     text: 'Fundos que detêm imóveis reais (logística, shoppings, lajes). São essenciais para proteção patrimonial contra inflação no longo prazo. Historicamente, suas cotas tendem a valorizar quando a taxa de juros (Selic) cai, tornando-se "fortes" em ciclos de baixa de juros.',
   },
-  'Crédito Imobiliário': {
+  Papel: {
     title: 'Recebíveis Imobiliários (Dívida/CRIs)',
     text: 'Fundos que investem em títulos de dívida (crédito). Geralmente pagam dividendos mais altos (High Yield) e protegem o poder de compra no curto prazo, mas não costumam ter valorização patrimonial expressiva.',
   },
-  'Desenvolvimento Imobiliário': {
+  Desenvolvimento: {
     title: 'Construção para Venda',
     text: 'Focam em construir imóveis para vender com lucro, funcionando como uma incorporadora. Possuem maior risco (obra, permuta), mas oferecem potencial de ganho de capital explosivo ao final do ciclo.',
   },
-  Outros: {
+  Multiestratégia: {
     title: 'Exposição Imobiliária Mista',
     text: 'Ativos cuja composição reúne estratégias diferentes ou ainda não foi detalhada. Eles não são atribuídos artificialmente a uma única fonte de risco.',
   },
@@ -143,22 +144,22 @@ const AIAnalysisReport = ({ tree, targets }) => {
 
   const fiiData = tree.fii;
   if (fiiData && fiiData.totalValue > 0) {
-    const papelVal = fiiData.subTypes['Crédito Imobiliário']?.value || 0;
+    const papelVal = fiiData.subTypes.Papel?.value || 0;
     const papelPct = (papelVal / fiiData.totalValue) * 100;
 
     if (papelPct > 55) {
       insights.push({
         type: 'warning',
         title: 'Exposição Excessiva em Crédito (FIIs)',
-        text: `Sua carteira de FIIs está ${papelPct.toFixed(0)}% em Crédito Imobiliário. Isso gera renda, mas tem risco diferente de imóveis físicos e desenvolvimento.`,
+        text: `Sua carteira de FIIs está ${papelPct.toFixed(0)}% em Papel. Isso gera renda, mas tem risco diferente de imóveis físicos e desenvolvimento.`,
         action:
           'Evite concentrar novos aportes em crédito e compare garantias, indexadores e qualidade dos devedores.',
       });
     } else if (papelPct < 25) {
       insights.push({
         type: 'info',
-        title: 'Baixa Exposição a Crédito Imobiliário',
-        text: `Você tem ${papelPct.toFixed(0)}% em crédito imobiliário. Essa estratégia pode complementar a renda, mas deve ser avaliada junto ao risco de crédito.`,
+        title: 'Baixa Exposição a Papel',
+        text: `Você tem ${papelPct.toFixed(0)}% em Papel. Essa estratégia pode complementar a renda, mas deve ser avaliada junto ao risco de crédito.`,
         action:
           'Compare a qualidade das garantias e a concentração dos CRIs antes de aumentar a exposição.',
       });
@@ -182,21 +183,21 @@ const AIAnalysisReport = ({ tree, targets }) => {
       });
     }
 
-    const financeVal = stockData.subTypes['Financeiro Brasileiro']?.value || 0;
+    const financeVal = stockData.subTypes['Bancos e Seguradoras']?.value || 0;
     const financePct = (financeVal / stockData.totalValue) * 100;
 
     if (financePct > 70) {
       insights.push({
         type: 'info',
         title: 'Carteira de Ações Muito Conservadora',
-        text: `Mais de ${financePct.toFixed(0)}% das suas ações estão no grupo Financeiro Brasileiro, com exposição compartilhada à economia local.`,
-        action: 'Estude diversificar entre consumo essencial e indústria global.',
+        text: `Mais de ${financePct.toFixed(0)}% das suas ações estão em Bancos e Seguradoras, com exposição compartilhada à economia local.`,
+        action: 'Estude diversificar entre alimentos e indústria.',
       });
     } else if (financePct < 10) {
       insights.push({
         type: 'warning',
         title: 'Alta Volatilidade em Ações',
-        text: 'Sua carteira de ações tem pouca exposição ao grupo Financeiro Brasileiro.',
+        text: 'Sua carteira de ações tem pouca exposição a Bancos e Seguradoras.',
         action: 'Avalie se essa ausência é intencional antes de alterar os aportes.',
       });
     }
@@ -442,22 +443,22 @@ const DEFAULT_TARGETS = {
   macro: { fii: 34, acoes: 33, etf: 33, outros: 0 },
   micro: {
     fii: {
-      'Renda Imobiliária': 40,
-      'Crédito Imobiliário': 30,
-      'Desenvolvimento Imobiliário': 10,
-      Outros: 20,
+      Tijolo: 40,
+      Papel: 30,
+      Desenvolvimento: 10,
+      Multiestratégia: 20,
     },
     acoes: {
-      'Financeiro Brasileiro': 40,
-      'Consumo Essencial': 25,
-      'Indústria Global': 25,
+      'Bancos e Seguradoras': 40,
+      Alimentos: 25,
+      Indústria: 25,
       Outros: 10,
     },
     etf: {
-      'Ações Globais': 45,
-      'Juros Pós-fixados': 25,
-      'Juros Reais': 15,
-      'Mercado Imobiliário': 10,
+      'Ações Internacionais': 45,
+      'Pós-fixados': 25,
+      Inflação: 15,
+      Imobiliários: 10,
       Outros: 5,
     },
     outros: { Indefinido: 0 },

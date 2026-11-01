@@ -1,19 +1,17 @@
 export const BALANCING_SCHEMA = {
-  fii: ['Renda Imobiliária', 'Crédito Imobiliário', 'Desenvolvimento Imobiliário', 'Outros'],
-  acoes: ['Financeiro Brasileiro', 'Consumo Essencial', 'Indústria Global', 'Outros'],
-  etf: ['Ações Globais', 'Juros Pós-fixados', 'Juros Reais', 'Mercado Imobiliário', 'Outros'],
+  fii: ['Tijolo', 'Papel', 'Desenvolvimento', 'Multiestratégia', 'Outros'],
+  acoes: ['Bancos e Seguradoras', 'Alimentos', 'Indústria', 'Outros'],
+  etf: ['Ações Internacionais', 'Pós-fixados', 'Inflação', 'Imobiliários', 'Outros'],
   outros: ['Indefinido'],
 };
 
 export const LEGACY_SUBTYPE_MAP = {
-  Tijolo: 'Renda Imobiliária',
-  Papel: 'Crédito Imobiliário',
-  Híbrido: 'Outros',
-  Desenvolvimento: 'Desenvolvimento Imobiliário',
-  'Fundos de Fundos': 'Outros',
+  Desenvolvimento: 'Desenvolvimento',
+  Híbrido: 'Multiestratégia',
+  'Fundos de Fundos': 'Multiestratégia',
   'Perenes (Renda/Defesa)': 'Outros',
   'Cíclicas (Valor/Crescimento)': 'Outros',
-  'Base Global': 'Ações Globais',
+  'Base Global': 'Ações Internacionais',
   'Base Brasil': 'Outros',
   'Específicos/Fatores': 'Outros',
   Cripto: 'Outros',
