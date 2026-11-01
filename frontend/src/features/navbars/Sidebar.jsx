@@ -204,7 +204,7 @@ function Sidebar({ isMobileOpen, onClose }) {
         {sidebarContent}
       </div>
 
-      <div className="hidden md:flex md:flex-col md:w-72 bg-white dark:bg-gray-800 h-screen shadow-xl border-r border-gray-300 dark:border-gray-700 z-20 transition-colors duration-200">
+      <div className="hidden md:flex md:flex-col md:w-72 sticky top-0 h-screen bg-white dark:bg-gray-800 shadow-xl border-r border-gray-300 dark:border-gray-700 z-20 transition-colors duration-200">
         {sidebarContent}
       </div>
     </>

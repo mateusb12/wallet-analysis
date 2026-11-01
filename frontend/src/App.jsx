@@ -28,13 +28,13 @@ function AppContent() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-100 dark:bg-gray-900 overflow-hidden">
+    <div className="flex min-h-screen bg-gray-100 dark:bg-gray-900">
       <Sidebar isMobileOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
 
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar onMobileMenuOpen={() => setIsMobileMenuOpen(true)} />
 
-        <div className="flex-1 overflow-auto p-4 md:p-6 scroll-smooth">
+        <div className="flex-1 p-4 md:p-6">
           <div className="max-w-7xl mx-auto">
             {}
             <Routes>
