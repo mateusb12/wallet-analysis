@@ -128,6 +128,7 @@ export default function Settings() {
   const [existingProventos, setExistingProventos] = useState([]);
   const [isProventosExpanded, setIsProventosExpanded] = useState(true);
   const [isContributionsExpanded, setIsContributionsExpanded] = useState(true);
+  const [areRequestsExpanded, setAreRequestsExpanded] = useState(true);
   const [jobStatus, setJobStatus] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('wallet-analysis:scraper-job-status') || '{"status":"idle"}');
@@ -749,14 +750,23 @@ export default function Settings() {
             </div>
 
             <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
-              <div className="mb-3 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setAreRequestsExpanded((expanded) => !expanded)}
+                aria-expanded={areRequestsExpanded}
+                aria-controls="captured-requests-table"
+                className="mb-3 flex w-full items-center justify-between rounded-lg px-2 py-2 text-left transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-gray-700/60"
+              >
                 <div>
                   <p className="font-medium text-gray-900 dark:text-white">Requisições capturadas</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Atualização em tempo real durante a execução</p>
                 </div>
-                <span className="text-sm text-gray-500 dark:text-gray-400">{scraperRequests.length}</span>
-              </div>
-              <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                <span className="inline-flex items-center gap-2 rounded-md bg-gray-100 px-2 py-1 text-sm text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                  {scraperRequests.length}
+                  <ChevronDown className={`h-4 w-4 transition-transform ${areRequestsExpanded ? 'rotate-180' : ''}`} />
+                </span>
+              </button>
+              {areRequestsExpanded && <div id="captured-requests-table" className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
                 <table className="min-w-full text-left text-sm">
                   <thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-700/50 dark:text-gray-400">
                     <tr>
@@ -780,7 +790,7 @@ export default function Settings() {
                     )}
                   </tbody>
                 </table>
-              </div>
+              </div>}
             </div>
           </div>
         </section>
