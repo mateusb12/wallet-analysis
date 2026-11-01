@@ -74,34 +74,63 @@ class SqlAlchemyMarketDataRepository:
         return [_iso(row[0]) for row in rows]
 
     def upsert_b3_prices(self, records: Sequence[dict[str, Any]]) -> None:
+        if not records:
+            return
+
+        ticker = records[0]["ticker"]
+        trade_dates = [_date_value(record["trade_date"]) for record in records]
+        existing_rows = (
+            self._session.query(B3Price)
+            .filter(
+                B3Price.ticker == ticker,
+                B3Price.trade_date.in_(trade_dates),
+            )
+            .all()
+        )
+        rows_by_date = {row.trade_date: row for row in existing_rows}
+
         for record in records:
             trade_date = _date_value(record["trade_date"])
-            row = (
-                self._session.query(B3Price)
-                .filter(B3Price.ticker == record["ticker"], B3Price.trade_date == trade_date)
-                .one_or_none()
-            )
+            row = rows_by_date.get(trade_date)
             if row is None:
-                row = B3Price()
+                row = B3Price(ticker=record["ticker"], trade_date=trade_date)
                 self._session.add(row)
             _assign(row, record, excluded={"id"})
         self._session.commit()
 
     def upsert_ifix_history(self, records: Sequence[dict[str, Any]]) -> None:
+        if not records:
+            return
+        dates = [_date_value(record["trade_date"]) for record in records]
+        rows = self._session.query(IfixHistory).filter(IfixHistory.trade_date.in_(dates)).all()
+        rows_by_date = {row.trade_date: row for row in rows}
         for record in records:
             trade_date = _date_value(record["trade_date"])
-            row = self._session.get(IfixHistory, trade_date) or IfixHistory(trade_date=trade_date)
+            row = rows_by_date.get(trade_date) or IfixHistory(trade_date=trade_date)
             _assign(row, record)
             self._session.add(row)
         self._session.commit()
 
+    def get_last_ifix_date(self) -> str | None:
+        row = self._session.query(IfixHistory.trade_date).order_by(IfixHistory.trade_date.desc()).first()
+        return _iso(row[0]) if row else None
+
     def upsert_ibov_history(self, records: Sequence[dict[str, Any]]) -> None:
+        if not records:
+            return
+        dates = [_date_value(record["trade_date"]) for record in records]
+        rows = self._session.query(IbovHistory).filter(IbovHistory.trade_date.in_(dates)).all()
+        rows_by_date = {row.trade_date: row for row in rows}
         for record in records:
             trade_date = _date_value(record["trade_date"])
-            row = self._session.get(IbovHistory, trade_date) or IbovHistory(trade_date=trade_date)
+            row = rows_by_date.get(trade_date) or IbovHistory(trade_date=trade_date)
             _assign(row, record)
             self._session.add(row)
         self._session.commit()
+
+    def get_last_ibov_date(self) -> str | None:
+        row = self._session.query(IbovHistory.trade_date).order_by(IbovHistory.trade_date.desc()).first()
+        return _iso(row[0]) if row else None
 
     def get_last_cdi_date(self) -> str | None:
         row = self._session.query(CdiHistory.trade_date).order_by(CdiHistory.trade_date.desc()).first()
@@ -154,12 +183,15 @@ class SqlAlchemyReferenceDataRepository:
         return _iso(row[0]) if row else None
 
     def insert_ipca(self, records):
+        if not records:
+            return
+        dates = [_date_value(record["ref_date"]) for record in records]
+        rows = self._session.query(IpcaHistory).filter(IpcaHistory.ref_date.in_(dates)).all()
+        rows_by_date = {row.ref_date: row for row in rows}
         for record in records:
             ref_date = _date_value(record["ref_date"])
-            row = self._session.query(IpcaHistory).filter(IpcaHistory.ref_date == ref_date).first()
-            if row is None:
-                row = IpcaHistory(ref_date=ref_date)
-                self._session.add(row)
+            row = rows_by_date.get(ref_date) or IpcaHistory(ref_date=ref_date)
+            self._session.add(row)
             _assign(row, record)
         self._session.commit()
 

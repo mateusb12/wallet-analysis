@@ -83,7 +83,13 @@ class MarketDataRepository(Protocol):
     def upsert_ifix_history(self, records: Sequence[dict[str, Any]]) -> None:
         ...
 
+    def get_last_ifix_date(self) -> str | None:
+        ...
+
     def upsert_ibov_history(self, records: Sequence[dict[str, Any]]) -> None:
+        ...
+
+    def get_last_ibov_date(self) -> str | None:
         ...
 
     def get_last_cdi_date(self) -> str | None:

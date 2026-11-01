@@ -37,6 +37,10 @@ class SupabaseMarketDataRepository:
     def upsert_ifix_history(self, records: Sequence[dict[str, Any]]) -> None:
         self._upsert_in_batches("ifix_history", records, "trade_date")
 
+    def get_last_ifix_date(self):
+        rows = self._client.table("ifix_history").select("trade_date").order("trade_date", desc=True).limit(1).execute().data
+        return rows[0]["trade_date"] if rows else None
+
     def upsert_ibov_history(self, records: Sequence[dict[str, Any]]) -> None:
         self._upsert_in_batches("ibov_history", records, "trade_date")
 

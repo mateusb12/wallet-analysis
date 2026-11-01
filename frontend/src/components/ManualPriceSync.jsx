@@ -190,86 +190,33 @@ export default function ManualPriceSync() {
   const handleSyncAll = async () => {
     setLoading(true);
     resetStates();
-    setBatchProgress({ current: 0, total: 0, ticker: 'Verificando carteira...' });
+    setBatchProgress({ current: 0, total: 1, ticker: 'Sincronizando carteira, índices e referências...' });
 
     try {
-      const positions = await fetchWalletPositions(true);
-
-      const uniqueTickers = [...new Set(positions.map((p) => p.ticker))];
-
-      const indicesToSync = [
-        { id: 'IBOV', label: 'Índice IBOVESPA', action: () => syncService.syncIbov() },
-        { id: 'IFIX', label: 'Índice IFIX', action: () => syncService.syncIfix('^IFIX') },
-        {
-          id: 'CDI',
-          label: 'Taxa CDI',
-          action: () => {
-            const firstPurchaseDate = positions
-              .map((position) => position.purchaseDate)
-              .filter(Boolean)
-              .sort()[0];
-            return cdiService.syncCdi(firstPurchaseDate);
-          },
-        },
-        { id: 'SP500', label: 'S&P 500', action: () => syncService.syncTicker('^GSPC') },
-        { id: 'IPCA', label: 'Inflação IPCA', action: () => syncIpcaHistory() },
-      ];
-
-      const totalTasks = uniqueTickers.length + indicesToSync.length;
-      setBatchProgress({ current: 0, total: totalTasks, ticker: '' });
-
-      let stats = { updated: 0, unchanged: 0, errors: 0, errorList: [] };
-      let currentStep = 0;
-
-      const processResult = (id, res) => {
-        if (res && res.success) {
-          if (
-            res.action === 'up_to_date' ||
-            res.message?.includes('Já atualizado') ||
-            res.message?.includes('Sem dados')
-          ) {
-            stats.unchanged++;
-          } else {
-            stats.updated++;
-          }
-        } else {
-          stats.errors++;
-
-          stats.errorList.push(`${id}: ${res?.error || res?.message || 'Erro desconhecido'}`);
+      const result = await syncService.syncAll((eventName, payload) => {
+        if (eventName === 'start' || eventName === 'init' || eventName === 'task_start' || eventName === 'progress') {
+          setBatchProgress({
+            current: payload.current,
+            total: payload.total,
+            ticker: payload.name || 'Preparando sincronização...',
+          });
         }
-      };
-
-      for (const currentTicker of uniqueTickers) {
-        currentStep++;
-        setBatchProgress({ current: currentStep, total: totalTasks, ticker: currentTicker });
-
-        try {
-          const res = await syncService.syncTicker(currentTicker);
-          processResult(currentTicker, res);
-        } catch (err) {
-          stats.errors++;
-          stats.errorList.push(`${currentTicker}: ${err.message || 'Erro desconhecido'}`);
+        if (eventName === 'complete') {
+          setSyncReport(payload.summary);
+          setStatus(payload.success ? 'success' : 'error');
+          setMsg(
+            payload.success
+              ? 'Sincronização completa concluída.'
+              : 'Sincronização completa concluída com falhas.',
+          );
         }
-      }
+      });
 
-      for (const indexObj of indicesToSync) {
-        currentStep++;
-        setBatchProgress({ current: currentStep, total: totalTasks, ticker: indexObj.label });
-
-        try {
-          const res = await indexObj.action();
-          processResult(indexObj.id, res);
-        } catch (err) {
-          stats.errors++;
-          stats.errorList.push(`${indexObj.id}: ${err.message || 'Erro desconhecido'}`);
-        }
-      }
-
-      setSyncReport(stats);
+      if (result?.summary) setSyncReport(result.summary);
       await refreshSqlCoverage();
     } catch (error) {
       setStatus('error');
-      setMsg(error.message || 'Erro ao iniciar sincronização em lote.');
+      setMsg(error.message || 'Erro na sincronização completa.');
     } finally {
       setLoading(false);
       setBatchProgress(null);
@@ -315,7 +262,7 @@ export default function ManualPriceSync() {
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
             >
               <Layers className="w-4 h-4" />
-              Sincronizar Carteira Completa
+              Sincronizar Tudo
             </button>
           </div>
         )}
@@ -334,7 +281,11 @@ export default function ManualPriceSync() {
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-2">
               <div
                 className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
-                style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+                style={{
+                  width: batchProgress.total
+                    ? `${(batchProgress.current / batchProgress.total) * 100}%`
+                    : '0%',
+                }}
               ></div>
             </div>
             <p className="text-xs text-blue-600/70 dark:text-blue-400 font-mono">
@@ -351,7 +302,7 @@ export default function ManualPriceSync() {
             className="sm:hidden w-full mb-6 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors shadow-sm disabled:opacity-50"
           >
             <Layers className="w-4 h-4" />
-            Sincronizar Carteira Completa
+            Sincronizar Tudo
           </button>
         )}
 

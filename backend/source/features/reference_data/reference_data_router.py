@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 import requests
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -64,9 +66,14 @@ def get_cdi(
 @reference_data_bp.post("/ipca/sync")
 def sync_ipca(repository: ReferenceDataRepository = Depends(get_reference_data_repository)):
     try:
-        start_date, end_date = default_date_range()
-        data = fetch_series(433, start_date, end_date)
+        default_start, end_date = default_date_range()
         last_date = repository.get_last_ipca_date()
+        start_date = (
+            (datetime.strptime(last_date, "%Y-%m-%d").date() + timedelta(days=1)).strftime("%d/%m/%Y")
+            if last_date
+            else default_start
+        )
+        data = fetch_series(433, start_date, end_date)
         records = [
             {
                 "ref_date": parse_series_date(row["data"]),

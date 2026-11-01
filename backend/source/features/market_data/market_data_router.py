@@ -12,12 +12,18 @@ import pandas as pd
 import requests
 import yfinance as yf
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
 # Certifique-se que estes imports existem no seu projeto
-from backend.source.core.dependencies import get_market_data_repository
+from backend.source.core.dependencies import (
+    get_b3_repository,
+    get_market_data_repository,
+    get_reference_data_repository,
+)
 from backend.source.features.market_data.market_data_constants import ASSET_SCHEMA
 from backend.source.features.market_data.market_data_schemas import TickerSync
-from backend.source.persistence.ports import MarketDataRepository
+from backend.source.features.reference_data.reference_data_router import sync_ipca
+from backend.source.persistence.ports import B3Repository, MarketDataRepository, ReferenceDataRepository
 from backend.source.features.reference_data.bcb_sgs_client import fetch_series, parse_series_date
 
 market_data_bp = APIRouter(prefix="/sync", tags=["Market Data"])
@@ -291,17 +297,10 @@ def sync_ticker(
     clean_ticker = ticker.replace(".SA", "").upper()
 
     print(f"--- 🕵️‍♂️ SYNC DEBUG: {clean_ticker} ---")
-    # 1. Checa data atual no banco
-    last_db_date = None
     try:
-        last_db_date = market_data.get_last_b3_price_date(clean_ticker)
-    except Exception:
-        pass
-
-    try:
-        # 2. Download Yahoo
+        # 1. Download Yahoo
         df_raw = yf.download(yf_ticker, start=start_date.strftime("%Y-%m-%d"), end=end_date.strftime("%Y-%m-%d"),
-                             auto_adjust=False, progress=False, threads=False)
+                             auto_adjust=False, progress=False, threads=False, timeout=15)
 
         if df_raw.empty:
             return {"success": False, "action": "empty_source", "message": "Yahoo não retornou dados."}
@@ -392,13 +391,17 @@ def sync_ticker(
 
         print(f"✅ {clean_ticker}: {len(records)} registros válidos processados.")
 
-        # Batch upsert
-        market_data.upsert_b3_prices(records)
+        # A sincronização normal só precisa persistir datas ausentes.
+        # O reparo forçado continua regravando todo o histórico baixado.
+        records_to_save = records if force_mode else [
+            record for record in records if str(record["trade_date"])[:10] in missing_dates
+        ]
+        market_data.upsert_b3_prices(records_to_save)
 
         max_date = df_norm['date'].max()
         return {
             "success": True,
-            "count": len(records),
+            "count": len(records_to_save),
             "last_date": max_date,
             "missing_dates": missing_dates,
             "missing_dates_count": len(missing_dates),
@@ -470,10 +473,12 @@ def sync_ifix(
         if not records:
             raise HTTPException(status_code=404, detail="B3 returned data, but no valid records parsed.")
 
-        # Safety Block & Insert
+        last_date = market_data.get_last_ifix_date()
+        if last_date:
+            records = [record for record in records if record["trade_date"] > last_date]
         market_data.upsert_ifix_history(records)
 
-        return {"success": True, "count": len(records), "message": "Synced IFIX from B3"}
+        return {"success": True, "action": "updated" if records else "up_to_date", "count": len(records), "message": "Synced IFIX from B3"}
 
     except Exception as e:
         print(f"❌ Error syncing IFIX: {e}")
@@ -541,9 +546,12 @@ def sync_ibov(
         if not records:
             raise HTTPException(status_code=404, detail="B3 returned data, but no valid records parsed.")
 
+        last_date = market_data.get_last_ibov_date()
+        if last_date:
+            records = [record for record in records if record["trade_date"] > last_date]
         market_data.upsert_ibov_history(records)
 
-        return {"success": True, "count": len(records), "message": "Synced IBOV from B3"}
+        return {"success": True, "action": "updated" if records else "up_to_date", "count": len(records), "message": "Synced IBOV from B3"}
 
     except Exception as e:
         print(f"❌ Error syncing IBOV: {e}")
@@ -596,6 +604,93 @@ def sync_cdi(
         print(f"❌ Error CDI: {e}")
         # Não quebrar o batch do front se o BCB falhar
         return {"success": False, "error": str(e)}
+
+
+@market_data_bp.post("/all")
+def sync_all(
+    market_data: MarketDataRepository = Depends(get_market_data_repository),
+    b3_data: B3Repository = Depends(get_b3_repository),
+    reference_data: ReferenceDataRepository = Depends(get_reference_data_repository),
+):
+    """Synchronize every source and stream one SSE event per completed task."""
+    def make_event(event_name: str, payload: dict[str, Any]) -> str:
+        return f"event: {event_name}\ndata: {json.dumps(payload, default=str)}\n\n"
+
+    def stream_events():
+        summary = {"updated": 0, "unchanged": 0, "errors": 0, "errorList": []}
+        missing_dates: set[str] = set()
+        results: dict[str, Any] = {}
+        yield make_event("start", {"current": 0, "total": 0, "name": "Carregando tickers..."})
+
+        tickers = list(dict.fromkeys([*b3_data.get_unique_tickers(), "^GSPC"]))
+        tasks = [
+            *[
+                (
+                    ticker,
+                    lambda current_ticker=ticker: sync_ticker(
+                        TickerSync(ticker=current_ticker),
+                        market_data,
+                    ),
+                )
+                for ticker in tickers
+            ],
+            ("IBOV", lambda: sync_ibov(market_data)),
+            ("IFIX", lambda: sync_ifix(market_data)),
+            ("CDI", lambda: sync_cdi(market_data=market_data)),
+            ("IPCA", lambda: sync_ipca(reference_data)),
+        ]
+        total = len(tasks)
+        yield make_event("init", {"current": 0, "total": total, "name": "Iniciando sincronização..."})
+
+        for current, (name, operation) in enumerate(tasks, start=1):
+            yield make_event(
+                "task_start",
+                {"current": current - 1, "total": total, "name": name},
+            )
+            try:
+                result = operation()
+                results[name] = result
+                if result.get("success"):
+                    if result.get("action") == "up_to_date" or "Sem novos" in result.get("message", ""):
+                        summary["unchanged"] += 1
+                    else:
+                        summary["updated"] += 1
+                    missing_dates.update(result.get("missing_dates", []))
+                else:
+                    summary["errors"] += 1
+                    summary["errorList"].append(f"{name}: {result.get('error', 'Erro desconhecido')}")
+            except Exception as error:
+                result = {"success": False, "error": str(error)}
+                results[name] = result
+                summary["errors"] += 1
+                summary["errorList"].append(f"{name}: {error}")
+
+            yield make_event(
+                "progress",
+                {
+                    "current": current,
+                    "total": total,
+                    "name": name,
+                    "success": result.get("success", False),
+                    "result": result,
+                },
+            )
+
+        yield make_event(
+            "complete",
+            {
+                "success": summary["errors"] == 0,
+                "summary": summary,
+                "results": results,
+                "missing_dates": sorted(missing_dates),
+            },
+        )
+
+    return StreamingResponse(
+        stream_events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ==============================================================================

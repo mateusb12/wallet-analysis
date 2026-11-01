@@ -134,6 +134,51 @@ export const syncService = {
     if (!response.ok) throw new Error(data.detail || 'IBOV Sync failed');
     return data;
   },
+
+  async syncAll(onEvent) {
+    const response = await fetch(`${API_URL}/sync/all`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || 'Sincronização completa falhou');
+    }
+
+    if (!response.body) throw new Error('O navegador não suporta eventos de progresso.');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let completed = null;
+
+    const parseEvents = () => {
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      events.forEach((rawEvent) => {
+        const eventName = rawEvent.match(/^event:\s*(.+)$/m)?.[1];
+        const dataLine = rawEvent.match(/^data:\s*(.+)$/m)?.[1];
+        if (!eventName || !dataLine) return;
+
+        const payload = JSON.parse(dataLine);
+        onEvent?.(eventName, payload);
+        if (eventName === 'complete') completed = payload;
+      });
+    };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      parseEvents();
+    }
+
+    buffer += decoder.decode();
+    parseEvents();
+    return completed;
+  },
 };
 
 export const analysisService = {
