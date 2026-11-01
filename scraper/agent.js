@@ -24,7 +24,27 @@ let contributionEntries = [];
 let progress = { current: 0, total: 1, label: 'Aguardando execução' };
 
 function setProgress(current, total, label) {
-  progress = { current, total, label };
+  progress = { current, total, label, stageLabel: label, debug: null };
+}
+
+function setDebugAction(action, target, selector, dom = {}) {
+  const domState = [
+    dom.present === undefined ? null : `DOM ${dom.present ? 'presente' : 'ausente'}`,
+    dom.visible === undefined ? null : `${dom.visible ? 'visível' : 'oculto'}`,
+    dom.enabled === undefined ? null : `${dom.enabled ? 'habilitado' : 'desabilitado'}`,
+    dom.focused === undefined ? null : `foco ${dom.focused ? 'ativo' : 'inativo'}`,
+  ].filter(Boolean).join(', ');
+  progress = {
+    ...progress,
+    label: `${progress.stageLabel || progress.label} · ${action}: ${target} [${selector}]${domState ? ` · ${domState}` : ''}`,
+    debug: {
+      action,
+      target,
+      selector,
+      ...dom,
+      updatedAt: new Date().toISOString(),
+    },
+  };
 }
 
 function isLoginPage(page) {
@@ -106,107 +126,96 @@ async function waitForInput(page, patterns, type = null, timeout = 10000) {
   return null;
 }
 
-async function findDateInput(page, labelPattern) {
-  const inputs = page.locator('input');
-  const count = await inputs.count();
-
-  for (let index = 0; index < count; index += 1) {
-    const input = inputs.nth(index);
-    const matches = await input.evaluate((element, patternSource) => {
-      const pattern = new RegExp(patternSource, 'i');
-      const context = [
-        element.getAttribute('name') || '',
-        element.getAttribute('id') || '',
-        element.getAttribute('placeholder') || '',
-        element.getAttribute('aria-label') || '',
-        element.parentElement?.textContent || '',
-      ].join(' ');
-      return pattern.test(context);
-    }, labelPattern.source);
-    if (matches && await input.isVisible().catch(() => false)) return input;
+async function selectDateFromPicker(page, dateInput, targetDate, debugLabel) {
+  const selector = debugLabel === 'data-final' ? '#datepicker-composto_end' : '#datepicker-composto_start';
+  const expectedValue = `${String(targetDate.day).padStart(2, '0')}/${String(targetDate.month).padStart(2, '0')}/${targetDate.year}`;
+  const targetDescription = `${debugLabel} → ${expectedValue}`;
+  setDebugAction('Verificando campo no DOM', targetDescription, selector);
+  const isPresent = await dateInput.count().catch(() => 0);
+  const isVisible = isPresent > 0 && await dateInput.isVisible().catch(() => false);
+  const isEnabled = isPresent > 0 && await dateInput.isEnabled().catch(() => false);
+  if (!isPresent || !isVisible || !isEnabled) {
+    setDebugAction('Campo indisponível', targetDescription, selector, { present: Boolean(isPresent), visible: isVisible, enabled: isEnabled });
+    throw new Error(`O campo ${debugLabel} não está presente, visível e habilitado no DOM da B3.`);
   }
 
-  return null;
-}
-
-async function waitForDateInput(page, labelPattern, timeout = 10000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    const input = await findDateInput(page, labelPattern);
-    if (input) return input;
-    await page.waitForTimeout(200);
-  }
-  return null;
-}
-
-async function selectDateFromPicker(page, dateInput, targetDate, debugLabel = 'data-inicial') {
   await markDebugTarget(dateInput, debugLabel);
-  const dateField = dateInput.locator('xpath=..');
-  const calendarTriggers = dateField.locator('button, [role="button"]');
-  let calendarTrigger = null;
-  for (let index = 0; index < await calendarTriggers.count(); index += 1) {
-    const candidate = calendarTriggers.nth(index);
-    if (await candidate.isVisible().catch(() => false)) {
-      calendarTrigger = candidate;
-      break;
-    }
+  setDebugAction('Aplicando foco', targetDescription, selector, { present: true, visible: true, enabled: true });
+  await dateInput.focus();
+  const focusedInput = await dateInput.evaluate((element) => document.activeElement === element).catch(() => false);
+  if (!focusedInput) {
+    setDebugAction('Foco não confirmado', targetDescription, selector, { present: true, visible: true, enabled: true, focused: false });
+    throw new Error(`O campo ${debugLabel} está no DOM, mas não recebeu foco antes de abrir o calendário da B3.`);
   }
-  if (calendarTrigger) {
-    await markDebugTarget(calendarTrigger, 'trigger-calendario');
-    await calendarTrigger.click();
-  } else {
-    await dateInput.click();
-  }
+  setDebugAction('Clicando para abrir calendário', targetDescription, selector, { present: true, visible: true, enabled: true, focused: true });
+  await dateInput.click();
 
   const comboboxes = page.locator('input[role="combobox"][aria-haspopup="listbox"]:visible');
-  const comboboxCount = await comboboxes.count();
-  const monthSelector = comboboxCount > 0 ? comboboxes.nth(0) : null;
-  const yearSelector = comboboxCount > 1 ? comboboxes.nth(1) : null;
-  if (!monthSelector || !yearSelector) {
-    await dumpCalendarControls(page);
-    throw new Error('Os comboboxes de mês e ano da B3 não apareceram no DOM.');
+  const monthSelector = comboboxes.first();
+  setDebugAction('Aguardando calendário no DOM', targetDescription, 'input[role="combobox"][aria-haspopup="listbox"]', { dateFieldFocused: true });
+  try {
+    await monthSelector.waitFor({ state: 'visible', timeout: 1000 });
+  } catch {
+    if (!(await dateInput.count()) || !(await dateInput.isVisible().catch(() => false))) {
+      throw new Error(`O campo ${debugLabel} saiu do DOM antes de abrir o calendário da B3.`);
+    }
+    await dateInput.click();
+    await monthSelector.waitFor({ state: 'visible', timeout: 5000 });
   }
 
-  await markDebugTarget(monthSelector, 'seletor-mes');
-  await monthSelector.click();
   const monthAbbreviations = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
   const monthNames = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  setDebugAction('Abrindo seletor de mês', targetDescription, 'input[role="combobox"][aria-haspopup="listbox"]:visible');
+  await markDebugTarget(monthSelector, 'seletor-mes');
+  await monthSelector.click();
   const monthOption = page.locator(`a[role="option"][aria-label="${monthAbbreviations[targetDate.month - 1]}"]:visible`).last();
   if (!(await monthOption.count()) || !(await monthOption.isVisible().catch(() => false))) {
     throw new Error(`A opção ${monthAbbreviations[targetDate.month - 1]} não apareceu no DOM do mês da B3.`);
   }
+  setDebugAction('Selecionando mês', targetDescription, `a[role="option"][aria-label="${monthAbbreviations[targetDate.month - 1]}"]`);
   await markDebugTarget(monthOption, `opcao-mes-${monthAbbreviations[targetDate.month - 1]}`);
   await monthOption.click();
 
+  const yearSelector = comboboxes.nth(1);
+  if (!(await yearSelector.count()) || !(await yearSelector.isVisible().catch(() => false))) {
+    throw new Error(`O seletor de ano não está presente no DOM para ${debugLabel}.`);
+  }
+  setDebugAction('Abrindo seletor de ano', targetDescription, 'input[role="combobox"][aria-haspopup="listbox"] (ano)');
   await markDebugTarget(yearSelector, 'seletor-ano');
   await yearSelector.click();
   const yearOption = page.locator(`a[role="option"][aria-label="${targetDate.year}"]:visible`).last();
   if (!(await yearOption.count()) || !(await yearOption.isVisible().catch(() => false))) {
     throw new Error(`${targetDate.year} não apareceu no DOM do ano da B3.`);
   }
+  setDebugAction('Selecionando ano', targetDescription, `a[role="option"][aria-label="${targetDate.year}"]`);
   await markDebugTarget(yearOption, `opcao-ano-${targetDate.year}`);
   await yearOption.click();
 
-  await page.waitForTimeout(300);
-  const calendarTitle = page.getByText(new RegExp(`${monthNames[targetDate.month - 1]}\\s+de\\s+${targetDate.year}`, 'i')).last();
-  if (!(await calendarTitle.count()) || !(await calendarTitle.isVisible().catch(() => false))) {
-    throw new Error('O calendário da B3 não confirmou janeiro de 2025 no DOM.');
+  const dayOptions = page.locator('[role="option"]:visible');
+  const dayPattern = new RegExp(`,\\s*${targetDate.day}\\s+de\\s+${monthNames[targetDate.month - 1]}\\s+de\\s+${targetDate.year}$`, 'i');
+  let dayOption = null;
+  for (let index = 0; index < await dayOptions.count(); index += 1) {
+    const candidate = dayOptions.nth(index);
+    const ariaLabel = await candidate.getAttribute('aria-label').catch(() => '');
+    if (dayPattern.test(ariaLabel || '')) {
+      dayOption = candidate;
+      break;
+    }
   }
-
-  const day = page.locator('body *:visible').filter({ hasText: new RegExp(`^\\s*${targetDate.day}\\s*$`) }).last();
-  if (!(await day.count()) || !(await day.isVisible().catch(() => false))) {
-    throw new Error('O calendário da B3 abriu, mas o dia 1 não foi encontrado no DOM.');
+  if (!dayOption || !(await dayOption.isVisible().catch(() => false))) {
+    throw new Error(`O dia ${targetDate.day} não apareceu no DOM do calendário da B3.`);
   }
-  await markDebugTarget(day, `dia-${targetDate.day}`);
-  await day.click();
+  setDebugAction('Selecionando dia', targetDescription, `a[role="option"] com aria-label do dia ${targetDate.day}`);
+  await markDebugTarget(dayOption, `dia-${targetDate.day}`);
+  await dayOption.click();
 
-  const expectedDay = String(targetDate.day).padStart(2, '0');
-  const expectedMonth = String(targetDate.month).padStart(2, '0');
-  const expectedValues = [`${expectedDay}/${expectedMonth}/${targetDate.year}`, `${targetDate.year}-${expectedMonth}-${expectedDay}`];
+  await page.waitForTimeout(200);
   const actualValue = await dateInput.inputValue();
-  if (!expectedValues.includes(actualValue)) {
-    throw new Error(`A data inicial não foi confirmada pelo DOM: ${actualValue || '(vazia)'}.`);
+  if (actualValue !== expectedValue) {
+    setDebugAction('Validando valor da data', targetDescription, selector, { expectedValue, actualValue });
+    throw new Error(`A B3 não confirmou ${debugLabel}: esperado ${expectedValue}, recebido ${actualValue || '(vazio)'}.`);
   }
+  setDebugAction('Data selecionada', targetDescription, selector, { expectedValue, actualValue, present: true, visible: true, enabled: true });
 }
 
 async function markDebugTarget(locator, label) {
@@ -227,9 +236,10 @@ async function markDebugTarget(locator, label) {
 
 async function rejectCookieBanner(page) {
   const cookieDialog = page
-    .locator('[role="alertdialog"], [aria-modal="true"]')
+    .locator('[role="alertdialog"]:visible, [aria-modal="true"]:visible')
     .filter({ hasText: /privacidade|cookies/i });
 
+  setDebugAction('Verificando janela de cookies', 'botão de rejeição', '[role="alertdialog"], [aria-modal="true"]');
   if (!(await cookieDialog.count())) {
     console.log('Diálogo de cookies não encontrado no DOM.');
     return false;
@@ -241,33 +251,15 @@ async function rejectCookieBanner(page) {
     .first();
 
   if (!(await rejectButton.count())) {
+    setDebugAction('Botão não encontrado no DOM', 'Rejeitar todos os cookies', 'button, [role="button"]', { present: false });
     throw new Error('Diálogo de cookies encontrado no DOM, mas o botão “Rejeitar todos os cookies” não foi encontrado.');
   }
 
+  setDebugAction('Clicando no botão presente no DOM', 'Rejeitar todos os cookies', 'button, [role="button"]', { present: true, visible: await rejectButton.isVisible().catch(() => false), enabled: await rejectButton.isEnabled().catch(() => false) });
   await markDebugTarget(rejectButton, 'rejeitar-todos-os-cookies');
   await rejectButton.click({ timeout: 10000 });
   console.log('Cookies rejeitados pelo diálogo da B3.');
   return true;
-}
-
-async function dumpCalendarControls(page) {
-  const controls = await page.locator('body *:visible').evaluateAll((elements) => elements
-    .map((element) => {
-      const rect = element.getBoundingClientRect();
-      return {
-        tag: element.tagName,
-        className: typeof element.className === 'string' ? element.className : '',
-        role: element.getAttribute('role') || '',
-        ariaLabel: element.getAttribute('aria-label') || '',
-        text: (element.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 50),
-        rect: [Math.round(rect.left), Math.round(rect.top), Math.round(rect.width), Math.round(rect.height)],
-      };
-    })
-    .filter((element) => element.rect[0] < 650 && element.rect[1] > 100 && element.rect[1] < 650)
-    .filter((element) => element.rect[2] > 0 && element.rect[3] > 0)
-    .filter((element) => element.role || element.ariaLabel || element.text === 'Out' || element.text === '2026' || /select|month|year|calendar|date/i.test(element.className))
-    .slice(-40));
-  console.log(`Controles do calendário no DOM: ${JSON.stringify(controls)}`);
 }
 
 async function findVisibleControl(page, labelPattern) {
@@ -307,7 +299,7 @@ async function waitForEnabledControl(page, labelPattern, timeout = 10000) {
   while (Date.now() < deadline) {
     const control = await findVisibleControl(page, labelPattern);
     if (control && await control.isEnabled().catch(() => false)) return control;
-    await page.waitForTimeout(200);
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 200));
   }
   return null;
 }
@@ -410,12 +402,14 @@ async function configureMovementFilters(page) {
   await filterButton.click({ timeout: 10000 });
   console.log('Filtro inicial clicado.');
 
+  const filterDialog = page.locator('[role="dialog"]:visible').last();
+  await filterDialog.waitFor({ state: 'visible', timeout: 10000 });
   setProgress(7, 12, 'Selecionando período desde 01/01/2025');
-  const startDateInput = await waitForDateInput(page, /data\s*inicial|in[ií]cio/, 10000);
-  if (!startDateInput) throw new Error('Não foi possível localizar a data inicial dos filtros da B3.');
-  const endDateInput = await waitForDateInput(page, /data\s*final|fim/, 10000);
-  if (!endDateInput) throw new Error('Não foi possível localizar a data final dos filtros da B3.');
-  const endDateValue = await endDateInput.inputValue();
+  const startDateInput = filterDialog.locator('#datepicker-composto_start');
+  await startDateInput.waitFor({ state: 'visible', timeout: 10000 });
+  const initialEndDateInput = filterDialog.locator('#datepicker-composto_end');
+  await initialEndDateInput.waitFor({ state: 'visible', timeout: 10000 });
+  const endDateValue = await initialEndDateInput.inputValue();
   const endDateMatch = endDateValue.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!endDateMatch) throw new Error(`A data final inicial da B3 não tem formato reconhecido: ${endDateValue || '(vazia)'}.`);
   const endDate = {
@@ -424,19 +418,35 @@ async function configureMovementFilters(page) {
     year: Number(endDateMatch[3]),
   };
 
-  await selectDateFromPicker(page, startDateInput, { year: 2025, month: 1, day: 1 });
+  await selectDateFromPicker(page, startDateInput, { year: 2025, month: 1, day: 1 }, 'data-inicial');
   console.log('Data inicial selecionada: 01/01/2025.');
 
+  const endDateInput = filterDialog.locator('#datepicker-composto_end');
+  const endFieldPresent = await endDateInput.count().catch(() => 0);
+  if (!endFieldPresent || !(await endDateInput.isVisible().catch(() => false)) || !(await endDateInput.isEnabled().catch(() => false))) {
+    throw new Error('Após selecionar a data inicial, o campo Data final não está presente, visível e habilitado no DOM da B3.');
+  }
+  const endValueAfterStart = await endDateInput.inputValue();
+  console.log(`DOM após data inicial: campo Data final presente; valor ${endValueAfterStart || '(vazio)'}.`);
   await selectDateFromPicker(page, endDateInput, endDate, 'data-final');
   console.log(`Data final selecionada: ${endDateValue}.`);
 
-  const filterDialog = page.locator('[role="dialog"]:visible').last();
-  await filterDialog.waitFor({ state: 'visible', timeout: 10000 });
-  const applyButton = await waitForEnabledControl(filterDialog, /^(apply|filtrar)$/i, 10000);
+  setDebugAction('Buscando botão presente no DOM', 'Filtrar', 'button:visible, [role="button"]:visible');
+  const applyButtons = page
+    .locator('button:visible, [role="button"]:visible, input[type="submit"]:visible, a:visible')
+    .filter({ hasText: /^(apply|filtrar)$/i });
+  const applyButtonCount = await applyButtons.count();
+  const applyButton = applyButtonCount ? applyButtons.last() : null;
   setProgress(8, 12, 'Aplicando filtro');
-  const hasApplyButton = Boolean(applyButton);
-  console.log(`Filtro final detectado: ${hasApplyButton}`);
-  if (!hasApplyButton) throw new Error('Não foi possível localizar o botão para aplicar os filtros da B3.');
+  const hasApplyButton = Boolean(applyButton)
+    && await applyButton.isVisible().catch(() => false)
+    && await applyButton.isEnabled().catch(() => false);
+  console.log(`Filtro final detectado, visível e habilitado: ${hasApplyButton}`);
+  if (!hasApplyButton) {
+    setDebugAction('Botão ausente ou desabilitado', 'Filtrar', 'button:visible, [role="button"]:visible', { present: applyButtonCount > 0 });
+    throw new Error('O botão “Filtrar” não está presente, visível e habilitado no DOM da B3.');
+  }
+  setDebugAction('Clicando no botão presente no DOM', 'Filtrar', 'button:visible, [role="button"]:visible', { present: true, visible: true, enabled: true });
   await applyButton.evaluate((element) => {
     element.scrollIntoView({ block: 'center', inline: 'center' });
     element.style.setProperty('border', '3px solid red', 'important');
@@ -450,7 +460,7 @@ async function configureMovementFilters(page) {
 
   await filterDialog.waitFor({ state: 'hidden', timeout: 15000 });
   const expectedRange = `Exibindo: 01/01/2025 - ${endDateValue}`;
-  await page.getByText(expectedRange, { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
+  await page.getByText(expectedRange, { exact: true }).last().waitFor({ state: 'visible', timeout: 15000 });
   setProgress(9, 12, 'Movimentações filtradas');
   console.log(`Filtro aplicado; intervalo exibido: ${expectedRange}`);
 
