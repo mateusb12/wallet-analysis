@@ -16,6 +16,15 @@ from backend.source.features.wallet.wallet_schema import (
     ProventoResponse,
     HistoryPoint
 )
+from backend.source.features.wallet.dividend_calculator import (
+    calculate_dividend_series,
+    calculate_purchase_dividends,
+)
+from backend.source.features.wallet.history_data import load_history_data
+
+# Compatibility name for existing callers/tests; implementation lives in the
+# dividend calculator module.
+_calculate_purchase_dividends = calculate_purchase_dividends
 
 wallet_bp = APIRouter(prefix="/wallet", tags=["Wallet"])
 
@@ -98,36 +107,6 @@ def _format_asset_age(first_purchase_date) -> str:
     return " ".join(parts)
 
 
-def _normalize_provento_ticker(value: str) -> str:
-    match = re.search(r"\b[A-Z]{4}\d{1,2}F?\b", str(value or ""), re.IGNORECASE)
-    ticker = match.group(0).upper() if match else ""
-    return ticker[:-1] if ticker.endswith("F") else ticker
-
-
-def _calculate_purchase_dividends(purchases, proventos) -> List[float]:
-    """Attribute each dividend to each eligible purchase by its own quantity."""
-    dividends = [0.0] * len(purchases)
-
-    for provento in proventos:
-        payment_date = provento.date
-        product = _normalize_provento_ticker(provento.product)
-        provento_quantity = float(getattr(provento, 'quantity', 0) or 0)
-        if not product or provento_quantity <= 0:
-            continue
-
-        value_per_share = float(provento.total_value) / provento_quantity
-        for index, purchase in enumerate(purchases):
-            purchase_date = purchase.trade_date or purchase.settlement_date
-            if (
-                _normalize_provento_ticker(purchase.ticker) == product
-                and purchase_date
-                and purchase_date <= payment_date
-            ):
-                dividends[index] += float(purchase.qty) * value_per_share
-
-    return dividends
-
-
 def _build_cdi_factors(benchmark_query, common_idx):
     """Build CDI factors without applying a business-day rate on calendar gaps."""
     factors = pd.Series(1.0, index=common_idx, dtype=float)
@@ -154,15 +133,20 @@ def _calculate_history_logic(
         preloaded_purchases=None,
         preloaded_prices=None,
         preloaded_benchmark=None,
+        preloaded_proventos=None,
 ) -> List[Dict]:
-    if preloaded_purchases is None:
-        purchases = wallets.get_history_purchases(user_id, asset_type, ticker)
-    else:
-        purchases = [
-            purchase for purchase in preloaded_purchases
-            if (not asset_type or purchase.type == asset_type)
-            and (not ticker or purchase.ticker == ticker)
-        ]
+    history_data = load_history_data(
+        user_id,
+        wallets,
+        asset_type,
+        benchmark,
+        ticker,
+        preloaded_purchases,
+        preloaded_prices,
+        preloaded_benchmark,
+        preloaded_proventos,
+    )
+    purchases = history_data.purchases
     if not purchases: return []
 
     df_purchases = pd.DataFrame(purchases, columns=['ticker', 'qty', 'price', 'trade_date', 'type'])
@@ -173,26 +157,12 @@ def _calculate_history_logic(
     start_date = df_purchases['trade_date'].min()
     unique_tickers = df_purchases['ticker'].unique().tolist()
 
-    def from_start_date(rows):
-        return [row for row in rows if row.trade_date >= start_date.date()]
-
-    if preloaded_prices is None:
-        prices_query = wallets.get_prices_from(unique_tickers, start_date.date())
-    else:
-        prices_query = from_start_date(
-            row for row in preloaded_prices if row.ticker in unique_tickers
-        )
-
-    if preloaded_benchmark is not None:
-        benchmark_query = from_start_date(preloaded_benchmark)
-    else:
-        benchmark_query = wallets.get_cdi_from(start_date.date())
-        if benchmark == 'IBOV':
-            benchmark_query = wallets.get_ibov_from(start_date.date())
-        elif benchmark == 'IFIX':
-            benchmark_query = wallets.get_ifix_from(start_date.date())
-        elif benchmark == 'SP500':
-            benchmark_query = wallets.get_prices_from(['^GSPC'], start_date.date())
+    prices_query = [
+        row for row in history_data.prices
+        if row.ticker in unique_tickers
+    ]
+    benchmark_query = history_data.benchmark
+    proventos = history_data.proventos
 
     if not prices_query: return []
 
@@ -205,11 +175,6 @@ def _calculate_history_logic(
     df_prices['dividend_value'] = pd.to_numeric(df_prices['dividend_value'], errors='coerce').fillna(0.0)
 
     price_matrix = df_prices.pivot(index='trade_date', columns='ticker', values='close').resample('D').ffill()
-    dividend_matrix = df_prices.pivot(
-        index='trade_date',
-        columns='ticker',
-        values='dividend_value',
-    ).reindex(price_matrix.index).fillna(0.0)
     holdings_matrix = pd.DataFrame(0.0, index=price_matrix.index, columns=unique_tickers)
     daily_cash_flow = df_purchases.groupby('trade_date')['cash_flow'].sum()
 
@@ -222,8 +187,19 @@ def _calculate_history_logic(
     price_matrix = price_matrix.loc[common_idx]
     holdings_matrix = holdings_matrix.loc[common_idx]
     daily_portfolio = (holdings_matrix * price_matrix).sum(axis=1)
-    daily_dividends = (holdings_matrix * dividend_matrix.loc[common_idx]).sum(axis=1)
+    dividend_series = calculate_dividend_series(
+        df_prices,
+        common_idx,
+        holdings_matrix,
+        proventos,
+        set(unique_tickers),
+    )
+    confirmed_dividends = dividend_series.confirmed
+    estimated_dividends = dividend_series.estimated
+    daily_dividends = dividend_series.total
     accumulated_dividends = daily_dividends.cumsum()
+    confirmed_accumulated = confirmed_dividends.cumsum()
+    estimated_accumulated = estimated_dividends.cumsum()
 
     aligned_cash_flow = daily_cash_flow.reindex(common_idx, fill_value=0.0)
     benchmark_values = []
@@ -264,6 +240,10 @@ def _calculate_history_logic(
         "portfolio_value": round(float(daily_portfolio.iloc[i]), 2),
         "dividends_value": round(float(daily_dividends.iloc[i]), 2),
         "dividends_accumulated": round(float(accumulated_dividends.iloc[i]), 2),
+        "dividends_confirmed": round(float(confirmed_dividends.iloc[i]), 2),
+        "dividends_confirmed_accumulated": round(float(confirmed_accumulated.iloc[i]), 2),
+        "dividends_estimated": round(float(estimated_dividends.iloc[i]), 2),
+        "dividends_estimated_accumulated": round(float(estimated_accumulated.iloc[i]), 2),
         "benchmark_value": round(float(benchmark_values[i]), 2),
     } for i in range(limit)]
 
@@ -320,7 +300,7 @@ def get_dashboard_data(
     if not purchases:
         return empty_response
 
-    dividend_by_purchase = _calculate_purchase_dividends(purchases, proventos)
+    dividend_by_purchase = calculate_purchase_dividends(purchases, proventos)
 
     # Identificar Data Inicial Global da Carteira para buscar histórico anual
     effective_dates = [p.trade_date or p.settlement_date for p in purchases]
@@ -582,16 +562,19 @@ def get_dashboard_data(
             current_user, wallets, "stock", "IBOV", preloaded_prices=history_prices,
             preloaded_purchases=history_purchases,
             preloaded_benchmark=history_benchmarks["IBOV"],
+            preloaded_proventos=proventos,
         ),
         "fii": _calculate_history_logic(
             current_user, wallets, "fii", "IFIX", preloaded_prices=history_prices,
             preloaded_purchases=history_purchases,
             preloaded_benchmark=history_benchmarks["IFIX"],
+            preloaded_proventos=proventos,
         ),
         "etf": _calculate_history_logic(
             current_user, wallets, "etf", "SP500", preloaded_prices=history_prices,
             preloaded_purchases=history_purchases,
             preloaded_benchmark=history_benchmarks["SP500"],
+            preloaded_proventos=proventos,
         ),
     }
     history_total = _calculate_history_logic(
@@ -600,6 +583,7 @@ def get_dashboard_data(
         preloaded_purchases=history_purchases,
         preloaded_prices=history_prices,
         preloaded_benchmark=history_benchmarks["CDI"],
+        preloaded_proventos=proventos,
     )
 
     dividends_global = (
@@ -651,6 +635,7 @@ def get_dashboard_data(
                 benchmark_by_type.get(position["type"], "CDI"),
                 history_benchmarks["CDI"],
             ),
+            preloaded_proventos=proventos,
         )
         for ticker, position in pos_map.items()
     }
