@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   RefreshCw,
   CheckCircle,
@@ -15,9 +15,55 @@ import {
   Wrench
 } from 'lucide-react';
 import { syncService } from '../services/api.js';
+import { fetchPriceCoverage } from '../services/b3service.js';
 import { syncIpcaHistory } from '../services/ipcaService.js';
 import { cdiService } from '../services/cdiService.js';
 import { fetchWalletPositions } from '../services/walletDataService.js';
+
+const shortMonthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+const formatShortDate = (value) => {
+  const match = String(value || '').slice(0, 10).match(/^\d{4}-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return `${Number(match[2])}/${shortMonthNames[Number(match[1]) - 1]}`;
+};
+
+const formatDateList = (dates) => {
+  const visibleDates = dates.slice(0, 12);
+  const remainingCount = dates.length - visibleDates.length;
+  if (visibleDates.length === 1) return visibleDates[0];
+  const suffix = remainingCount > 0 ? ` e mais ${remainingCount}` : '';
+  if (visibleDates.length === 2) return `${visibleDates[0]} e ${visibleDates[1]}${suffix}`;
+  return `${visibleDates.slice(0, -1).join(', ')} e ${visibleDates[visibleDates.length - 1]}${suffix}`;
+};
+
+const formatMissingDates = (entries) => {
+  const uniqueRawDates = Array.from(new Set(entries
+    .map((entry) => (typeof entry === 'string' ? entry : entry.date))
+    .filter(Boolean))).sort();
+  return formatDateList(uniqueRawDates.map(formatShortDate).filter(Boolean));
+};
+
+const toDateKey = (date) => date.toISOString().slice(0, 10);
+
+const getLastExpectedTradingDate = () => {
+  const date = new Date();
+  while (date.getDay() === 0 || date.getDay() === 6) date.setDate(date.getDate() - 1);
+  return toDateKey(date);
+};
+
+const getMissingWeekdays = (latestDate) => {
+  if (!latestDate) return [];
+  const start = new Date(`${latestDate}T00:00:00Z`);
+  const end = new Date(`${getLastExpectedTradingDate()}T00:00:00Z`);
+  const missing = [];
+  start.setUTCDate(start.getUTCDate() + 1);
+  while (start <= end) {
+    if (start.getUTCDay() !== 0 && start.getUTCDay() !== 6) missing.push(toDateKey(start));
+    start.setUTCDate(start.getUTCDate() + 1);
+  }
+  return missing;
+};
 
 export default function ManualPriceSync() {
   const [ticker, setTicker] = useState('');
@@ -28,6 +74,20 @@ export default function ManualPriceSync() {
 
   const [syncReport, setSyncReport] = useState(null);
   const [batchProgress, setBatchProgress] = useState(null);
+  const [sqlCoverage, setSqlCoverage] = useState(null);
+
+  const refreshSqlCoverage = async () => {
+    try {
+      const coverage = await fetchPriceCoverage();
+      setSqlCoverage(coverage);
+    } catch (error) {
+      console.error('Falha ao consultar cobertura de preços no SQL:', error);
+    }
+  };
+
+  useEffect(() => {
+    refreshSqlCoverage();
+  }, []);
 
   const handleRepairHistory = async () => {
     if (
@@ -72,6 +132,7 @@ export default function ManualPriceSync() {
         }
       }
       setSyncReport(stats);
+      await refreshSqlCoverage();
       setMsg('Reparo de histórico concluído!');
       setStatus('success');
     } catch (error) {
@@ -205,6 +266,7 @@ export default function ManualPriceSync() {
       }
 
       setSyncReport(stats);
+      await refreshSqlCoverage();
     } catch (error) {
       setStatus('error');
       setMsg(error.message || 'Erro ao iniciar sincronização em lote.');
@@ -384,6 +446,25 @@ export default function ManualPriceSync() {
               <AlertCircle className="w-5 h-5 flex-shrink-0" />
             )}
             <span className="font-medium">{msg}</span>
+          </div>
+        )}
+
+        {sqlCoverage && (
+          <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-200">
+            <p>
+              Última data encontrada no SQL:{' '}
+              <span className="font-semibold">{formatShortDate(sqlCoverage.latest_date) || 'nenhuma'}</span>
+            </p>
+            {getMissingWeekdays(sqlCoverage.latest_date).length > 0 ? (
+              <p className="mt-1">
+                <span className="font-semibold">Está faltando no SQL desde {formatShortDate(getMissingWeekdays(sqlCoverage.latest_date)[0])}:</span>{' '}
+                {formatMissingDates(getMissingWeekdays(sqlCoverage.latest_date))}
+              </p>
+            ) : (
+              <p className="mt-1 font-semibold text-emerald-700 dark:text-emerald-300">
+                Não há dias úteis faltando até o último pregão esperado.
+              </p>
+            )}
           </div>
         )}
 

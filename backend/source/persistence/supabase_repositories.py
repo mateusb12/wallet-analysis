@@ -19,6 +19,18 @@ class SupabaseMarketDataRepository:
         )
         return response.data[0]["trade_date"] if response.data else None
 
+    def get_b3_price_dates(self, ticker: str, start_date: str, end_date: str) -> Sequence[str]:
+        response = (
+            self._client.table("b3_prices")
+            .select("trade_date")
+            .eq("ticker", ticker)
+            .gte("trade_date", start_date)
+            .lte("trade_date", end_date)
+            .order("trade_date")
+            .execute()
+        )
+        return [row["trade_date"] for row in response.data]
+
     def upsert_b3_prices(self, records: Sequence[dict[str, Any]]) -> None:
         self._upsert_in_batches("b3_prices", records, "ticker,trade_date")
 
@@ -136,6 +148,16 @@ class SupabaseAnalysisRepository:
 class SupabaseB3Repository:
     def __init__(self, client: Client):
         self._client = client
+
+    def get_latest_price_date(self) -> str | None:
+        response = (
+            self._client.table("b3_prices")
+            .select("trade_date")
+            .order("trade_date", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return response.data[0]["trade_date"] if response.data else None
 
     def get_prices(self, ticker: str, offset: int, limit: int) -> dict[str, Any]:
         response = (

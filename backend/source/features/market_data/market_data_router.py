@@ -310,6 +310,12 @@ def sync_ticker(
         if df_norm.empty:
             return {"success": False, "action": "parse_error", "message": "Falha ao ler dados do Yahoo."}
 
+        source_dates = sorted({str(value)[:10] for value in df_norm["date"]})
+        existing_dates = set(
+            market_data.get_b3_price_dates(clean_ticker, source_dates[0], source_dates[-1])
+        )
+        missing_dates = [trade_date for trade_date in source_dates if trade_date not in existing_dates]
+
         dividend_by_date: Dict[str, float] = {}
         try:
             dividend_by_date = normalize_yahoo_dividends(yf.Ticker(yf_ticker).dividends)
@@ -390,7 +396,13 @@ def sync_ticker(
         market_data.upsert_b3_prices(records)
 
         max_date = df_norm['date'].max()
-        return {"success": True, "count": len(records), "last_date": max_date}
+        return {
+            "success": True,
+            "count": len(records),
+            "last_date": max_date,
+            "missing_dates": missing_dates,
+            "missing_dates_count": len(missing_dates),
+        }
 
     except Exception as e:
         print(f"❌ Error syncing ticker: {e}")

@@ -74,6 +74,9 @@ class MarketDataRepository(Protocol):
     def get_last_b3_price_date(self, ticker: str) -> str | None:
         ...
 
+    def get_b3_price_dates(self, ticker: str, start_date: str, end_date: str) -> Sequence[str]:
+        ...
+
     def upsert_b3_prices(self, records: Sequence[dict[str, Any]]) -> None:
         ...
 
@@ -120,6 +123,9 @@ class AnalysisRepository(Protocol):
 
 
 class B3Repository(Protocol):
+    def get_latest_price_date(self) -> str | None:
+        ...
+
     def get_prices(self, ticker: str, offset: int, limit: int) -> dict[str, Any]:
         ...
 
@@ -149,6 +155,7 @@ class B3Repository(Protocol):
 
     def get_price_closest_to_date(self, ticker: str, target_date: str) -> dict[str, Any] | None:
         ...
+
 
 class ReferenceDataRepository(Protocol):
     def get_ipca(self, ref_date: str | None = None, start_date: str | None = None, end_date: str | None = None) -> Sequence[dict[str, Any]]:

@@ -19,6 +19,11 @@ def get_prices(
     return repository.get_prices(ticker.upper(), (page - 1) * page_size, page_size)
 
 
+@b3_bp.get("/prices/coverage")
+def get_price_coverage(repository: B3Repository = Depends(get_b3_repository)):
+    return {"latest_date": repository.get_latest_price_date()}
+
+
 @b3_bp.get("/stocks")
 def get_unique_stock_tickers(repository: B3Repository = Depends(get_b3_repository)):
     return repository.get_unique_stock_tickers()
@@ -100,3 +105,5 @@ def get_price_closest_to_date(
     repository: B3Repository = Depends(get_b3_repository),
 ):
     return repository.get_price_closest_to_date(ticker.upper(), target_date)
+
+

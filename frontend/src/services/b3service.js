@@ -13,6 +13,10 @@ export async function fetchB3Prices(ticker, page = 1, pageSize = 50) {
   );
 }
 
+export async function fetchPriceCoverage() {
+  return request('/data/b3/prices/coverage');
+}
+
 export async function fetchUniqueStockTickers() {
   return request('/data/b3/stocks');
 }
@@ -88,3 +92,4 @@ export async function fetchPriceClosestToDate(ticker, targetDate) {
   const value = data.adjusted_close && data.adjusted_close > 0 ? data.adjusted_close : data.close;
   return parseFloat(value);
 }
+

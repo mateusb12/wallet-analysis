@@ -60,6 +60,19 @@ class SqlAlchemyMarketDataRepository:
         )
         return _iso(row[0]) if row else None
 
+    def get_b3_price_dates(self, ticker: str, start_date: str, end_date: str) -> Sequence[str]:
+        rows = (
+            self._session.query(B3Price.trade_date)
+            .filter(
+                B3Price.ticker == ticker,
+                B3Price.trade_date >= _date_value(start_date),
+                B3Price.trade_date <= _date_value(end_date),
+            )
+            .order_by(B3Price.trade_date.asc())
+            .all()
+        )
+        return [_iso(row[0]) for row in rows]
+
     def upsert_b3_prices(self, records: Sequence[dict[str, Any]]) -> None:
         for record in records:
             trade_date = _date_value(record["trade_date"])
@@ -233,6 +246,10 @@ class SqlAlchemyAnalysisRepository:
 class SqlAlchemyB3Repository:
     def __init__(self, session: Session):
         self._session = session
+
+    def get_latest_price_date(self) -> str | None:
+        row = self._session.query(B3Price.trade_date).order_by(B3Price.trade_date.desc()).first()
+        return _iso(row[0]) if row else None
 
     def get_prices(self, ticker: str, offset: int, limit: int):
         query = self._session.query(B3Price).filter(B3Price.ticker == ticker).order_by(B3Price.trade_date.desc())
