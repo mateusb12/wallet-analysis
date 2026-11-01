@@ -406,6 +406,7 @@ async function configureMovementFilters(page) {
   const filterButton = await waitForVisibleControl(page, /filtrar/i);
   console.log(`Filtro inicial detectado: ${Boolean(filterButton)}`);
   if (!filterButton) throw new Error('Não foi possível localizar o botão para abrir os filtros da B3.');
+  await markDebugTarget(filterButton, 'abrir-filtros-movimentacao');
   await filterButton.click({ timeout: 10000 });
   console.log('Filtro inicial clicado.');
 
@@ -429,7 +430,9 @@ async function configureMovementFilters(page) {
   await selectDateFromPicker(page, endDateInput, endDate, 'data-final');
   console.log(`Data final selecionada: ${endDateValue}.`);
 
-  const applyButton = await waitForEnabledControl(page, /^(apply|filtrar)$/i, 10000);
+  const filterDialog = page.locator('[role="dialog"]:visible').last();
+  await filterDialog.waitFor({ state: 'visible', timeout: 10000 });
+  const applyButton = await waitForEnabledControl(filterDialog, /^(apply|filtrar)$/i, 10000);
   setProgress(8, 12, 'Aplicando filtro');
   const hasApplyButton = Boolean(applyButton);
   console.log(`Filtro final detectado: ${hasApplyButton}`);
@@ -445,14 +448,11 @@ async function configureMovementFilters(page) {
   await applyButton.click({ force: true, timeout: 10000 });
   console.log('Filtro final clicado.');
 
-  const backButton = await waitForVisibleControl(page, /^\s*voltar\s*$/i, 10000);
-  setProgress(9, 12, 'Voltando para movimentações');
-  const hasBackButton = Boolean(backButton);
-  console.log(`Botão voltar detectado: ${hasBackButton}`);
-  if (!hasBackButton) throw new Error('Não foi possível localizar o botão Voltar dos filtros da B3.');
-  await backButton.evaluate((element) => element.click());
-  await page.waitForLoadState('domcontentloaded').catch(() => null);
-  console.log(`Tela após voltar: ${safeUrl(page)}`);
+  await filterDialog.waitFor({ state: 'hidden', timeout: 15000 });
+  const expectedRange = `Exibindo: 01/01/2025 - ${endDateValue}`;
+  await page.getByText(expectedRange, { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
+  setProgress(9, 12, 'Movimentações filtradas');
+  console.log(`Filtro aplicado; intervalo exibido: ${expectedRange}`);
 
   contributionEntries = await extractContributions(page);
   console.log(`Aportes capturados: ${contributionEntries.length}`);
