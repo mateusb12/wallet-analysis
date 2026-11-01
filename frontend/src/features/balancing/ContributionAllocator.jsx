@@ -111,13 +111,14 @@ const ContributionAllocator = ({ tree, targets }) => {
       let microDeficits = [];
       let totalMicroDeficit = 0;
 
-      const projectedMacroTotal = macroItem.data.totalValue + moneyForMacro;
+      const projectedMacroTotal =
+        (macroItem.data.allocatedValue ?? macroItem.data.totalValue) + moneyForMacro;
 
       allSubKeys.forEach((subKey) => {
         const microTargetPct = targetSubTypes[subKey] ? parseFloat(targetSubTypes[subKey]) : 0;
         const subData = existingSubTypes[subKey] || { value: 0, assets: [] };
 
-        const parentTotal = macroItem.data.totalValue;
+        const parentTotal = macroItem.data.allocatedValue ?? macroItem.data.totalValue;
         const currentMicroPct = parentTotal > 0 ? (subData.value / parentTotal) * 100 : 0;
 
         if (microTargetPct === 0) return;

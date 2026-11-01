@@ -31,6 +31,7 @@ import etf from '../../assets/etf.png';
 import stocks from '../../assets/stocks.png';
 import { BALANCING_SCHEMA, classifyAsset, normalizeBalancingTargets } from './balancingUtils.js';
 import { FII_COMPOSITIONS } from './fiiCompositions.js';
+import { distributeFiiExposure } from './fiiRiskAllocation.js';
 
 const FormatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -113,7 +114,7 @@ const findPriorityPath = (tree, targets) => {
 
   const subTypes = winnerMacro.data.subTypes || {};
   const microCandidates = Object.entries(subTypes).map(([subKey, subData]) => {
-    const parentValue = winnerMacro.data.totalValue;
+    const parentValue = winnerMacro.data.allocatedValue ?? winnerMacro.data.totalValue;
     const relativeCurrent = parentValue > 0 ? (subData.value / parentValue) * 100 : 0;
     const target = targets.micro[winnerMacro.key]?.[subKey] || 0;
     const diff = relativeCurrent - target;
@@ -141,7 +142,8 @@ const AIAnalysisReport = ({ tree, targets }) => {
   const fiiData = tree.fii;
   if (fiiData && fiiData.totalValue > 0) {
     const papelVal = fiiData.subTypes.Papel?.value || 0;
-    const papelPct = (papelVal / fiiData.totalValue) * 100;
+    const fiiEligibleTotal = fiiData.allocatedValue ?? fiiData.totalValue;
+    const papelPct = fiiEligibleTotal > 0 ? (papelVal / fiiEligibleTotal) * 100 : 0;
 
     if (papelPct > 55) {
       insights.push({
@@ -389,7 +391,7 @@ const AssetListTable = ({ assets, totalValue, isUnclassified }) => {
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
           {assets.map((asset) => {
-            const assetValue = asset.qty * asset.price;
+            const assetValue = asset.exposureValue ?? asset.qty * asset.price;
             const assetWeight = totalValue > 0 ? (assetValue / totalValue) * 100 : 0;
             const composition = FII_COMPOSITIONS[String(asset.ticker).toUpperCase()];
             const isExpanded = expandedTicker === asset.ticker;
@@ -409,6 +411,12 @@ const AssetListTable = ({ assets, totalValue, isUnclassified }) => {
                       <span className="block text-[9px] text-gray-400 uppercase tracking-wider mt-0.5">
                         {asset.sector}
                       </span>
+
+                      {typeof asset.exposurePercent === 'number' && (
+                        <span className="block text-[9px] font-medium text-blue-500 mt-0.5">
+                          Exposição proporcional: {asset.exposurePercent.toFixed(1).replace('.', ',')}%
+                        </span>
+                      )}
 
                       {composition && (
                         <button
@@ -731,6 +739,7 @@ const WalletBalancer = () => {
         }
       });
 
+      newTree.fii = distributeFiiExposure(newTree.fii);
       setPortfolioTree(newTree);
     } catch (error) {
       console.error('Critical error building wallet tree:', error);
@@ -947,8 +956,13 @@ const WalletBalancer = () => {
                       const isSubExpanded = expandedSub[uniqueKey];
                       const subTarget = targets.micro?.[assetClass]?.[subType] || 0;
 
+                      const eligibleTotal =
+                        assetClass === 'fii'
+                          ? (data.allocatedValue ?? data.totalValue)
+                          : data.totalValue;
+
                       const relativePercent =
-                        data.totalValue > 0 ? (subData.value / data.totalValue) * 100 : 0;
+                        eligibleTotal > 0 ? (subData.value / eligibleTotal) * 100 : 0;
                       const isSubPriority = isPriority && priorityPath?.micro === subType;
                       const isUnclassified = subType === 'Indefinido' || assetClass === 'outros';
 
