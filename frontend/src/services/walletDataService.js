@@ -4,6 +4,7 @@ import { getIbovRange } from './ibovService.js';
 import { getAuthHeaders, handleAuthResponse } from './authClient.js';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+export const WALLET_DASHBOARD_QUERY_KEY = 'wallet-dashboard';
 
 let cachedPositions = null;
 

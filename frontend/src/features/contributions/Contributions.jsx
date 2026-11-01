@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthContext.jsx';
 import {
   TrendingUp,
@@ -18,7 +19,10 @@ import {
   Unlock,
 } from 'lucide-react';
 import { formatChartDate } from '../../utils/dateUtils.js';
-import { fetchDashboardData } from '../../services/walletDataService.js';
+import {
+  fetchDashboardData,
+  WALLET_DASHBOARD_QUERY_KEY,
+} from '../../services/walletDataService.js';
 import { getDetailedTimeElapsed, getTypeColor } from './contributionUtils.js';
 import AssetPerformanceChart from './ContributionPerformanceChart.jsx';
 
@@ -122,72 +126,76 @@ export default function Contributions() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const {
+    data: dashboardData,
+    isPending,
+    error,
+  } = useQuery({
+    queryKey: [WALLET_DASHBOARD_QUERY_KEY, user?.id],
+    queryFn: fetchDashboardData,
+    enabled: Boolean(user?.id),
+  });
+
   useEffect(() => {
-    if (user?.id) fetchAllData();
-  }, [user]);
+    setLoading(isPending && !dashboardData);
+    if (!dashboardData) return;
 
-  const fetchAllData = async () => {
-    setLoading(true);
-    try {
-      const dashboardData = await fetchDashboardData();
+    const rawPositions = dashboardData.positions || [];
+    const transactions = dashboardData.transactions || [];
 
-      const rawPositions = dashboardData.positions || [];
-      const transactions = dashboardData.transactions || [];
+    setPositions(rawPositions);
 
-      setPositions(rawPositions);
+    const priceMap = {};
 
-      const priceMap = {};
+    rawPositions.forEach((pos) => {
+      let price = pos.close || pos.current_price || pos.price_close;
 
-      rawPositions.forEach((pos) => {
-        let price = pos.close || pos.current_price || pos.price_close;
+      if (!price && pos.total_value_current && pos.qty) {
+        price = pos.total_value_current / pos.qty;
+      }
 
-        if (!price && pos.total_value_current && pos.qty) {
-          price = pos.total_value_current / pos.qty;
-        }
+      if (price) {
+        priceMap[pos.ticker] = parseFloat(price);
+      }
+    });
 
-        if (price) {
-          priceMap[pos.ticker] = parseFloat(price);
-        }
-      });
+    const enrichedData = transactions.map((item) => {
+      const currentPrice = priceMap[item.ticker] || null;
+      const dividendValue = Number(item.dividend_value || 0);
 
-      const enrichedData = transactions.map((item) => {
-        const currentPrice = priceMap[item.ticker] || null;
-        const dividendValue = Number(item.dividend_value || 0);
+      let valuationValue = null;
+      let totalReturnValue = null;
+      let profitPercent = 0;
+      let asset1YGrowth = null;
 
-        let valuationValue = null;
-        let totalReturnValue = null;
-        let profitPercent = 0;
-        let asset1YGrowth = null;
+      if (currentPrice) {
+        const totalPaid = Number(item.price) * Number(item.qty);
+        const totalCurrent = currentPrice * Number(item.qty);
+        valuationValue = item.valuation_value ?? totalCurrent - totalPaid;
+        totalReturnValue = valuationValue + dividendValue;
+        profitPercent = totalPaid > 0 ? (totalReturnValue / totalPaid) * 100 : 0;
+      }
 
-        if (currentPrice) {
-          const totalPaid = Number(item.price) * Number(item.qty);
-          const totalCurrent = currentPrice * Number(item.qty);
-          valuationValue = item.valuation_value ?? totalCurrent - totalPaid;
-          totalReturnValue = valuationValue + dividendValue;
-          profitPercent = totalPaid > 0 ? (totalReturnValue / totalPaid) * 100 : 0;
-        }
+      return {
+        ...item,
+        currentPrice,
+        dividendValue,
+        valuationValue,
+        totalReturnValue,
 
-        return {
-          ...item,
-          currentPrice,
-          dividendValue,
-          valuationValue,
-          totalReturnValue,
+        asset1YGrowth,
+        profitPercent,
+        hasPriceData: !!currentPrice,
+      };
+    });
 
-          asset1YGrowth,
-          profitPercent,
-          hasPriceData: !!currentPrice,
-        };
-      });
+    const sorted = enrichedData.sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
+    setPurchases(sorted);
+  }, [dashboardData, isPending]);
 
-      const sorted = enrichedData.sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date));
-      setPurchases(sorted);
-    } catch (error) {
-      console.error('Erro ao buscar aportes unificados:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    if (error) console.error('Erro ao buscar aportes unificados:', error);
+  }, [error]);
 
   const filteredPurchases = purchases.filter((item) => {
     const matchesSearch =

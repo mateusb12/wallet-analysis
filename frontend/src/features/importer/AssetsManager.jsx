@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import {
   UploadCloud,
@@ -22,6 +23,7 @@ import {
   updatePurchase,
   deletePurchase,
   importPurchases,
+  WALLET_DASHBOARD_QUERY_KEY,
 } from '../../services/walletDataService.js';
 
 import iconStocks from '../../assets/stocks.png';
@@ -37,6 +39,7 @@ import shotD from '../../assets/screenshots/D.jpeg';
 
 export default function AssetsManager() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const fileInputRef = useRef(null);
 
   const [purchases, setPurchases] = useState([]);
@@ -168,12 +171,19 @@ export default function AssetsManager() {
     }
   };
 
+  const invalidateDashboard = () => {
+    queryClient.invalidateQueries({
+      queryKey: [WALLET_DASHBOARD_QUERY_KEY, user?.id],
+    });
+  };
+
   const handleEditClick = (item) => {
     setEditingId(item.id);
     setEditForm({
-      date: (item.trade_date || item.settlement_date)
-        ? (item.trade_date || item.settlement_date).split('T')[0]
-        : '',
+      date:
+        item.trade_date || item.settlement_date
+          ? (item.trade_date || item.settlement_date).split('T')[0]
+          : '',
       price: item.price,
       qty: item.qty,
       type: item.type,
@@ -189,6 +199,7 @@ export default function AssetsManager() {
         qty: Number(editForm.qty),
         type: editForm.type,
       });
+      invalidateDashboard();
       await fetchPurchases();
       setEditingId(null);
     } catch (error) {
@@ -201,6 +212,7 @@ export default function AssetsManager() {
     setIsDeleting(id);
     try {
       await deletePurchase(id);
+      invalidateDashboard();
       await fetchPurchases();
     } catch (error) {
       alert('Erro ao excluir.');
@@ -256,6 +268,7 @@ export default function AssetsManager() {
       };
 
       await createPurchase(payload);
+      invalidateDashboard();
 
       setAddForm({
         ticker: '',
@@ -417,6 +430,7 @@ export default function AssetsManager() {
         })),
       };
       const data = await importPurchases(payload);
+      invalidateDashboard();
       alert(`Sucesso! ${data.count} novos ativos salvos.`);
       await fetchPurchases();
       handleCloseModal();

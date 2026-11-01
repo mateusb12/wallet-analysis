@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { fetchDashboardData } from '../../services/walletDataService.js';
+import {
+  fetchDashboardData,
+  WALLET_DASHBOARD_QUERY_KEY,
+} from '../../services/walletDataService.js';
 import { formatElapsedPeriod } from '../../utils/dateUtils.js';
 
 import iconStocks from '../../assets/stocks.png';
@@ -31,9 +35,6 @@ export const PROFIT_PERIODS = [
 ];
 
 export const useWalletDashboardData = (user) => {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-
   const [activeTab, setActiveTab] = useState('total');
   const [allocationView, setAllocationView] = useState('specific');
   const [timeRange, setTimeRange] = useState('DEFAULT');
@@ -44,30 +45,27 @@ export const useWalletDashboardData = (user) => {
   const [highlightedDate, setHighlightedDate] = useState(null);
   const [debugShowEmpty, setDebugShowEmpty] = useState(false);
 
+  const { data, isPending, isFetching, error } = useQuery({
+    queryKey: [WALLET_DASHBOARD_QUERY_KEY, user?.id],
+    queryFn: fetchDashboardData,
+    enabled: Boolean(user?.id),
+  });
+
   useEffect(() => {
-    if (!user) return;
+    if (data) {
+      setApiDebug({
+        url: 'walletDataService > /wallet/dashboard',
+        status: 200,
+        rawResponse: data,
+      });
+    }
+  }, [data]);
 
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const result = await fetchDashboardData();
+  useEffect(() => {
+    if (error) console.error('Falha na conexão:', error);
+  }, [error]);
 
-        setData(result);
-
-        setApiDebug({
-          url: 'walletDataService > /wallet/dashboard',
-          status: 200,
-          rawResponse: result,
-        });
-      } catch (error) {
-        console.error('Falha na conexão:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [user?.id]);
+  const loading = isPending && !data;
 
   const safeData = useMemo(() => {
     const defaultStats = { profit: 0, yield: 0, valuation: 0, dividends: 0 };
@@ -214,23 +212,24 @@ export const useWalletDashboardData = (user) => {
   }, [safeData, selectedAssetTicker, activeTab, filteredPositions]);
 
   const showEmptyState = (safeData.positions.length === 0 && !loading) || debugShowEmpty;
-  const earliestPurchaseDate = safeData.transactions
-    .map((transaction) => transaction.trade_date)
-    .filter(Boolean)
-    .sort()[0] || null;
+  const earliestPurchaseDate =
+    safeData.transactions
+      .map((transaction) => transaction.trade_date)
+      .filter(Boolean)
+      .sort()[0] || null;
 
-  const chartHistory =
-    selectedAssetTicker
-      ? safeData.history_by_ticker?.[selectedAssetTicker] || []
-      : activeTab === 'total'
+  const chartHistory = selectedAssetTicker
+    ? safeData.history_by_ticker?.[selectedAssetTicker] || []
+    : activeTab === 'total'
       ? safeData.history
       : safeData.history_by_type?.[activeTab] || [];
 
-  const chartEarliestPurchaseDate = safeData.transactions
-    .filter((transaction) => activeTab === 'total' || transaction.type === activeTab)
-    .map((transaction) => transaction.trade_date)
-    .filter(Boolean)
-    .sort()[0] || null;
+  const chartEarliestPurchaseDate =
+    safeData.transactions
+      .filter((transaction) => activeTab === 'total' || transaction.type === activeTab)
+      .map((transaction) => transaction.trade_date)
+      .filter(Boolean)
+      .sort()[0] || null;
 
   return {
     setActiveTab,
@@ -246,7 +245,7 @@ export const useWalletDashboardData = (user) => {
     timeRange,
     selectedAssetTicker,
     loading,
-    loadingSpecific: false,
+    loadingSpecific: isFetching && Boolean(data),
     apiDebug,
     profitPeriod,
     highlightedDate,
