@@ -346,23 +346,28 @@ const DriftIndicator = ({ label, currentPct, targetPct, amount, compact = false 
           </div>
         </div>
       </div>
-      <div
-        className={`relative w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden ${compact ? 'h-1.5' : 'h-2.5'}`}
-      >
+      <div className="relative w-full pt-4">
+        <span
+          className="absolute top-0 -translate-x-1/2 text-[10px] font-bold text-gray-300 dark:text-gray-300 whitespace-nowrap pointer-events-none"
+          style={{ left: `${Math.min(currentPct, 100)}%` }}
+        >
+          {currentPct.toFixed(1)}%
+        </span>
         <div
-          className="absolute top-0 bottom-0 w-0.5 bg-gray-900 dark:bg-white z-20 opacity-40"
-          style={{ left: `${Math.min(targetPct, 100)}%` }}
-        />
-        <div
-          className={`absolute top-0 bottom-0 left-0 ${barColor} transition-all duration-700 ease-out rounded-full shadow-sm`}
-          style={{ width: `${Math.min(currentPct, 100)}%` }}
-        />
+          className={`relative w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden ${compact ? 'h-1.5' : 'h-2.5'}`}
+        >
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-gray-900 dark:bg-white z-20 opacity-40"
+            style={{ left: `${Math.min(targetPct, 100)}%` }}
+          />
+          <div
+            className={`absolute top-0 bottom-0 left-0 ${barColor} transition-all duration-700 ease-out rounded-full shadow-sm`}
+            style={{ width: `${Math.min(currentPct, 100)}%` }}
+          />
+        </div>
       </div>
       <div className="flex justify-between mt-1">
-        <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400">
-          {currentPct.toFixed(1)}% carteira
-        </span>
-        <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">
+        <span className="text-xs font-semibold font-mono text-gray-300 dark:text-gray-300">
           {FormatCurrency(amount)}
         </span>
       </div>
