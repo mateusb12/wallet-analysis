@@ -1,5 +1,8 @@
 services:
   backend:
+    environment:
+      POSTGRES_HOST: host.docker.internal
+      POSTGRES_PORT: ${POSTGRES_PORT:-15432}
     volumes:
       - ./backend/data:/app/backend/data
 

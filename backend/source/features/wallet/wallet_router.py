@@ -153,8 +153,18 @@ def _calculate_history_logic(
         asset_type: Optional[str] = None,
         benchmark: str = 'CDI',
         ticker: Optional[str] = None,
+        preloaded_purchases=None,
+        preloaded_prices=None,
+        preloaded_benchmark=None,
 ) -> List[Dict]:
-    purchases = wallets.get_history_purchases(user_id, asset_type, ticker)
+    if preloaded_purchases is None:
+        purchases = wallets.get_history_purchases(user_id, asset_type, ticker)
+    else:
+        purchases = [
+            purchase for purchase in preloaded_purchases
+            if (not asset_type or purchase.type == asset_type)
+            and (not ticker or purchase.ticker == ticker)
+        ]
     if not purchases: return []
 
     df_purchases = pd.DataFrame(purchases, columns=['ticker', 'qty', 'price', 'trade_date', 'type'])
@@ -165,14 +175,26 @@ def _calculate_history_logic(
     start_date = df_purchases['trade_date'].min()
     unique_tickers = df_purchases['ticker'].unique().tolist()
 
-    prices_query = wallets.get_prices_from(unique_tickers, start_date.date())
-    benchmark_query = wallets.get_cdi_from(start_date.date())
-    if benchmark == 'IBOV':
-        benchmark_query = wallets.get_ibov_from(start_date.date())
-    elif benchmark == 'IFIX':
-        benchmark_query = wallets.get_ifix_from(start_date.date())
-    elif benchmark == 'SP500':
-        benchmark_query = wallets.get_prices_from(['^GSPC'], start_date.date())
+    def from_start_date(rows):
+        return [row for row in rows if row.trade_date >= start_date.date()]
+
+    if preloaded_prices is None:
+        prices_query = wallets.get_prices_from(unique_tickers, start_date.date())
+    else:
+        prices_query = from_start_date(
+            row for row in preloaded_prices if row.ticker in unique_tickers
+        )
+
+    if preloaded_benchmark is not None:
+        benchmark_query = from_start_date(preloaded_benchmark)
+    else:
+        benchmark_query = wallets.get_cdi_from(start_date.date())
+        if benchmark == 'IBOV':
+            benchmark_query = wallets.get_ibov_from(start_date.date())
+        elif benchmark == 'IFIX':
+            benchmark_query = wallets.get_ifix_from(start_date.date())
+        elif benchmark == 'SP500':
+            benchmark_query = wallets.get_prices_from(['^GSPC'], start_date.date())
 
     if not prices_query: return []
 
@@ -364,6 +386,20 @@ def get_dashboard_data(
     if not active_tickers:
         return empty_response
 
+    history_start_date = min(
+        purchase.trade_date or purchase.settlement_date
+        for purchase in purchases
+        if purchase.trade_date or purchase.settlement_date
+    )
+    history_purchases = wallets.get_history_purchases(current_user)
+    history_prices = wallets.get_prices_from(active_tickers, history_start_date)
+    history_benchmarks = {
+        "CDI": wallets.get_cdi_from(history_start_date),
+        "IBOV": wallets.get_ibov_from(history_start_date),
+        "IFIX": wallets.get_ifix_from(history_start_date),
+        "SP500": wallets.get_prices_from(["^GSPC"], history_start_date),
+    }
+
     # 4. Buscar Preços Atuais (Raw e Adjusted)
     latest_prices = wallets.get_latest_prices(active_tickers)
 
@@ -536,11 +572,29 @@ def get_dashboard_data(
     start_date_global = min([p['min_date'] for p in pos_map.values()]) if pos_map else None
 
     history_by_type = {
-        "stock": _calculate_history_logic(current_user, wallets, "stock", "IBOV"),
-        "fii": _calculate_history_logic(current_user, wallets, "fii", "IFIX"),
-        "etf": _calculate_history_logic(current_user, wallets, "etf", "SP500"),
+        "stock": _calculate_history_logic(
+            current_user, wallets, "stock", "IBOV", preloaded_prices=history_prices,
+            preloaded_purchases=history_purchases,
+            preloaded_benchmark=history_benchmarks["IBOV"],
+        ),
+        "fii": _calculate_history_logic(
+            current_user, wallets, "fii", "IFIX", preloaded_prices=history_prices,
+            preloaded_purchases=history_purchases,
+            preloaded_benchmark=history_benchmarks["IFIX"],
+        ),
+        "etf": _calculate_history_logic(
+            current_user, wallets, "etf", "SP500", preloaded_prices=history_prices,
+            preloaded_purchases=history_purchases,
+            preloaded_benchmark=history_benchmarks["SP500"],
+        ),
     }
-    history_total = _calculate_history_logic(current_user, wallets)
+    history_total = _calculate_history_logic(
+        current_user,
+        wallets,
+        preloaded_purchases=history_purchases,
+        preloaded_prices=history_prices,
+        preloaded_benchmark=history_benchmarks["CDI"],
+    )
 
     dividends_global = (
         history_total[-1].get("dividends_accumulated", 0.0)
@@ -585,6 +639,12 @@ def get_dashboard_data(
             position["type"],
             benchmark_by_type.get(position["type"], "CDI"),
             ticker,
+            preloaded_purchases=history_purchases,
+            preloaded_prices=history_prices,
+            preloaded_benchmark=history_benchmarks.get(
+                benchmark_by_type.get(position["type"], "CDI"),
+                history_benchmarks["CDI"],
+            ),
         )
         for ticker, position in pos_map.items()
     }
