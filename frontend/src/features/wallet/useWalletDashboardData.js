@@ -235,6 +235,20 @@ export const useWalletDashboardData = (user) => {
       ? safeData.history
       : safeData.history_by_type?.[activeTab] || [];
 
+  const assetsHistoryMap = useMemo(() => {
+    return (safeData.transactions || []).reduce((historyByTicker, transaction) => {
+      const ticker = transaction.ticker;
+      if (!ticker) return historyByTicker;
+
+      if (!historyByTicker[ticker]) historyByTicker[ticker] = [];
+      historyByTicker[ticker].push({
+        ...transaction,
+        type: transaction.asset_type || transaction.type,
+      });
+      return historyByTicker;
+    }, {});
+  }, [safeData.transactions]);
+
   const chartEarliestPurchaseDate =
     safeData.transactions
       .filter((transaction) => activeTab === 'total' || transaction.type === activeTab)
@@ -292,7 +306,7 @@ export const useWalletDashboardData = (user) => {
     earliestPurchaseDate: chartEarliestPurchaseDate,
     showEmptyState,
     dataWarnings: [],
-    assetsHistoryMap: {},
+    assetsHistoryMap,
     transactionsMap: {},
   };
 };
