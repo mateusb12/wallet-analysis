@@ -39,42 +39,102 @@ CLASSIFICATION_CACHE_TTL_DAYS = 30
 CLASSIFICATION_OVERRIDES: Dict[str, Dict[str, str]] = {
     "KNCR11": {
         "detected_type": "FII - Papel (CRI)",
-        "sector": "papel",
+        "sector": "Crédito Imobiliário",
         "reasoning": "Override: Fundo majoritariamente de CRI."
     },
     "VGIR11": {
         "detected_type": "FII - Papel (CDI)",
-        "sector": "papel",
+        "sector": "Crédito Imobiliário",
         "reasoning": "Override: Fundo de papel indexado ao CDI (Valora)."
     },
     "KNHF11": {
         "detected_type": "FII - Híbrido",
-        "sector": "híbrido",
-        "reasoning": "Override: Multiestratégia Kinea."
+        "sector": "Outros",
+        "reasoning": "Override: Multiestratégia Kinea; composição distribuída não disponível."
     },
     "MXRF11": {
         "detected_type": "FII - Híbrido",
-        "sector": "híbrido",
+        "sector": "Outros",
         "reasoning": "Override: Fundo misto (Papel + Permutas + FIIs)."
     },
     "TGAR11": {
         "detected_type": "FII - Desenvolvimento",
-        "sector": "desenvolvimento",
+        "sector": "Desenvolvimento Imobiliário",
         "reasoning": "Override: Fundo de desenvolvimento imobiliário."
+    },
+    "BTLG11": {
+        "detected_type": "FII - Tijolo (Logística)",
+        "sector": "Renda Imobiliária",
+        "reasoning": "Override: Fundo de renda imobiliária com imóveis logísticos."
+    },
+    "XPCM11": {
+        "detected_type": "FII - Tijolo (Renda)",
+        "sector": "Renda Imobiliária",
+        "reasoning": "Override: Fundo de renda imobiliária."
+    },
+    "KFOF11": {
+        "detected_type": "FII - Fundo de Fundos",
+        "sector": "Outros",
+        "reasoning": "Override: Fundo de fundos; exposição depende da carteira subjacente."
+    },
+    "WRLD11": {
+        "detected_type": "ETF - Internacional (Global)",
+        "sector": "Ações Globais",
+        "reasoning": "Override: ETF global diversificado."
+    },
+    "LFTB11": {
+        "detected_type": "ETF - Juros Pós-fixados",
+        "sector": "Juros Pós-fixados",
+        "reasoning": "Override: ETF de títulos pós-fixados."
+    },
+    "AUPO11": {
+        "detected_type": "ETF - Juros Pós-fixados",
+        "sector": "Juros Pós-fixados",
+        "reasoning": "Override: ETF de títulos pós-fixados."
+    },
+    "IMAB11": {
+        "detected_type": "ETF - Juros Reais",
+        "sector": "Juros Reais",
+        "reasoning": "Override: ETF de títulos indexados à inflação."
+    },
+    "XFIX11": {
+        "detected_type": "ETF - Mercado Imobiliário",
+        "sector": "Mercado Imobiliário",
+        "reasoning": "Override: ETF de FIIs brasileiros."
+    },
+    "BBAS3": {
+        "detected_type": "Ação - Financeiro Brasileiro",
+        "sector": "Financeiro Brasileiro",
+        "reasoning": "Override: Banco brasileiro."
+    },
+    "BBSE3": {
+        "detected_type": "Ação - Financeiro Brasileiro",
+        "sector": "Financeiro Brasileiro",
+        "reasoning": "Override: Seguradora brasileira."
+    },
+    "MDIA3": {
+        "detected_type": "Ação - Consumo Essencial",
+        "sector": "Consumo Essencial",
+        "reasoning": "Override: Empresa brasileira de alimentos."
+    },
+    "WEGE3": {
+        "detected_type": "Ação - Indústria Global",
+        "sector": "Indústria Global",
+        "reasoning": "Override: Indústria brasileira com atuação global."
     },
     "HGLG11": {
         "detected_type": "FII - Tijolo (Logística)",
-        "sector": "tijolo",
+        "sector": "Renda Imobiliária",
         "reasoning": "Override: Referência em logística."
     },
     "IVVB11": {
         "detected_type": "ETF - Internacional (S&P 500)",
-        "sector": "ETF - Base Global",
+        "sector": "Ações Globais",
         "reasoning": "Override: ETF S&P 500."
     },
     "QQQQ11": {
         "detected_type": "ETF - Tech (Nasdaq)",
-        "sector": "ETF - Específicos",
+        "sector": "Ações Globais",
         "reasoning": "Override: ETF Nasdaq 100."
     }
 }
@@ -801,36 +861,36 @@ def classify_ticker(
             is_multi = s_multi >= 1
 
             if is_fiagro:
-                base_result["sector"] = "papel"
+                base_result["sector"] = "Outros"
                 base_result["detected_type"] = "Fiagro"
                 base_result["reasoning"] = f"Fiagro detectado (score={s_fiagro})."
             elif is_fof:
-                base_result["sector"] = "fundos de fundos"
+                base_result["sector"] = "Outros"
                 base_result["detected_type"] = "FII - Fundo de Fundos"
                 base_result["reasoning"] = f"FoF detectado (score={s_fof})."
             elif is_dev and not is_cri:
-                base_result["sector"] = "desenvolvimento"
+                base_result["sector"] = "Desenvolvimento Imobiliário"
                 base_result["detected_type"] = "FII - Desenvolvimento"
                 base_result["reasoning"] = f"Termos de incorporação (score={s_dev})."
             elif is_multi:
-                base_result["sector"] = "híbrido"
+                base_result["sector"] = "Outros"
                 base_result["detected_type"] = "FII - Multiestratégia"
                 base_result["reasoning"] = f"Termos de multiestratégia (score={s_multi})."
             elif (is_cri and is_tijolo):
                 if s_tijolo > s_cri:
-                    base_result["sector"] = "tijolo"
+                    base_result["sector"] = "Renda Imobiliária"
                     base_result["detected_type"] = f"FII - Tijolo (Geral)"
                     base_result["reasoning"] = f"Tijolo predominante ({s_tijolo} vs {s_cri})."
                 else:
-                    base_result["sector"] = "híbrido"
+                    base_result["sector"] = "Outros"
                     base_result["detected_type"] = "FII - Híbrido (Misto)"
                     base_result["reasoning"] = f"Mix de Papel e Tijolo equilibrado."
             elif is_cri:
-                base_result["sector"] = "papel"
+                base_result["sector"] = "Crédito Imobiliário"
                 base_result["detected_type"] = "FII - Papel (CRI)"
                 base_result["reasoning"] = f"Foco em recebíveis (score={s_cri})."
             elif is_tijolo:
-                base_result["sector"] = "tijolo"
+                base_result["sector"] = "Renda Imobiliária"
                 sub = "Geral"
                 if "logistic" in text:
                     sub = "Logística"
@@ -841,7 +901,7 @@ def classify_ticker(
                 base_result["detected_type"] = f"FII - Tijolo ({sub})"
                 base_result["reasoning"] = f"Fundo de Imóveis (score={s_tijolo})."
             else:
-                base_result["sector"] = "híbrido"
+                base_result["sector"] = "Outros"
                 base_result["detected_type"] = "FII - Indefinido"
                 base_result["reasoning"] = "FII sem estratégia clara."
 
@@ -851,19 +911,22 @@ def classify_ticker(
 
         # === ETFs ===
         if looks_etf:
-            base_result["sector"] = "etf"
             is_global = any(x in text for x in ["sp 500", "s&p 500", "msci", "world"])
             is_br = any(x in text for x in ["ibovespa", "ibov"])
             if is_global:
+                base_result["sector"] = "Ações Globais"
                 base_result["detected_type"] = "ETF - Internacional"
                 base_result["reasoning"] = "Índice Global."
             elif is_br:
+                base_result["sector"] = "Outros"
                 base_result["detected_type"] = "ETF - Brasil"
                 base_result["reasoning"] = "Índice Brasil."
             elif "crypto" in text or "bitcoin" in text:
+                base_result["sector"] = "Outros"
                 base_result["detected_type"] = "ETF - Cripto"
                 base_result["reasoning"] = "Criptoativos."
             else:
+                base_result["sector"] = "Outros"
                 base_result["detected_type"] = "ETF - Temático/Outros"
                 base_result["reasoning"] = "ETF Específico."
 
@@ -884,9 +947,14 @@ def classify_ticker(
                 "communication services": "Comunicações"
             }
             translated_sector = sector_map.get(sector_n, sector_y.capitalize() if sector_y else "Geral")
-            STRATEGY_PERENE = ["Financeiro", "Utilidade Pública", "Energia", "Consumo Não-Cíclico", "Saúde",
-                               "Imobiliário"]
-            macro_strategy = "Perenes (Renda/Defesa)" if translated_sector in STRATEGY_PERENE else "Cíclicas (Valor/Crescimento)"
+            if translated_sector == "Financeiro":
+                macro_strategy = "Financeiro Brasileiro"
+            elif translated_sector == "Consumo Não-Cíclico":
+                macro_strategy = "Consumo Essencial"
+            elif translated_sector == "Industrial":
+                macro_strategy = "Indústria Global"
+            else:
+                macro_strategy = "Outros"
 
             base_result["sector"] = macro_strategy
             base_result["detected_type"] = f"Ação - {translated_sector}"

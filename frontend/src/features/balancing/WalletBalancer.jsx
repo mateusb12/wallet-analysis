@@ -25,12 +25,11 @@ import iconEtf from '../../assets/etf.png';
 import tijolo from '../../assets/tijolo.png';
 import papel from '../../assets/papel.png';
 import hibrido from '../../assets/hibrido.png';
-import fundosFundos from '../../assets/fundos-fundos.png';
 import desenvolvimento from '../../assets/desenvolvimento.png';
 import fiis from '../../assets/fiis.png';
 import etf from '../../assets/etf.png';
 import stocks from '../../assets/stocks.png';
-import { classifyAsset } from './balancingUtils.js';
+import { BALANCING_SCHEMA, classifyAsset, normalizeBalancingTargets } from './balancingUtils.js';
 
 const FormatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -47,11 +46,10 @@ export const MACRO_ICONS = {
 };
 
 export const FII_SUBTYPE_ICONS = {
-  Tijolo: tijolo,
-  Papel: papel,
-  Híbrido: hibrido,
-  'Fundos de Fundos': fundosFundos,
-  Desenvolvimento: desenvolvimento,
+  'Renda Imobiliária': tijolo,
+  'Crédito Imobiliário': papel,
+  'Desenvolvimento Imobiliário': desenvolvimento,
+  Outros: hibrido,
 };
 
 const AssetIcon = ({ src, alt, className = '' }) => {
@@ -68,25 +66,21 @@ const AssetIcon = ({ src, alt, className = '' }) => {
 };
 
 const FII_DESCRIPTIONS = {
-  Tijolo: {
+  'Renda Imobiliária': {
     title: 'Imóveis Físicos (Renda e Valorização)',
     text: 'Fundos que detêm imóveis reais (logística, shoppings, lajes). São essenciais para proteção patrimonial contra inflação no longo prazo. Historicamente, suas cotas tendem a valorizar quando a taxa de juros (Selic) cai, tornando-se "fortes" em ciclos de baixa de juros.',
   },
-  Papel: {
+  'Crédito Imobiliário': {
     title: 'Recebíveis Imobiliários (Dívida/CRIs)',
     text: 'Fundos que investem em títulos de dívida (crédito). Geralmente pagam dividendos mais altos (High Yield) e protegem o poder de compra no curto prazo, mas não costumam ter valorização patrimonial expressiva.',
   },
-  'Fundos de Fundos': {
-    title: 'FOFs (Diversificação)',
-    text: 'Fundos que compram cotas de outros fundos. São ótimos para diversificar com pouco dinheiro e para aproveitar momentos de ineficiência do mercado, comprando cotas com desconto patrimonial.',
-  },
-  Híbrido: {
-    title: 'Estratégia Mista',
-    text: 'Fundos que possuem mandato flexível para investir tanto em imóveis físicos quanto em papéis, buscando equilibrar a constância dos dividendos com o potencial de valorização.',
-  },
-  Desenvolvimento: {
+  'Desenvolvimento Imobiliário': {
     title: 'Construção para Venda',
     text: 'Focam em construir imóveis para vender com lucro, funcionando como uma incorporadora. Possuem maior risco (obra, permuta), mas oferecem potencial de ganho de capital explosivo ao final do ciclo.',
+  },
+  Outros: {
+    title: 'Exposição Imobiliária Mista',
+    text: 'Ativos cuja composição reúne estratégias diferentes ou ainda não foi detalhada. Eles não são atribuídos artificialmente a uma única fonte de risco.',
   },
 };
 
@@ -149,32 +143,30 @@ const AIAnalysisReport = ({ tree, targets }) => {
 
   const fiiData = tree.fii;
   if (fiiData && fiiData.totalValue > 0) {
-    const papelVal = fiiData.subTypes['Papel']?.value || 0;
+    const papelVal = fiiData.subTypes['Crédito Imobiliário']?.value || 0;
     const papelPct = (papelVal / fiiData.totalValue) * 100;
 
     if (papelPct > 55) {
       insights.push({
         type: 'warning',
         title: 'Exposição Excessiva em Crédito (FIIs)',
-        text: `Sua carteira de FIIs está ${papelPct.toFixed(0)}% em Papel (Dívida). Isso gera dividendos agora, mas não protege contra inflação no longo prazo como Imóveis reais.`,
+        text: `Sua carteira de FIIs está ${papelPct.toFixed(0)}% em Crédito Imobiliário. Isso gera renda, mas tem risco diferente de imóveis físicos e desenvolvimento.`,
         action:
-          'Pare de comprar Papel. Foque 100% dos próximos aportes em Tijolo (Logística/Shoppings).',
+          'Evite concentrar novos aportes em crédito e compare garantias, indexadores e qualidade dos devedores.',
       });
     } else if (papelPct < 25) {
       insights.push({
         type: 'info',
-        title: 'Oportunidade de Renda',
-        text: `Você tem pouca exposição a Recebíveis (${papelPct.toFixed(0)}%). Em momentos de juros altos, você pode estar deixando dinheiro na mesa.`,
-        action: 'Considere aumentar levemente a mão em FIIs de Papel High Grade.',
+        title: 'Baixa Exposição a Crédito Imobiliário',
+        text: `Você tem ${papelPct.toFixed(0)}% em crédito imobiliário. Essa estratégia pode complementar a renda, mas deve ser avaliada junto ao risco de crédito.`,
+        action:
+          'Compare a qualidade das garantias e a concentração dos CRIs antes de aumentar a exposição.',
       });
     }
   }
 
   const stockData = tree.acoes;
   if (stockData && stockData.totalValue > 0) {
-    const perenesVal = stockData.subTypes['Perenes (Renda/Defesa)']?.value || 0;
-    const perenesPct = (perenesVal / stockData.totalValue) * 100;
-
     let totalStockCount = 0;
     Object.values(stockData.subTypes).forEach((sub) => {
       totalStockCount += sub.assets.length;
@@ -190,34 +182,37 @@ const AIAnalysisReport = ({ tree, targets }) => {
       });
     }
 
-    if (perenesPct > 70) {
+    const financeVal = stockData.subTypes['Financeiro Brasileiro']?.value || 0;
+    const financePct = (financeVal / stockData.totalValue) * 100;
+
+    if (financePct > 70) {
       insights.push({
         type: 'info',
         title: 'Carteira de Ações Muito Conservadora',
-        text: `Mais de ${perenesPct.toFixed(0)}% das suas ações são defensivas. É seguro, mas pode travar seu crescimento patrimonial no longo prazo.`,
-        action: 'Estude adicionar empresas Cíclicas (Indústria/Varejo) ou Small Caps de qualidade.',
+        text: `Mais de ${financePct.toFixed(0)}% das suas ações estão no grupo Financeiro Brasileiro, com exposição compartilhada à economia local.`,
+        action: 'Estude diversificar entre consumo essencial e indústria global.',
       });
-    } else if (perenesPct < 40) {
+    } else if (financePct < 10) {
       insights.push({
         type: 'warning',
         title: 'Alta Volatilidade em Ações',
-        text: 'Sua carteira está muito exposta a ciclos econômicos (Cíclicas). Se a bolsa cair, sua volatilidade será alta.',
-        action: 'Reforce a base com Bancos, Elétricas ou Seguros (Perenes).',
+        text: 'Sua carteira de ações tem pouca exposição ao grupo Financeiro Brasileiro.',
+        action: 'Avalie se essa ausência é intencional antes de alterar os aportes.',
       });
     }
   }
 
   const etfData = tree.etf;
   if (etfData && etfData.totalValue > 0) {
-    const fatorVal = etfData.subTypes['Específicos/Fatores']?.value || 0;
+    const fatorVal = etfData.subTypes['Outros']?.value || 0;
     const fatorPct = (fatorVal / etfData.totalValue) * 100;
 
     if (fatorPct > 40) {
       insights.push({
         type: 'warning',
         title: 'Risco de Concentração Internacional',
-        text: `Você tem ${fatorPct.toFixed(0)}% de ETFs em apostas específicas (Tech/Cripto/Small Caps). Isso é agressivo demais para uma carteira passiva.`,
-        action: 'Foque seus aportes no índice neutro (IVVB11/WRLD11) para diluir esse risco.',
+        text: `Você tem ${fatorPct.toFixed(0)}% de ETFs fora das quatro exposições principais. A composição desse grupo pode variar bastante.`,
+        action: 'Identifique a exposição subjacente antes de aumentar esse grupo.',
       });
     }
   }
@@ -447,19 +442,23 @@ const DEFAULT_TARGETS = {
   macro: { fii: 34, acoes: 33, etf: 33, outros: 0 },
   micro: {
     fii: {
-      Tijolo: 40,
-      Papel: 30,
-      Híbrido: 10,
-      Desenvolvimento: 10,
-      'Fundos de Fundos': 10,
+      'Renda Imobiliária': 40,
+      'Crédito Imobiliário': 30,
+      'Desenvolvimento Imobiliário': 10,
+      Outros: 20,
     },
     acoes: {
-      'Perenes (Renda/Defesa)': 60,
-      'Cíclicas (Valor/Crescimento)': 40,
+      'Financeiro Brasileiro': 40,
+      'Consumo Essencial': 25,
+      'Indústria Global': 25,
+      Outros: 10,
     },
     etf: {
-      'Base Global': 70,
-      'Específicos/Fatores': 30,
+      'Ações Globais': 45,
+      'Juros Pós-fixados': 25,
+      'Juros Reais': 15,
+      'Mercado Imobiliário': 10,
+      Outros: 5,
     },
     outros: { Indefinido: 0 },
   },
@@ -506,7 +505,7 @@ const WalletBalancer = () => {
         if (session) {
           const userProfile = await userService.getProfile();
           if (userProfile?.balancing_settings) {
-            userPrefs = userProfile.balancing_settings;
+            userPrefs = normalizeBalancingTargets(userProfile.balancing_settings);
           }
         }
 
@@ -525,9 +524,9 @@ const WalletBalancer = () => {
             });
           });
 
-          setTargets(mergedTargets);
+          setTargets(normalizeBalancingTargets(mergedTargets));
         } else {
-          setTargets(userPrefs);
+          setTargets(normalizeBalancingTargets(userPrefs));
         }
       } catch (err) {
         console.error('Erro na sincronização:', err);
@@ -626,18 +625,10 @@ const WalletBalancer = () => {
         else if (typeStr.startsWith('ETF')) macro = 'etf';
         else if (typeStr.startsWith('Ação')) macro = 'acoes';
 
-        if (macro === 'acoes' || macro === 'etf') {
-          subType = sectorStr.replace(/^(Ações|ETF)\s-\s/, '');
+        if (BALANCING_SCHEMA[macro]?.includes(sectorStr)) {
+          subType = sectorStr;
         } else if (macro === 'fii') {
-          if (sectorStr && sectorStr.toLowerCase() !== 'outros' && sectorStr !== 'Indefinido') {
-            subType = sectorStr
-              .split(' ')
-              .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-              .join(' ');
-            subType = subType.replace(' De ', ' de ');
-          } else {
-            subType = typeStr.includes('Tijolo') ? 'Tijolo' : 'Papel';
-          }
+          subType = 'Outros';
         }
 
         if (!newTree[macro]) newTree[macro] = { totalValue: 0, percentOfTotal: 0, subTypes: {} };
