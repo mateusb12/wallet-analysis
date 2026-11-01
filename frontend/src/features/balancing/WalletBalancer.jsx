@@ -30,6 +30,7 @@ import fiis from '../../assets/fiis.png';
 import etf from '../../assets/etf.png';
 import stocks from '../../assets/stocks.png';
 import { BALANCING_SCHEMA, classifyAsset, normalizeBalancingTargets } from './balancingUtils.js';
+import { FII_COMPOSITIONS } from './fiiCompositions.js';
 
 const FormatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -367,6 +368,8 @@ const DriftIndicator = ({ label, currentPct, targetPct, amount, compact = false 
 };
 
 const AssetListTable = ({ assets, totalValue, isUnclassified }) => {
+  const [expandedTicker, setExpandedTicker] = useState(null);
+
   return (
     <div className="mt-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300 shadow-inner">
       {isUnclassified && (
@@ -388,9 +391,12 @@ const AssetListTable = ({ assets, totalValue, isUnclassified }) => {
           {assets.map((asset) => {
             const assetValue = asset.qty * asset.price;
             const assetWeight = totalValue > 0 ? (assetValue / totalValue) * 100 : 0;
+            const composition = FII_COMPOSITIONS[String(asset.ticker).toUpperCase()];
+            const isExpanded = expandedTicker === asset.ticker;
+
             return (
-              <tr
-                key={asset.ticker}
+              <React.Fragment key={asset.ticker}>
+                <tr
                 className="group hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors duration-200 cursor-default"
               >
                 <td className="px-4 py-3">
@@ -403,6 +409,26 @@ const AssetListTable = ({ assets, totalValue, isUnclassified }) => {
                       <span className="block text-[9px] text-gray-400 uppercase tracking-wider mt-0.5">
                         {asset.sector}
                       </span>
+
+                      {composition && (
+                        <button
+                          type="button"
+                          aria-expanded={isExpanded}
+                          aria-label={`${isExpanded ? 'Ocultar' : 'Ver'} composição de ${asset.ticker}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setExpandedTicker(isExpanded ? null : asset.ticker);
+                          }}
+                          className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          {isExpanded ? 'Ocultar composição' : 'Ver composição'}
+                          {isExpanded ? (
+                            <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowRight className="w-3 h-3" />
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </td>
@@ -426,6 +452,62 @@ const AssetListTable = ({ assets, totalValue, isUnclassified }) => {
                   </div>
                 </td>
               </tr>
+
+              {composition && isExpanded && (
+                <tr
+                  onClick={(event) => event.stopPropagation()}
+                  className="bg-gray-50 dark:bg-gray-900/40"
+                >
+                  <td colSpan={4} className="p-3 sm:p-4">
+                    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                        <h5 className="text-sm font-bold text-gray-800 dark:text-gray-100">
+                          Composição do fundo
+                        </h5>
+
+                        <a
+                          href={composition.source}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          Relatório {composition.referenceDate}
+                        </a>
+                      </div>
+
+                      <div className="space-y-3">
+                        {composition.segments.map((segment) => (
+                          <div key={segment.label}>
+                            <div className="flex justify-between items-center gap-2 mb-1">
+                              <span className="text-xs text-gray-600 dark:text-gray-300">
+                                {segment.label}
+                              </span>
+                              <span className="text-xs font-bold font-mono text-gray-700 dark:text-gray-200">
+                                {segment.percent.toFixed(1).replace('.', ',')}%
+                              </span>
+                            </div>
+
+                            <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-300"
+                                style={{
+                                  width: `${Math.min(segment.percent, 100)}%`,
+                                  backgroundColor: segment.color,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <p className="mt-4 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+                        {composition.note}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
             );
           })}
         </tbody>
