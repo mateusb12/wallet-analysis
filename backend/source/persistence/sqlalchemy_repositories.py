@@ -91,11 +91,19 @@ class SqlAlchemyWalletRepository:
         )
 
     def save_purchase(self, purchase: AssetPurchase) -> AssetPurchase:
+        self.save_purchases([purchase])
+        return purchase
+
+    def save_purchases(self, purchases: Sequence[AssetPurchase]) -> Sequence[AssetPurchase]:
+        if not purchases:
+            return purchases
+
         try:
-            self._session.add(purchase)
+            self._session.add_all(purchases)
             self._session.commit()
-            self._session.refresh(purchase)
-            return purchase
+            for purchase in purchases:
+                self._session.refresh(purchase)
+            return purchases
         except Exception:
             self._session.rollback()
             raise

@@ -75,6 +75,21 @@ export const getWalletProventos = async () => {
   return await response.json();
 };
 
+export const reconcilePurchaseTradeDates = async (purchases) => {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${API_BASE}/wallet/purchases/reconcile-trade-dates`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ purchases }),
+    signal: AbortSignal.timeout(60000),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || 'Erro ao completar datas de negociação');
+  cachedPositions = null;
+  return data;
+};
+
 export const createPurchase = async (payload) => {
   const headers = await getAuthHeaders();
 

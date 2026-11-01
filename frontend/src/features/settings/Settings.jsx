@@ -3,7 +3,11 @@ import { useTheme } from '../theme/ThemeContext.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { userService } from '../../services/userService.js';
 import { jobService } from '../../services/api.js';
-import { getWalletPurchases, getWalletProventos } from '../../services/walletDataService.js';
+import {
+  getWalletPurchases,
+  getWalletProventos,
+  reconcilePurchaseTradeDates,
+} from '../../services/walletDataService.js';
 
 import ManualPriceSync from '../../components/ManualPriceSync.jsx';
 import ContributionsManager from './ContributionsManager.jsx';
@@ -122,22 +126,11 @@ const findPurchaseMatch = (contribution, purchases) => {
 };
 
 const getPurchaseMatchStatus = (contribution, purchase) => {
-  const contributionDate = normalizeDate(contribution.date);
-  const expectedSettlementDate = normalizeDate(
-    contribution.settlement_date || getConfirmedSettlementDate(contribution),
-  );
   const purchaseTradeDate = normalizeDate(purchase?.trade_date);
   const purchaseSettlementDate = normalizeDate(purchase?.settlement_date);
 
-  const tradeDateMatched = Boolean(purchaseTradeDate && purchaseTradeDate === contributionDate);
-  const settlementDateMatched = Boolean(
-    purchaseSettlementDate && (
-      (expectedSettlementDate && purchaseSettlementDate === expectedSettlementDate)
-      || (!purchaseTradeDate && contributionDate && (() => {
-        return isSettlementForNegotiation(contributionDate, purchaseSettlementDate);
-      })())
-    ),
-  );
+  const tradeDateMatched = Boolean(purchaseTradeDate);
+  const settlementDateMatched = Boolean(purchaseSettlementDate);
 
   return { tradeDateMatched, settlementDateMatched };
 };
@@ -179,6 +172,8 @@ export default function Settings() {
   });
   const [isStartingJob, setIsStartingJob] = useState(false);
   const [jobError, setJobError] = useState('');
+  const [isReconcilingTradeDates, setIsReconcilingTradeDates] = useState(false);
+  const [reconcileMessage, setReconcileMessage] = useState('');
   const [scraperRequests, setScraperRequests] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('wallet-analysis:scraper-requests') || '[]');
@@ -403,6 +398,53 @@ export default function Settings() {
       setExistingProventos(proventos);
     } catch (error) {
       console.error('Falha ao buscar proventos:', error);
+    }
+  };
+
+  const handleReconcileTradeDates = async () => {
+    const pendingTradeDates = scraperContributions
+      .map((contribution) => {
+        const purchaseMatch = findRegisteredPurchase(contribution, existingPurchases);
+        const purchase = purchaseMatch?.purchase;
+        const tradeDate = normalizeDate(contribution.date);
+        if (!tradeDate) return null;
+
+        return {
+          ticker: purchase?.ticker || normalizeTicker(contribution.product),
+          name: purchase?.name || normalizeTicker(contribution.product),
+          type: purchase?.type || contribution.type || 'stock',
+          qty: Number(purchase?.qty ?? parseBrazilianNumber(contribution.quantity)),
+          price: Number(purchase?.price ?? parseBrazilianNumber(contribution.price)),
+          trade_date: tradeDate,
+          settlement_date: normalizeDate(
+            contribution.settlement_date
+              || purchase?.settlement_date
+              || getConfirmedSettlementDate(contribution),
+          ) || null,
+        };
+      })
+      .filter((purchase) => (
+        purchase?.trade_date
+        && purchase.ticker
+        && Number.isFinite(purchase.qty)
+        && Number.isFinite(purchase.price)
+      ));
+
+    if (pendingTradeDates.length === 0) {
+      setReconcileMessage('Nenhuma data de negociação pendente para carregar.');
+      return;
+    }
+
+    setIsReconcilingTradeDates(true);
+    setReconcileMessage('Carregando datas de negociação no SQL...');
+    try {
+      const result = await reconcilePurchaseTradeDates(pendingTradeDates);
+      await fetchExistingPurchases();
+      setReconcileMessage(`${result.updated} data(s) completada(s) e ${result.created} aporte(s) criado(s) no SQL.`);
+    } catch (error) {
+      setReconcileMessage(`Falha ao carregar datas: ${error.message}`);
+    } finally {
+      setIsReconcilingTradeDates(false);
     }
   };
 
@@ -738,7 +780,22 @@ export default function Settings() {
                   <ChevronDown className={`h-4 w-4 transition-transform ${isContributionsExpanded ? 'rotate-180' : ''}`} />
                 </span>
               </button>
-              {isContributionsExpanded && <div id="contributions-captured-table" className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+              {isContributionsExpanded && <>
+                <div className="mb-3 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleReconcileTradeDates}
+                    disabled={isReconcilingTradeDates || scraperContributions.length === 0}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isReconcilingTradeDates ? 'animate-spin' : ''}`} />
+                    {isReconcilingTradeDates ? 'Carregando...' : 'Carregar pendências no SQL'}
+                  </button>
+                  {reconcileMessage && (
+                    <span className="text-sm text-gray-500 dark:text-gray-400">{reconcileMessage}</span>
+                  )}
+                </div>
+                <div id="contributions-captured-table" className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
                 <table className="min-w-full text-left text-sm">
                   <thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-700/50 dark:text-gray-400">
                     <tr>
@@ -800,7 +857,8 @@ export default function Settings() {
                     )}
                   </tbody>
                 </table>
-              </div>}
+                </div>
+              </>}
             </div>
 
             <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">

@@ -28,10 +28,14 @@ class ImportPurchasesRequest(BaseModel):
 
 class B3PurchaseInput(AssetPurchaseBase):
     trade_date: date
-    settlement_date: date
+    settlement_date: Optional[date] = None
 
 
 class SyncB3PurchasesRequest(BaseModel):
+    purchases: List[B3PurchaseInput]
+
+
+class ReconcileTradeDatesRequest(BaseModel):
     purchases: List[B3PurchaseInput]
 
 # Resposta para o frontend

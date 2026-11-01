@@ -31,6 +31,9 @@ class WalletRepository(Protocol):
     def save_purchase(self, purchase: AssetPurchase) -> AssetPurchase:
         ...
 
+    def save_purchases(self, purchases: Sequence[AssetPurchase]) -> Sequence[AssetPurchase]:
+        ...
+
     def delete_purchase(self, purchase: AssetPurchase) -> None:
         ...
 

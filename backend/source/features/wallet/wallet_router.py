@@ -13,6 +13,7 @@ from backend.source.features.wallet.wallet_schema import (
     AssetPurchaseResponse,
     AssetPurchaseInput,
     SyncB3PurchasesRequest,
+    ReconcileTradeDatesRequest,
     ProventoResponse,
     HistoryPoint
 )
@@ -786,6 +787,108 @@ def sync_b3_purchases(
         "created": created_count,
         "reconciled": reconciled_count,
         "skipped": skipped_count,
+        "total": len(payload.purchases),
+    }
+
+
+@wallet_bp.post("/purchases/reconcile-trade-dates")
+def reconcile_trade_dates(
+        payload: ReconcileTradeDatesRequest,
+        wallets: WalletRepository = Depends(get_wallet_repository),
+        current_user: str = Depends(get_current_user)
+):
+    """Load captured B3 purchases without duplicating existing records.
+
+    Existing rows with a missing trade date are completed in place. Captures
+    with no matching SQL row are inserted with the trade date and any known
+    settlement date. Existing settlement dates are never overwritten.
+    """
+    existing = list(wallets.list_purchases(current_user))
+    used_ids: set[int] = set()
+    updated_count = 0
+    created_count = 0
+    already_complete_count = 0
+    unmatched_count = 0
+    ambiguous_count = 0
+    updated_purchases = []
+    new_purchases = []
+
+    for item in payload.purchases:
+        ticker = item.ticker.strip().upper()
+        if re.fullmatch(r"[A-Z]{4}\d{1,2}F", ticker):
+            ticker = ticker[:-1]
+
+        candidates = []
+        for purchase in existing:
+            if purchase.id in used_ids:
+                continue
+            if purchase.ticker.upper() != ticker:
+                continue
+            if abs(float(purchase.qty) - item.qty) > 0.0001:
+                continue
+            if abs(float(purchase.price) - item.price) > 0.01:
+                continue
+
+            trade_date_matches = (
+                purchase.trade_date is not None
+                and purchase.trade_date == item.trade_date
+            )
+            settlement_date_matches = (
+                purchase.settlement_date is not None
+                and item.settlement_date is not None
+                and purchase.settlement_date == item.settlement_date
+            )
+            both_dates_missing = (
+                purchase.trade_date is None
+                and purchase.settlement_date is None
+            )
+            if trade_date_matches or settlement_date_matches or both_dates_missing:
+                candidates.append(purchase)
+
+        if not candidates:
+            new_purchases.append(AssetPurchase(
+                user_id=current_user,
+                ticker=ticker,
+                name=item.name or ticker,
+                type=item.type.lower(),
+                qty=item.qty,
+                price=item.price,
+                trade_date=item.trade_date,
+                settlement_date=item.settlement_date,
+            ))
+            created_count += 1
+            continue
+
+        if len(candidates) != 1:
+            ambiguous_count += 1
+            continue
+
+        purchase = candidates[0]
+        changed = False
+        if purchase.trade_date is None:
+            purchase.trade_date = item.trade_date
+            changed = True
+        if purchase.settlement_date is None and item.settlement_date is not None:
+            purchase.settlement_date = item.settlement_date
+            changed = True
+
+        if not changed:
+            already_complete_count += 1
+            continue
+
+        used_ids.add(purchase.id)
+        updated_purchases.append(purchase)
+        updated_count += 1
+
+    wallets.save_purchases(updated_purchases)
+    wallets.add_purchases(new_purchases)
+
+    return {
+        "updated": updated_count,
+        "created": created_count,
+        "already_complete": already_complete_count,
+        "unmatched": unmatched_count,
+        "ambiguous": ambiguous_count,
         "total": len(payload.purchases),
     }
 
