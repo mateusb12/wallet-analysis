@@ -464,6 +464,20 @@ async function configureMovementFilters(page) {
   setProgress(9, 12, 'Movimentações filtradas');
   console.log(`Filtro aplicado; intervalo exibido: ${expectedRange}`);
 
+  setDebugAction('Aguardando linhas da tabela no DOM', 'movimentações do extrato', 'table tr com células de dados');
+  await page.waitForFunction(() => {
+    const cellSelector = ':scope > th, :scope > td, :scope > [role="cell"], :scope > [role="gridcell"]';
+    return [...document.querySelectorAll('table')].some((table) => {
+      const rows = [...table.querySelectorAll('tr')];
+      const headerIndex = rows.findIndex((row) => {
+        const text = [...row.querySelectorAll(cellSelector)].map((cell) => cell.textContent || '').join(' ').toLowerCase();
+        return text.includes('movimenta') && text.includes('produto');
+      });
+      const hasData = rows.slice(headerIndex + 1).some((row) => [...row.querySelectorAll(cellSelector)].some((cell) => (cell.textContent || '').trim()));
+      return headerIndex >= 0 && hasData;
+    });
+  }, null, { timeout: 15000 }).catch(() => null);
+
   contributionEntries = await extractContributions(page);
   console.log(`Aportes capturados: ${contributionEntries.length}`);
   setProgress(12, 12, 'Movimentações carregadas');
