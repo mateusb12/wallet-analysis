@@ -49,10 +49,14 @@ export const systemService = {
         signal: AbortSignal.timeout(3000),
       });
 
-      return response.ok;
+      const data = await response.json().catch(() => ({}));
+      return {
+        online: response.ok,
+        databaseOffline: data.database === 'offline',
+      };
     } catch (error) {
       console.error('Health Check falhou:', error);
-      return false;
+      return { online: false, databaseOffline: false };
     }
   },
 };

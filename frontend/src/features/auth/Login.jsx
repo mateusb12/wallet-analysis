@@ -22,8 +22,12 @@ export default function Login({ onSwitchToRegister }) {
     let mounted = true;
     const checkApiStatus = async () => {
       setApiStatus('checking');
-      const isOnline = await systemService.checkHealth();
-      if (mounted) setApiStatus(isOnline ? 'online' : 'offline');
+      const health = await systemService.checkHealth();
+      if (mounted) {
+        setApiStatus(
+          health.databaseOffline ? 'database-offline' : health.online ? 'online' : 'offline',
+        );
+      }
     };
     checkApiStatus();
     return () => {
@@ -99,6 +103,17 @@ export default function Login({ onSwitchToRegister }) {
           <span className="max-w-full truncate text-[10px] text-gray-500 dark:text-gray-400" title={apiUrl}>
             API: {apiUrl}
           </span>
+        </div>
+      );
+    }
+    if (apiStatus === 'database-offline') {
+      return (
+        <div
+          className={`${baseClasses} bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50`}
+          title="A API está ativa, mas o banco de dados local não está acessível."
+        >
+          <WifiOff className="w-3 h-3" />
+          <span>Banco local offline</span>
         </div>
       );
     }

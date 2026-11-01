@@ -2,6 +2,8 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from dotenv import load_dotenv
 
 from backend.debugger import start_debugger_monitor
@@ -16,6 +18,7 @@ from backend.source.features.storage.storage_router import storage_bp
 from backend.source.features.users.user_router import user_bp
 from backend.source.features.wallet.wallet_router import wallet_bp
 from backend.source.features.scraper.scraper_router import scraper_bp, stop_local_scraper
+from backend.source.core.database import SessionLocal
 
 # Updated imports pointing to the features folder
 
@@ -59,6 +62,22 @@ def shutdown_scraper_agent():
 
 @app.get("/")
 def health_check():
+    # The local development environment depends on the PostgreSQL tunnel. Keep
+    # that detail out of production health responses and deployments.
+    if os.getenv("APP_ENV") == "development":
+        try:
+            with SessionLocal() as db:
+                db.execute(text("SELECT 1"))
+        except Exception:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "degraded",
+                    "database": "offline",
+                    "message": "Banco de dados local indisponível",
+                },
+            )
+
     return {"status": "ok", "framework": "FastAPI"}
 
 if __name__ == "__main__":
