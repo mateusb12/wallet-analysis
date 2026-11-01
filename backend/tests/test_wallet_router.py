@@ -55,20 +55,21 @@ class DashboardCurrentPriceTest(unittest.TestCase):
 
 
 class PurchaseDividendAllocationTest(unittest.TestCase):
-    def test_allocates_dividend_between_purchases_by_quantity(self):
+    def test_uses_provento_quantity_as_the_dividend_basis(self):
         purchases = [
             SimpleNamespace(ticker='BBAS3', qty=2, trade_date=date(2026, 1, 1), settlement_date=None),
-            SimpleNamespace(ticker='BBAS3', qty=3, trade_date=date(2026, 2, 1), settlement_date=None),
+            SimpleNamespace(ticker='BBAS3', qty=8, trade_date=date(2026, 2, 1), settlement_date=None),
         ]
         proventos = [
             SimpleNamespace(
                 product='BBAS3',
                 date=date(2026, 3, 1),
+                quantity=10,
                 total_value=50,
             )
         ]
 
-        self.assertEqual(_calculate_purchase_dividends(purchases, proventos), [20.0, 30.0])
+        self.assertEqual(_calculate_purchase_dividends(purchases, proventos), [10.0, 40.0])
 
 
 if __name__ == '__main__':

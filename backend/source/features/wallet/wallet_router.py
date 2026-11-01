@@ -105,27 +105,25 @@ def _normalize_provento_ticker(value: str) -> str:
 
 
 def _calculate_purchase_dividends(purchases, proventos) -> List[float]:
-    """Allocate each received dividend among purchases held on its payment date."""
+    """Attribute each dividend to each eligible purchase by its own quantity."""
     dividends = [0.0] * len(purchases)
 
     for provento in proventos:
         payment_date = provento.date
         product = _normalize_provento_ticker(provento.product)
-        matching_indexes = [
-            index
-            for index, purchase in enumerate(purchases)
-            if _normalize_provento_ticker(purchase.ticker) == product
-            and (purchase.trade_date or purchase.settlement_date)
-            and (purchase.trade_date or purchase.settlement_date) <= payment_date
-        ]
-        held_quantity = sum(float(purchases[index].qty) for index in matching_indexes)
-        if not matching_indexes or held_quantity <= 0:
+        provento_quantity = float(getattr(provento, 'quantity', 0) or 0)
+        if not product or provento_quantity <= 0:
             continue
 
-        total_value = float(provento.total_value)
-        for index in matching_indexes:
-            quantity_share = float(purchases[index].qty) / held_quantity
-            dividends[index] += total_value * quantity_share
+        value_per_share = float(provento.total_value) / provento_quantity
+        for index, purchase in enumerate(purchases):
+            purchase_date = purchase.trade_date or purchase.settlement_date
+            if (
+                _normalize_provento_ticker(purchase.ticker) == product
+                and purchase_date
+                and purchase_date <= payment_date
+            ):
+                dividends[index] += float(purchase.qty) * value_per_share
 
     return dividends
 
@@ -391,14 +389,22 @@ def get_dashboard_data(
         for purchase in purchases
         if purchase.trade_date or purchase.settlement_date
     )
-    history_purchases = wallets.get_history_purchases(current_user)
-    history_prices = wallets.get_prices_from(active_tickers, history_start_date)
-    history_benchmarks = {
-        "CDI": wallets.get_cdi_from(history_start_date),
-        "IBOV": wallets.get_ibov_from(history_start_date),
-        "IFIX": wallets.get_ifix_from(history_start_date),
-        "SP500": wallets.get_prices_from(["^GSPC"], history_start_date),
-    }
+    history_purchases = (
+        wallets.get_history_purchases(current_user)
+        if hasattr(wallets, 'get_history_purchases')
+        else purchases
+    )
+    if hasattr(wallets, 'get_prices_from'):
+        history_prices = wallets.get_prices_from(active_tickers, history_start_date)
+        history_benchmarks = {
+            "CDI": wallets.get_cdi_from(history_start_date),
+            "IBOV": wallets.get_ibov_from(history_start_date),
+            "IFIX": wallets.get_ifix_from(history_start_date),
+            "SP500": wallets.get_prices_from(["^GSPC"], history_start_date),
+        }
+    else:
+        history_prices = []
+        history_benchmarks = {key: [] for key in ("CDI", "IBOV", "IFIX", "SP500")}
 
     # 4. Buscar Preços Atuais (Raw e Adjusted)
     latest_prices = wallets.get_latest_prices(active_tickers)
