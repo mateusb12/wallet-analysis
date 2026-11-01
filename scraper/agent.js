@@ -344,6 +344,7 @@ async function loginToB3(page) {
   if (!cpfInput || !b3Cpf) return;
 
   setProgress(2, 10, 'Preenchendo CPF');
+  await markDebugTarget(cpfInput, 'login-cpf');
   await cpfInput.fill(b3Cpf);
   setProgress(3, 10, 'Enviando CPF');
   console.log('CPF preenchido.');
@@ -355,6 +356,7 @@ async function loginToB3(page) {
   if (!passwordInput || !b3Password) return;
 
   setProgress(1, 12, 'Colocando senha');
+  await markDebugTarget(passwordInput, 'login-senha');
   await passwordInput.fill('');
   await passwordInput.pressSequentially(b3Password, { delay: 30 });
   await page.waitForTimeout(500);
