@@ -152,24 +152,29 @@ export default function Contributions() {
 
       const enrichedData = transactions.map((item) => {
         const currentPrice = priceMap[item.ticker] || null;
+        const dividendValue = Number(item.dividend_value || 0);
 
-        let profitValue = 0;
+        let valuationValue = null;
+        let totalReturnValue = null;
         let profitPercent = 0;
         let asset1YGrowth = null;
 
         if (currentPrice) {
           const totalPaid = Number(item.price) * Number(item.qty);
           const totalCurrent = currentPrice * Number(item.qty);
-          profitValue = totalCurrent - totalPaid;
-          profitPercent = ((currentPrice - Number(item.price)) / Number(item.price)) * 100;
+          valuationValue = item.valuation_value ?? totalCurrent - totalPaid;
+          totalReturnValue = valuationValue + dividendValue;
+          profitPercent = totalPaid > 0 ? (totalReturnValue / totalPaid) * 100 : 0;
         }
 
         return {
           ...item,
           currentPrice,
+          dividendValue,
+          valuationValue,
+          totalReturnValue,
 
           asset1YGrowth,
-          profitValue,
           profitPercent,
           hasPriceData: !!currentPrice,
         };
@@ -209,7 +214,9 @@ export default function Contributions() {
           totalQty: 0,
           totalPaid: 0,
           totalCurrent: 0,
-          totalProfit: 0,
+          totalDividend: 0,
+          totalValuation: 0,
+          totalReturn: 0,
         };
       }
       const g = groups[item.ticker];
@@ -222,7 +229,9 @@ export default function Contributions() {
       g.totalPaid += paid;
       g.totalCurrent += current;
       if (item.hasPriceData) {
-        g.totalProfit += current - paid;
+        g.totalDividend += item.dividendValue;
+        g.totalValuation += item.valuationValue;
+        g.totalReturn += item.totalReturnValue;
       }
     });
 
@@ -305,6 +314,9 @@ export default function Contributions() {
       ? Number(item.currentPrice) * Number(item.qty)
       : null;
     const totalPaidValue = Number(item.price) * Number(item.qty);
+    const dividendValue = item.dividendValue || 0;
+    const valuationValue = item.hasPriceData ? item.valuationValue : null;
+    const totalReturnValue = item.hasPriceData ? item.totalReturnValue : null;
 
     const isSimpleProfit = totalCurrentValue >= totalPaidValue;
     const isDisplayProfit = (item.displayPercent || 0) >= 0;
@@ -400,26 +412,27 @@ export default function Contributions() {
         </td>
 
         <td
-          className={`px-6 py-4 text-right font-bold font-mono ${item.hasPriceData ? (useMaturationVisuals ? valueTextColor : getOldSystemValueColor(item.profitValue)) : ''}`}
+          className={`px-6 py-4 text-right font-bold font-mono ${dividendValue > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'}`}
         >
-          {item.hasPriceData ? (
-            <div className="flex flex-col items-end">
-              <span>
-                {item.profitValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-              </span>
+          {dividendValue > 0
+            ? dividendValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+            : '-'}
+        </td>
 
-              {useMaturationVisuals && (
-                <span
-                  className={`text-[9px] ${(item.displayPercent || 0) >= 0 ? 'text-green-600/60' : 'text-red-600/60'}`}
-                >
-                  ({(item.displayPercent || 0) >= 0 ? '+' : ''}
-                  {rawPercent.toFixed(1)}%)
-                </span>
-              )}
-            </div>
-          ) : (
-            '-'
-          )}
+        <td
+          className={`px-6 py-4 text-right font-bold font-mono ${valuationValue !== null ? getOldSystemValueColor(valuationValue) : 'text-gray-400'}`}
+        >
+          {valuationValue !== null
+            ? valuationValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+            : '-'}
+        </td>
+
+        <td
+          className={`px-6 py-4 text-right font-bold font-mono ${totalReturnValue !== null ? getOldSystemValueColor(totalReturnValue) : 'text-gray-400'}`}
+        >
+          {totalReturnValue !== null
+            ? totalReturnValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+            : '-'}
         </td>
 
         <td className="px-6 py-4 align-middle">
@@ -563,7 +576,9 @@ export default function Contributions() {
                     Valor Atual
                   </th>
                   <th className="px-6 py-3 text-center border-l border-gray-100">Tempo</th>
-                  <th className="px-6 py-3 text-center">Rentab. (R$)</th>
+                  <th className="px-6 py-3 text-center">Dividendos</th>
+                  <th className="px-6 py-3 text-center">Valorização (R$)</th>
+                  <th className="px-6 py-3 text-center">Rentab. Total (R$)</th>
                   <th
                     ref={rentabMenuRef}
                     className="px-6 py-3 text-left cursor-pointer hover:bg-gray-200/50 relative min-w-[220px]"
@@ -599,7 +614,7 @@ export default function Contributions() {
                     processedPurchases.map((item) => <ContributionRow key={item.id} item={item} />)
                   ) : (
                     <tr>
-                      <td colSpan="10" className="p-8 text-center text-gray-500">
+                      <td colSpan="12" className="p-8 text-center text-gray-500">
                         Nenhum aporte.
                       </td>
                     </tr>
@@ -610,7 +625,7 @@ export default function Contributions() {
                     return (
                       <React.Fragment key={ticker}>
                         <tr className="bg-gray-100 dark:bg-gray-900 border-y border-gray-300 dark:border-gray-600">
-                          <td colSpan="10" className="px-6 py-2">
+                          <td colSpan="12" className="px-6 py-2">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3">
                                 <Tag size={16} className="text-gray-500" />
@@ -641,12 +656,12 @@ export default function Contributions() {
                                 </div>
                                 <div
                                   className={
-                                    group.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'
+                                    group.totalReturn >= 0 ? 'text-green-600' : 'text-red-600'
                                   }
                                 >
                                   Res:{' '}
                                   <span className="font-bold">
-                                    {group.totalProfit.toLocaleString('pt-BR', {
+                                    {group.totalReturn.toLocaleString('pt-BR', {
                                       style: 'currency',
                                       currency: 'BRL',
                                     })}
@@ -664,7 +679,7 @@ export default function Contributions() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan="10" className="p-8 text-center text-gray-500">
+                    <td colSpan="12" className="p-8 text-center text-gray-500">
                       Nenhum aporte.
                     </td>
                   </tr>

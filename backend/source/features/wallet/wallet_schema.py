@@ -74,19 +74,19 @@ class PositionSnapshot(BaseModel):
     # --- PREÇOS ---
     avg_price: float              # PM "Real"
     avg_price_adjusted: float     # PM Ajustado
-    current_price: float          # Preço de Tela Atual
-    current_adjusted: float       # Preço Ajustado Atual
+    current_price: Optional[float]          # Preço de Tela Atual
+    current_adjusted: Optional[float]       # Preço Ajustado Atual
 
     # --- TOTAIS ---
-    total_value: float            # Saldo Real
+    total_value: Optional[float]            # Saldo Real
 
     # --- RENTABILIDADE REAL (CAIXA) ---
-    profit: float
-    profit_percent: float
+    profit: Optional[float]
+    profit_percent: Optional[float]
 
     # --- RENTABILIDADE TOTAL (PERFORMANCE) ---
-    total_return_profit: float
-    total_return_percent: float
+    total_return_profit: Optional[float]
+    total_return_percent: Optional[float]
 
     # [NOVO] Detalhamento Ano a Ano para o Tooltip
     yearly_breakdown: List[YearlyPerformance] = []

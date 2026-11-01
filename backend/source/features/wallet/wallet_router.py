@@ -98,6 +98,38 @@ def _format_asset_age(first_purchase_date) -> str:
     return " ".join(parts)
 
 
+def _normalize_provento_ticker(value: str) -> str:
+    match = re.search(r"\b[A-Z]{4}\d{1,2}F?\b", str(value or ""), re.IGNORECASE)
+    ticker = match.group(0).upper() if match else ""
+    return ticker[:-1] if ticker.endswith("F") else ticker
+
+
+def _calculate_purchase_dividends(purchases, proventos) -> List[float]:
+    """Allocate each received dividend among purchases held on its payment date."""
+    dividends = [0.0] * len(purchases)
+
+    for provento in proventos:
+        payment_date = provento.date
+        product = _normalize_provento_ticker(provento.product)
+        matching_indexes = [
+            index
+            for index, purchase in enumerate(purchases)
+            if _normalize_provento_ticker(purchase.ticker) == product
+            and (purchase.trade_date or purchase.settlement_date)
+            and (purchase.trade_date or purchase.settlement_date) <= payment_date
+        ]
+        held_quantity = sum(float(purchases[index].qty) for index in matching_indexes)
+        if not matching_indexes or held_quantity <= 0:
+            continue
+
+        total_value = float(provento.total_value)
+        for index in matching_indexes:
+            quantity_share = float(purchases[index].qty) / held_quantity
+            dividends[index] += total_value * quantity_share
+
+    return dividends
+
+
 def _build_cdi_factors(benchmark_query, common_idx):
     """Build CDI factors without applying a business-day rate on calendar gaps."""
     factors = pd.Series(1.0, index=common_idx, dtype=float)
@@ -252,8 +284,9 @@ def get_dashboard_data(
         wallets: WalletRepository = Depends(get_wallet_repository),
         current_user: str = Depends(get_current_user)
 ):
-    # 1. Buscar todas as compras
+    # 1. Buscar todas as compras e proventos recebidos
     purchases = wallets.list_purchases(current_user)
+    proventos = wallets.list_proventos(current_user)
 
     # Estrutura vazia
     empty_response = {
@@ -266,6 +299,8 @@ def get_dashboard_data(
 
     if not purchases:
         return empty_response
+
+    dividend_by_purchase = _calculate_purchase_dividends(purchases, proventos)
 
     # Identificar Data Inicial Global da Carteira para buscar histórico anual
     effective_dates = [p.trade_date or p.settlement_date for p in purchases]
@@ -294,12 +329,13 @@ def get_dashboard_data(
     pos_map = {}
     transactions_list = []
 
-    for p in purchases:
+    for purchase_index, p in enumerate(purchases):
         purchase_date = p.trade_date or p.settlement_date
         # Adiciona à lista de transações
         transactions_list.append({
             "ticker": p.ticker, "price": float(p.price), "qty": p.qty,
-            "trade_date": purchase_date, "type": "buy", "asset_type": p.type
+            "trade_date": purchase_date, "type": "buy", "asset_type": p.type,
+            "dividend_value": round(dividend_by_purchase[purchase_index], 2),
         })
 
         price_raw = float(p.price)
@@ -343,6 +379,20 @@ def get_dashboard_data(
             price_map_adj[row.ticker] = adj_val
             name_map[row.ticker] = row.name
 
+    for transaction, purchase in zip(transactions_list, purchases):
+        current_price = price_map_raw.get(purchase.ticker)
+        valuation = (
+            (current_price - float(purchase.price)) * float(purchase.qty)
+            if current_price is not None
+            else None
+        )
+        transaction["valuation_value"] = round(valuation, 2) if valuation is not None else None
+        transaction["total_return_value"] = (
+            round(valuation + transaction["dividend_value"], 2)
+            if valuation is not None
+            else None
+        )
+
     # 4.1 Buscar Classificações
     classification_map = {}
     try:
@@ -369,32 +419,43 @@ def get_dashboard_data(
         data = pos_map[ticker]
         qty = data['qty']
 
-        curr_price_raw = price_map_raw.get(ticker, 0.0)
-        curr_price_adj = price_map_adj.get(ticker, curr_price_raw)
-
-        if curr_price_raw == 0:
-            curr_price_raw = data['cost_raw'] / qty
-            curr_price_adj = curr_price_raw
+        curr_price_raw = price_map_raw.get(ticker)
+        curr_price_adj = price_map_adj.get(ticker)
 
         pm_raw = data['cost_raw'] / qty
-        val_total_raw = qty * curr_price_raw
-        profit_raw = val_total_raw - data['cost_raw']
-        profit_pct_raw = (profit_raw / data['cost_raw'] * 100) if data['cost_raw'] > 0 else 0
+        val_total_raw = qty * curr_price_raw if curr_price_raw is not None else None
+        profit_raw = val_total_raw - data['cost_raw'] if val_total_raw is not None else None
+        profit_pct_raw = (
+            (profit_raw / data['cost_raw'] * 100)
+            if profit_raw is not None and data['cost_raw'] > 0
+            else None
+        )
 
         pm_adj = data['cost_adjusted'] / qty
-        val_total_adj_theoretical = qty * curr_price_adj
-        profit_adj = val_total_adj_theoretical - data['cost_adjusted']
-        profit_pct_adj = (profit_adj / data['cost_adjusted'] * 100) if data['cost_adjusted'] > 0 else 0
+        val_total_adj_theoretical = qty * curr_price_adj if curr_price_adj is not None else None
+        profit_adj = (
+            val_total_adj_theoretical - data['cost_adjusted']
+            if val_total_adj_theoretical is not None
+            else None
+        )
+        profit_pct_adj = (
+            (profit_adj / data['cost_adjusted'] * 100)
+            if profit_adj is not None and data['cost_adjusted'] > 0
+            else None
+        )
 
         total_invested_global += data['cost_raw']
-        total_current_global += val_total_raw
+        if val_total_raw is not None:
+            total_current_global += val_total_raw
 
         atype = data['type']
-        allocation_by_type[atype] = allocation_by_type.get(atype, 0) + val_total_raw
+        if val_total_raw is not None:
+            allocation_by_type[atype] = allocation_by_type.get(atype, 0) + val_total_raw
 
         if atype in cat_stats:
             cat_stats[atype]['invested'] += data['cost_raw']
-            cat_stats[atype]['current'] += val_total_raw
+            if val_total_raw is not None:
+                cat_stats[atype]['current'] += val_total_raw
             if not cat_stats[atype]['start_date'] or data['min_date'] < cat_stats[atype]['start_date']:
                 cat_stats[atype]['start_date'] = data['min_date']
 
@@ -408,7 +469,8 @@ def get_dashboard_data(
 
         # Considerar preço atual como fechamento do ano corrente (YTD)
         # Adiciona o ano corrente no mapa temporariamente para o calculo
-        ticker_yearly_closes[current_year] = curr_price_adj
+        if curr_price_adj is not None:
+            ticker_yearly_closes[current_year] = curr_price_adj
 
         sorted_years = sorted(ticker_yearly_closes.keys())
 
@@ -445,16 +507,16 @@ def get_dashboard_data(
 
             "avg_price": round(pm_raw, 2),
             "avg_price_adjusted": round(pm_adj, 2),
-            "current_price": round(curr_price_raw, 2),
-            "current_adjusted": round(curr_price_adj, 2),
+            "current_price": round(curr_price_raw, 2) if curr_price_raw is not None else None,
+            "current_adjusted": round(curr_price_adj, 2) if curr_price_adj is not None else None,
 
-            "total_value": round(val_total_raw, 2),
+            "total_value": round(val_total_raw, 2) if val_total_raw is not None else None,
 
-            "profit": round(profit_raw, 2),
-            "profit_percent": round(profit_pct_raw, 2),
+            "profit": round(profit_raw, 2) if profit_raw is not None else None,
+            "profit_percent": round(profit_pct_raw, 2) if profit_pct_raw is not None else None,
 
-            "total_return_profit": round(profit_adj, 2),
-            "total_return_percent": round(profit_pct_adj, 2),
+            "total_return_profit": round(profit_adj, 2) if profit_adj is not None else None,
+            "total_return_percent": round(profit_pct_adj, 2) if profit_pct_adj is not None else None,
 
             # INSERE OS DADOS REAIS
             "yearly_breakdown": yearly_breakdown,
