@@ -17,6 +17,8 @@ import {
   HelpCircle,
   Lock,
   Unlock,
+  ArrowDown,
+  ArrowUp,
 } from 'lucide-react';
 import { formatChartDate } from '../../utils/dateUtils.js';
 import {
@@ -112,6 +114,7 @@ export default function Contributions() {
   const rentabMenuRef = useRef(null);
 
   const [viewMode, setViewMode] = useState('flat');
+  const [contributionSort, setContributionSort] = useState({ key: null, direction: 'desc' });
 
   const [isProtectionMode, setIsProtectionMode] = useState(true);
   const [showMaturationInfo, setShowMaturationInfo] = useState(false);
@@ -210,10 +213,28 @@ export default function Contributions() {
     return { ...item, displayPercent };
   });
 
+  const sortedPurchases = useMemo(() => {
+    if (!contributionSort.key) return processedPurchases;
+
+    return [...processedPurchases].sort((a, b) => {
+      const valueA = Number(a[contributionSort.key]);
+      const valueB = Number(b[contributionSort.key]);
+      const comparison = (Number.isFinite(valueA) ? valueA : 0) - (Number.isFinite(valueB) ? valueB : 0);
+      return contributionSort.direction === 'asc' ? comparison : -comparison;
+    });
+  }, [processedPurchases, contributionSort]);
+
+  const handleContributionSort = (key) => {
+    setContributionSort((current) => ({
+      key,
+      direction: current.key === key && current.direction === 'desc' ? 'asc' : 'desc',
+    }));
+  };
+
   const groupedData = useMemo(() => {
     if (viewMode === 'flat') return null;
     const groups = {};
-    processedPurchases.forEach((item) => {
+    sortedPurchases.forEach((item) => {
       if (!groups[item.ticker]) {
         groups[item.ticker] = {
           ticker: item.ticker,
@@ -249,7 +270,7 @@ export default function Contributions() {
         obj[key] = groups[key];
         return obj;
       }, {});
-  }, [processedPurchases, viewMode]);
+  }, [sortedPurchases, viewMode]);
 
   const maxAbsPercent = Math.max(
     0.1,
@@ -572,7 +593,7 @@ export default function Contributions() {
         ) : (
           <div className="overflow-auto max-h-[75vh] relative scroll-smooth">
             <table className="w-full text-sm text-left">
-              <thead className="sticky top-0 z-20 text-xs text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+              <thead className="sticky top-0 z-20 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
                 <tr>
                   <th className="px-6 py-3 text-center">Data</th>
                   <th className="px-6 py-3 text-center">Ativo</th>
@@ -586,17 +607,46 @@ export default function Contributions() {
                   <th className="px-6 py-3 text-center border-l border-gray-100">Tempo</th>
                   <th className="px-6 py-3 text-center">Dividendos</th>
                   <th className="px-6 py-3 text-center">Valorização (R$)</th>
-                  <th className="px-6 py-3 text-center">Rentab. Total (R$)</th>
+                  <th className="px-6 py-3 text-center">
+                    <button
+                      type="button"
+                      onClick={() => handleContributionSort('totalReturnValue')}
+                      className="inline-flex items-center gap-1 hover:text-blue-500 transition-colors"
+                      title="Ordenar por Rentabilidade Total (R$)"
+                    >
+                      Rentabilidade Bruta (R$)
+                      {contributionSort.key === 'totalReturnValue' ? (
+                        contributionSort.direction === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} />
+                      ) : null}
+                    </button>
+                  </th>
                   <th
                     ref={rentabMenuRef}
-                    className="px-6 py-3 text-left cursor-pointer hover:bg-gray-200/50 relative min-w-[220px]"
-                    onClick={() => setIsRentabMenuOpen(!isRentabMenuOpen)}
+                    className="px-6 py-3 text-left relative min-w-[220px]"
                   >
                     <div className="flex items-center gap-1">
-                      Rentab. ({rentabOptions[rentabMode].label}) <ChevronDown size={14} />
+                      <button
+                        type="button"
+                        onClick={() => handleContributionSort('displayPercent')}
+                        className="inline-flex items-center gap-1 hover:text-blue-500 transition-colors"
+                        title="Ordenar por Rentabilidade Relativa"
+                      >
+                        <span>Rentabilidade Relativa (%)</span>
+                        {contributionSort.key === 'displayPercent' ? (
+                          contributionSort.direction === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} />
+                        ) : null}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsRentabMenuOpen((open) => !open)}
+                        className="inline-flex items-center gap-1 rounded px-1.5 py-1 hover:bg-gray-200/50 dark:hover:bg-gray-700/60 transition-colors"
+                        title="Escolher período da rentabilidade"
+                      >
+                        ({rentabOptions[rentabMode].label}) <ChevronDown size={14} />
+                      </button>
                     </div>
                     {isRentabMenuOpen && (
-                      <div className="absolute right-0 top-full mt-2 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-xl border z-50">
+                      <div className="absolute left-0 top-full mt-2 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-xl border z-50">
                         {Object.keys(rentabOptions).map((key) => (
                           <div
                             key={key}
@@ -619,7 +669,7 @@ export default function Contributions() {
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {viewMode === 'flat' ? (
                   processedPurchases.length > 0 ? (
-                    processedPurchases.map((item) => <ContributionRow key={item.id} item={item} />)
+                    sortedPurchases.map((item) => <ContributionRow key={item.id} item={item} />)
                   ) : (
                     <tr>
                       <td colSpan="12" className="p-8 text-center text-gray-500">

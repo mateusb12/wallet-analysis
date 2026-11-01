@@ -141,8 +141,9 @@ export default function AssetPerformanceChart({ purchases, positions = [] }) {
       const cost = Number(item.price) * Number(item.qty);
       aggregation[item.ticker].totalInvested += cost;
 
-      if (item.hasPriceData) {
-        aggregation[item.ticker].totalProfit += item.profitValue;
+      const totalReturnValue = Number(item.totalReturnValue);
+      if (item.hasPriceData && Number.isFinite(totalReturnValue)) {
+        aggregation[item.ticker].totalProfit += totalReturnValue;
         aggregation[item.ticker].hasData = true;
       }
 
