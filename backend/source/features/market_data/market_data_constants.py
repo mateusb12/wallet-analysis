@@ -5,7 +5,6 @@ ASSET_SCHEMA = {
             "Tijolo",
             "Papel",
             "Desenvolvimento",
-            "Multiestratégia",
             "Outros",
         ]
     },

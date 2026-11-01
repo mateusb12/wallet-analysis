@@ -48,14 +48,14 @@ CLASSIFICATION_OVERRIDES: Dict[str, Dict[str, str]] = {
         "reasoning": "Override: Fundo de papel indexado ao CDI (Valora)."
     },
     "KNHF11": {
-        "detected_type": "FII - Híbrido",
-        "sector": "Multiestratégia",
-        "reasoning": "Override: Multiestratégia Kinea."
+        "detected_type": "FII - Papel (CRI)",
+        "sector": "Papel",
+        "reasoning": "Override: exposição predominante em CRIs, conforme relatório gerencial de setembro de 2026."
     },
     "MXRF11": {
-        "detected_type": "FII - Híbrido",
-        "sector": "Multiestratégia",
-        "reasoning": "Override: Fundo misto (Papel + Permutas + FIIs)."
+        "detected_type": "FII - Papel (CRI)",
+        "sector": "Papel",
+        "reasoning": "Override: exposição predominante em recebíveis imobiliários."
     },
     "TGAR11": {
         "detected_type": "FII - Desenvolvimento",
@@ -73,9 +73,9 @@ CLASSIFICATION_OVERRIDES: Dict[str, Dict[str, str]] = {
         "reasoning": "Override: Fundo de renda imobiliária."
     },
     "KFOF11": {
-        "detected_type": "FII - Fundo de Fundos",
-        "sector": "Multiestratégia",
-        "reasoning": "Override: Fundo de fundos; exposição depende da carteira subjacente."
+        "detected_type": "FII - Tijolo (Fundo de Fundos)",
+        "sector": "Tijolo",
+        "reasoning": "Override: exposição imobiliária de tijolo predominante, conforme relatório gerencial de setembro de 2026."
     },
     "WRLD11": {
         "detected_type": "ETF - Internacional (Global)",
@@ -158,8 +158,6 @@ P_FOF = [
     re.compile(r"\balocac\w*\s+em\s+cotas\b"),
     re.compile(r"\bcarteira\s+de\s+(?:fiis?|fundos?)\b"),
 ]
-P_MULTI = [re.compile(r"\bmultiestrategi\w*\b"), re.compile(r"\bmultistrateg\w*\b"), re.compile(r"\bdiversificad\w*\b"),
-           re.compile(r"\bgestao\s+ativa\b"), re.compile(r"\bhibrid\w*\b"), re.compile(r"\bmixed\b")]
 P_TIJOLO_GERAL = [
     re.compile(r"\blogistic\w*\b"), re.compile(r"\bgalpa\w*\b"), re.compile(r"\barmaz\w*\b"),
     re.compile(r"\bshopping\b"), re.compile(r"\bmall\w*\b"), re.compile(r"\bvarej\w*\b"),
@@ -798,11 +796,14 @@ def classify_ticker(
         # 2) CACHE
         cached = _get_cache(market_data, ticker_up)
         if cached:
+            cached_sector = cached.get("sector", "Outros")
+            if cached_sector == "Multiestratégia":
+                cached_sector = "Outros"
             return {
                 "ticker": cached.get("ticker", ticker_up),
                 "detected_type": cached.get("detected_type", "Indefinido"),
                 "reasoning": cached.get("reasoning", "cache"),
-                "sector": cached.get("sector", "Outros"),
+                "sector": cached_sector,
                 "quote_type": cached.get("quote_type", "unknown"),
                 "confidence": cached.get("confidence", 50),
                 "raw_info_sample": cached.get("raw_info_sample", ""),
@@ -843,48 +844,37 @@ def classify_ticker(
 
         s_cri = _score(text, P_CRI)
         s_fof = _score(text, P_FOF)
-        s_multi = _score(text, P_MULTI)
         s_dev = _score(text, P_DEV)
         s_tijolo = _score(text, P_TIJOLO_GERAL)
         s_fiagro = _score(text, P_FIAGRO)
 
-        scores = {"cri": s_cri, "fof": s_fof, "multi": s_multi, "dev": s_dev, "tijolo": s_tijolo, "fiagro": s_fiagro}
+        scores = {"cri": s_cri, "fof": s_fof, "dev": s_dev, "tijolo": s_tijolo, "fiagro": s_fiagro}
 
         # 5) CLASSIFICATION LOGIC
         # === FIIs ===
         if looks_fii:
             is_fiagro = s_fiagro >= 1
-            is_fof = s_fof >= 1 or "fundo de fundos" in text
             is_dev = s_dev >= 2
             is_cri = s_cri >= 1
             is_tijolo = s_tijolo >= 1
-            is_multi = s_multi >= 1
 
             if is_fiagro:
                 base_result["sector"] = "Outros"
                 base_result["detected_type"] = "Fiagro"
                 base_result["reasoning"] = f"Fiagro detectado (score={s_fiagro})."
-            elif is_fof:
-                base_result["sector"] = "Multiestratégia"
-                base_result["detected_type"] = "FII - Fundo de Fundos"
-                base_result["reasoning"] = f"FoF detectado (score={s_fof})."
             elif is_dev and not is_cri:
                 base_result["sector"] = "Desenvolvimento"
                 base_result["detected_type"] = "FII - Desenvolvimento"
                 base_result["reasoning"] = f"Termos de incorporação (score={s_dev})."
-            elif is_multi:
-                base_result["sector"] = "Multiestratégia"
-                base_result["detected_type"] = "FII - Multiestratégia"
-                base_result["reasoning"] = f"Termos de multiestratégia (score={s_multi})."
             elif (is_cri and is_tijolo):
                 if s_tijolo > s_cri:
                     base_result["sector"] = "Tijolo"
                     base_result["detected_type"] = f"FII - Tijolo (Geral)"
                     base_result["reasoning"] = f"Tijolo predominante ({s_tijolo} vs {s_cri})."
                 else:
-                    base_result["sector"] = "Multiestratégia"
-                    base_result["detected_type"] = "FII - Híbrido (Misto)"
-                    base_result["reasoning"] = f"Mix de Papel e Tijolo equilibrado."
+                    base_result["sector"] = "Papel"
+                    base_result["detected_type"] = "FII - Papel (CRI)"
+                    base_result["reasoning"] = f"Papel predominante ou empate ({s_cri} vs {s_tijolo})."
             elif is_cri:
                 base_result["sector"] = "Papel"
                 base_result["detected_type"] = "FII - Papel (CRI)"
@@ -901,9 +891,9 @@ def classify_ticker(
                 base_result["detected_type"] = f"FII - Tijolo ({sub})"
                 base_result["reasoning"] = f"Fundo de Imóveis (score={s_tijolo})."
             else:
-                base_result["sector"] = "Multiestratégia"
+                base_result["sector"] = "Outros"
                 base_result["detected_type"] = "FII - Indefinido"
-                base_result["reasoning"] = "FII sem estratégia clara."
+                base_result["reasoning"] = "FII sem exposição predominante identificável."
 
             base_result["confidence"] = _confidence_from_scores(True, False, qtype_n, scores, False)
             _upsert_cache(market_data, base_result)

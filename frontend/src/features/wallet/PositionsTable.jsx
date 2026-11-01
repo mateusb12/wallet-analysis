@@ -14,15 +14,12 @@ import VariationBadge from './components/VariationBadge.jsx';
 import tijolo from '../../assets/tijolo.png';
 import papel from '../../assets/papel.png';
 import hibrido from '../../assets/hibrido.png';
-import fundosFundos from '../../assets/fundos-fundos.png';
 import desenvolvimento from '../../assets/desenvolvimento.png';
 
 const FII_SUBTYPE_ICONS = {
   Tijolo: tijolo,
   Papel: papel,
-  Híbrido: hibrido,
-  'Fundos de Fundos': fundosFundos,
-  'Fundos De Fundos': fundosFundos,
+  Outros: hibrido,
   Desenvolvimento: desenvolvimento,
 };
 
@@ -360,8 +357,20 @@ const PositionsTable = ({
                     TIPO
                   </th>
                 )}
-                <SortableHeader label="Tempo" sortKey="age" sort={sort} onSort={handleSort} className="text-center" />
-                <SortableHeader label="Qtd" sortKey="qty" sort={sort} onSort={handleSort} className="text-center" />
+                <SortableHeader
+                  label="Tempo"
+                  sortKey="age"
+                  sort={sort}
+                  onSort={handleSort}
+                  className="text-center"
+                />
+                <SortableHeader
+                  label="Qtd"
+                  sortKey="qty"
+                  sort={sort}
+                  onSort={handleSort}
+                  className="text-center"
+                />
                 <SortableHeader
                   label={isFiiTable ? 'Preço Médio (Adj)' : 'Preço Médio'}
                   sortKey="avgPrice"
@@ -376,8 +385,20 @@ const PositionsTable = ({
                   onSort={handleSort}
                   className="text-center"
                 />
-                <SortableHeader label="Total (Real)" sortKey="marketValue" sort={sort} onSort={handleSort} className="text-center" />
-                <SortableHeader label="Variação (R$)" sortKey="variationValue" sort={sort} onSort={handleSort} className="text-center" />
+                <SortableHeader
+                  label="Total (Real)"
+                  sortKey="marketValue"
+                  sort={sort}
+                  onSort={handleSort}
+                  className="text-center"
+                />
+                <SortableHeader
+                  label="Variação (R$)"
+                  sortKey="variationValue"
+                  sort={sort}
+                  onSort={handleSort}
+                  className="text-center"
+                />
                 <SortableHeader
                   label="Rentabilidade (%)"
                   sortKey="rentabilityPercent"
@@ -385,7 +406,13 @@ const PositionsTable = ({
                   onSort={handleSort}
                   className="text-left min-w-[140px]"
                 />
-                <SortableHeader label="% Carteira" sortKey="share" sort={sort} onSort={handleSort} className="text-center" />
+                <SortableHeader
+                  label="% Carteira"
+                  sortKey="share"
+                  sort={sort}
+                  onSort={handleSort}
+                  className="text-center"
+                />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">

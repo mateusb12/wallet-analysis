@@ -49,7 +49,6 @@ export const FII_SUBTYPE_ICONS = {
   Tijolo: tijolo,
   Papel: papel,
   Desenvolvimento: desenvolvimento,
-  Multiestratégia: hibrido,
   Outros: hibrido,
 };
 
@@ -78,10 +77,6 @@ const FII_DESCRIPTIONS = {
   Desenvolvimento: {
     title: 'Construção para Venda',
     text: 'Focam em construir imóveis para vender com lucro, funcionando como uma incorporadora. Possuem maior risco (obra, permuta), mas oferecem potencial de ganho de capital explosivo ao final do ciclo.',
-  },
-  Multiestratégia: {
-    title: 'Exposição Imobiliária Mista',
-    text: 'Ativos cuja composição reúne estratégias diferentes ou ainda não foi detalhada. Eles não são atribuídos artificialmente a uma única fonte de risco.',
   },
 };
 
@@ -446,7 +441,7 @@ const DEFAULT_TARGETS = {
       Tijolo: 40,
       Papel: 30,
       Desenvolvimento: 10,
-      Multiestratégia: 20,
+      Outros: 20,
     },
     acoes: {
       'Bancos e Seguradoras': 40,

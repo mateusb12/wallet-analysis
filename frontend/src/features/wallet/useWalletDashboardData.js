@@ -94,8 +94,8 @@ export const useWalletDashboardData = (user) => {
     const adaptedPositions = raw.positions.map((p) => {
       let mappedSubtype = 'Indefinido';
       if (p.sector && p.sector !== 'Outros' && p.sector !== 'erro') {
-        if (p.sector.toLowerCase() === 'fundos de fundos') {
-          mappedSubtype = 'Fundos de Fundos';
+        if (['fundos de fundos', 'híbrido', 'multiestratégia'].includes(p.sector.toLowerCase())) {
+          mappedSubtype = 'Outros';
         } else {
           mappedSubtype = p.sector.charAt(0).toUpperCase() + p.sector.slice(1);
         }
@@ -178,9 +178,7 @@ export const useWalletDashboardData = (user) => {
       yield: Number(stats.yield) || 0,
       valuation: numericValuation,
       dividends: numericDividends,
-      valuationPercent: numericInvested > 0
-        ? (numericValuation / numericInvested) * 100
-        : 0,
+      valuationPercent: numericInvested > 0 ? (numericValuation / numericInvested) * 100 : 0,
       dividendsPercent: numericInvested > 0 ? (numericDividends / numericInvested) * 100 : 0,
       labelSuffix: labels[profitPeriod],
     };
