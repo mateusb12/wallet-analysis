@@ -6,6 +6,8 @@ import {
   History as HistoryIcon,
   Info,
   Calculator,
+  ArrowDown,
+  ArrowUp,
 } from 'lucide-react';
 import VariationBadge from './components/VariationBadge.jsx';
 
@@ -170,6 +172,25 @@ const getDisplayData = (row) => {
   };
 };
 
+const SortableHeader = ({ label, sortKey, sort, onSort, className = '' }) => {
+  const active = sort.key === sortKey;
+  const Icon = active ? (sort.direction === 'asc' ? ArrowUp : ArrowDown) : null;
+
+  return (
+    <th className={`px-6 py-3 border-b border-gray-200 dark:border-gray-700 ${className}`}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="inline-flex items-center gap-1.5 uppercase hover:text-blue-500 transition-colors"
+        title={`Ordenar por ${label}`}
+      >
+        {label}
+        {Icon ? <Icon size={13} /> : <span className="w-[13px]" aria-hidden="true" />}
+      </button>
+    </th>
+  );
+};
+
 const PositionsTable = ({
   filteredPositions,
   totalValue,
@@ -179,6 +200,7 @@ const PositionsTable = ({
   assetsHistoryMap,
 }) => {
   const [expandedTicker, setExpandedTicker] = useState(null);
+  const [sort, setSort] = useState({ key: 'rentabilityPercent', direction: 'desc' });
 
   const isFiiTable =
     categoryLabel === 'FIIs' ||
@@ -187,6 +209,13 @@ const PositionsTable = ({
   const toggleExpand = (e, ticker) => {
     e.stopPropagation();
     setExpandedTicker((prev) => (prev === ticker ? null : ticker));
+  };
+
+  const handleSort = (key) => {
+    setSort((current) => ({
+      key,
+      direction: current.key === key && current.direction === 'desc' ? 'asc' : 'desc',
+    }));
   };
 
   const maxRentability = useMemo(() => {
@@ -204,9 +233,31 @@ const PositionsTable = ({
     return [...filteredPositions].sort((a, b) => {
       const dataA = getDisplayData(a);
       const dataB = getDisplayData(b);
-      return dataB.rentabilityPercent - dataA.rentabilityPercent;
+      const getSortValue = (row, data) => {
+        if (sort.key === 'ticker') return row.ticker;
+        if (sort.key === 'share') return totalValue > 0 ? data.marketValue / totalValue : 0;
+        if (sort.key === 'age') {
+          const dates = (assetsHistoryMap[row.ticker] || [])
+            .map((item) => new Date(item.trade_date).getTime())
+            .filter(Number.isFinite);
+          return dates.length ? Date.now() - Math.min(...dates) : 0;
+        }
+        if (sort.key === 'qty') return row.qty;
+        return data[sort.key];
+      };
+
+      const valueA = getSortValue(a, dataA);
+      const valueB = getSortValue(b, dataB);
+
+      if (typeof valueA === 'string' || typeof valueB === 'string') {
+        const comparison = String(valueA || '').localeCompare(String(valueB || ''), 'pt-BR');
+        return sort.direction === 'asc' ? comparison : -comparison;
+      }
+
+      const comparison = (Number(valueA) || 0) - (Number(valueB) || 0);
+      return sort.direction === 'asc' ? comparison : -comparison;
     });
-  }, [filteredPositions]);
+  }, [filteredPositions, sort, totalValue, assetsHistoryMap]);
 
   const tableTotals = useMemo(() => {
     let sumQty = 0;
@@ -297,38 +348,44 @@ const PositionsTable = ({
           <table className="w-full text-sm text-left border-collapse">
             <thead className="bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 uppercase font-medium">
               <tr>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-left sticky left-0 z-20 bg-gray-100 dark:bg-gray-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                  Ativo
-                </th>
+                <SortableHeader
+                  label="Ativo"
+                  sortKey="ticker"
+                  sort={sort}
+                  onSort={handleSort}
+                  className="text-left sticky left-0 z-20 bg-gray-100 dark:bg-gray-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
+                />
                 {isFiiTable && (
                   <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center whitespace-nowrap">
                     TIPO
                   </th>
                 )}
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
-                  Tempo
-                </th>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
-                  Qtd
-                </th>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
-                  {isFiiTable ? 'Preço Médio (Adj)' : 'Preço Médio'}
-                </th>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
-                  {isFiiTable ? 'Preço Atual (Adj)' : 'Preço Atual'}
-                </th>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
-                  Total (Real)
-                </th>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
-                  Variação (R$)
-                </th>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-left min-w-[140px]">
-                  Rentabilidade (%)
-                </th>
-                <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 text-center">
-                  % Carteira
-                </th>
+                <SortableHeader label="Tempo" sortKey="age" sort={sort} onSort={handleSort} className="text-center" />
+                <SortableHeader label="Qtd" sortKey="qty" sort={sort} onSort={handleSort} className="text-center" />
+                <SortableHeader
+                  label={isFiiTable ? 'Preço Médio (Adj)' : 'Preço Médio'}
+                  sortKey="avgPrice"
+                  sort={sort}
+                  onSort={handleSort}
+                  className="text-center"
+                />
+                <SortableHeader
+                  label={isFiiTable ? 'Preço Atual (Adj)' : 'Preço Atual'}
+                  sortKey="currentPrice"
+                  sort={sort}
+                  onSort={handleSort}
+                  className="text-center"
+                />
+                <SortableHeader label="Total (Real)" sortKey="marketValue" sort={sort} onSort={handleSort} className="text-center" />
+                <SortableHeader label="Variação (R$)" sortKey="variationValue" sort={sort} onSort={handleSort} className="text-center" />
+                <SortableHeader
+                  label="Rentabilidade (%)"
+                  sortKey="rentabilityPercent"
+                  sort={sort}
+                  onSort={handleSort}
+                  className="text-left min-w-[140px]"
+                />
+                <SortableHeader label="% Carteira" sortKey="share" sort={sort} onSort={handleSort} className="text-center" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
