@@ -39,6 +39,16 @@ class AssetPurchaseResponse(AssetPurchaseBase):
     id: int
     model_config = ConfigDict(from_attributes=True)
 
+
+class ProventoResponse(BaseModel):
+    id: int
+    date: date
+    type: str
+    product: str
+    quantity: float
+    total_value: float
+    model_config = ConfigDict(from_attributes=True)
+
 class HistoryPoint(BaseModel):
     trade_date: str
     portfolio_value: float

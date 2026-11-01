@@ -108,6 +108,19 @@ class AssetPurchase(Base):
     # Audit fields
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+
+class Provento(Base):
+    __tablename__ = "proventos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, index=True, nullable=False)
+    date = Column(Date, index=True, nullable=False)
+    type = Column(String, nullable=False)
+    product = Column(String, nullable=False)
+    quantity = Column(Float, nullable=False)
+    total_value = Column(Numeric(12, 2), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 class User(Base):
     __tablename__ = "users"
     # O schema padrão geralmente é 'public', mas se precisar ser explícito:

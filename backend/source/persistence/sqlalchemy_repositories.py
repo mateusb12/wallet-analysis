@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from backend.source.models.sql_models import (
     AssetClassificationCache,
     AssetPurchase,
+    Provento,
     B3Price,
     CdiHistory,
     User,
@@ -57,6 +58,14 @@ class SqlAlchemyWalletRepository:
         return (
             self._session.query(AssetPurchase)
             .filter(AssetPurchase.user_id == user_id)
+            .all()
+        )
+
+    def list_proventos(self, user_id: str) -> Sequence[Provento]:
+        return (
+            self._session.query(Provento)
+            .filter(Provento.user_id == user_id)
+            .order_by(Provento.date.desc(), Provento.id.desc())
             .all()
         )
 

@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any, Protocol, Sequence
 
-from backend.source.models.sql_models import AssetPurchase, User
+from backend.source.models.sql_models import AssetPurchase, Provento, User
 
 
 class UserRepository(Protocol):
@@ -17,6 +17,9 @@ class UserRepository(Protocol):
 
 class WalletRepository(Protocol):
     def list_purchases(self, user_id: str) -> Sequence[AssetPurchase]:
+        ...
+
+    def list_proventos(self, user_id: str) -> Sequence[Provento]:
         ...
 
     def add_purchases(self, purchases: Sequence[AssetPurchase]) -> Sequence[AssetPurchase]:

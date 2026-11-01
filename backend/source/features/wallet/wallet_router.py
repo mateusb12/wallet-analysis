@@ -13,6 +13,7 @@ from backend.source.features.wallet.wallet_schema import (
     AssetPurchaseResponse,
     AssetPurchaseInput,
     SyncB3PurchasesRequest,
+    ProventoResponse,
     HistoryPoint
 )
 
@@ -584,6 +585,14 @@ def get_user_purchases(
         current_user: str = Depends(get_current_user)
 ):
     return wallets.list_purchases(current_user)
+
+
+@wallet_bp.get("/proventos", response_model=List[ProventoResponse])
+def get_user_proventos(
+        wallets: WalletRepository = Depends(get_wallet_repository),
+        current_user: str = Depends(get_current_user),
+):
+    return wallets.list_proventos(current_user)
 
 
 @wallet_bp.post("/purchases/sync-b3")

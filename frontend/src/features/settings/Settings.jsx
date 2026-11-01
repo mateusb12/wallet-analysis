@@ -3,13 +3,13 @@ import { useTheme } from '../theme/ThemeContext.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { userService } from '../../services/userService.js';
 import { jobService } from '../../services/api.js';
-import { getWalletPurchases } from '../../services/walletDataService.js';
+import { getWalletPurchases, getWalletProventos } from '../../services/walletDataService.js';
 
 import ManualPriceSync from '../../components/ManualPriceSync.jsx';
 import ContributionsManager from './ContributionsManager.jsx';
 import { formatDateTimeLong } from '../../utils/dateUtils.js';
 
-import { CheckCircle2, Clock3, Loader2, Play, RefreshCw, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Clock3, Loader2, Play, RefreshCw, XCircle } from 'lucide-react';
 
 const monthNumbers = {
   janeiro: '01', fevereiro: '02', março: '03', marco: '03', abril: '04', maio: '05', junho: '06',
@@ -40,9 +40,34 @@ const normalizeTicker = (value) => {
 };
 
 const parseBrazilianNumber = (value) => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   const text = String(value || '').replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
   const number = Number(text);
   return Number.isFinite(number) ? number : null;
+};
+
+const normalizeProventoText = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .toLowerCase();
+
+const findRegisteredProvento = (contribution, proventos) => {
+  const date = normalizeDate(contribution.date);
+  const type = normalizeProventoText(contribution.movement);
+  const product = normalizeProventoText(contribution.product);
+  const quantity = parseBrazilianNumber(contribution.quantity);
+  const totalValue = parseBrazilianNumber(contribution.total);
+  if (!date || !type || !product || quantity === null || totalValue === null) return null;
+
+  return proventos.find((provento) => (
+    normalizeDate(provento.date) === date
+    && normalizeProventoText(provento.type) === type
+    && normalizeProventoText(provento.product) === product
+    && Math.abs(Number(provento.quantity) - quantity) <= 0.0001
+    && Math.abs(Number(provento.total_value) - totalValue) <= 0.01
+  )) || null;
 };
 
 const confirmedSettlementDates = {
@@ -100,6 +125,9 @@ export default function Settings() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   const [existingPurchases, setExistingPurchases] = useState([]);
+  const [existingProventos, setExistingProventos] = useState([]);
+  const [isProventosExpanded, setIsProventosExpanded] = useState(true);
+  const [isContributionsExpanded, setIsContributionsExpanded] = useState(true);
   const [jobStatus, setJobStatus] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('wallet-analysis:scraper-job-status') || '{"status":"idle"}');
@@ -133,9 +161,19 @@ export default function Settings() {
 
   const userEmail = user?.email || 'usuario@exemplo.com';
   const displayName = dbName || userEmail.split('@')[0];
+  const registeredContributionCount = scraperContributions.filter((contribution) => (
+    findRegisteredPurchase(contribution, existingPurchases)
+  )).length;
+  const pendingContributionCount = scraperContributions.length - registeredContributionCount;
+  const registeredProventoCount = scraperDividends.filter((contribution) => (
+    findRegisteredProvento(contribution, existingProventos)
+  )).length;
+  const pendingProventoCount = scraperDividends.length - registeredProventoCount;
+
   useEffect(() => {
     if (user?.id) {
       fetchExistingPurchases();
+      fetchExistingProventos();
       loadUserProfile();
     }
   }, [user]);
@@ -314,6 +352,15 @@ export default function Settings() {
       setExistingPurchases(purchases);
     } catch (error) {
       console.error('Failed to fetch history:', error);
+    }
+  };
+
+  const fetchExistingProventos = async () => {
+    try {
+      const proventos = await getWalletProventos();
+      setExistingProventos(proventos);
+    } catch (error) {
+      console.error('Falha ao buscar proventos:', error);
     }
   };
 
@@ -562,57 +609,100 @@ export default function Settings() {
             {jobError && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{jobError}</p>}
 
             <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
-              <div className="mb-3 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setIsProventosExpanded((expanded) => !expanded)}
+                aria-expanded={isProventosExpanded}
+                aria-controls="proventos-captured-table"
+                className="mb-3 flex w-full items-center justify-between rounded-lg px-2 py-2 text-left transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-gray-700/60"
+              >
                 <div>
-                  <p className="font-medium text-gray-900 dark:text-white">Dividendos capturados</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Proventos encontrados na aba Movimentação da B3</p>
+                  <p className="font-medium text-gray-900 dark:text-white">Proventos</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Rendimentos e dividendos encontrados na aba Movimentação da B3</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    No SQL: {registeredProventoCount} cadastrados · {pendingProventoCount} pendentes
+                  </p>
                 </div>
-                <span className="text-sm text-gray-500 dark:text-gray-400">{scraperDividends.length}</span>
-              </div>
-              <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                <span className="inline-flex items-center gap-2 rounded-md bg-gray-100 px-2 py-1 text-sm text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                  {scraperDividends.length}
+                  <ChevronDown className={`h-4 w-4 transition-transform ${isProventosExpanded ? 'rotate-180' : ''}`} />
+                </span>
+              </button>
+              {isProventosExpanded && <div id="proventos-captured-table" className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
                 <table className="min-w-full text-left text-sm">
                   <thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-700/50 dark:text-gray-400">
                     <tr>
                       <th className="px-3 py-2">Data</th>
-                      <th className="px-3 py-2">Movimentação</th>
+                      <th className="px-3 py-2">Tipo</th>
                       <th className="px-3 py-2">Produto</th>
                       <th className="px-3 py-2">Quantidade</th>
                       <th className="px-3 py-2">Valor total</th>
+                      <th className="px-3 py-2">Status no SQL</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {scraperDividends.map((dividend, index) => (
-                      <tr key={dividend.id || index} className="border-t border-gray-200 dark:border-gray-700">
+                    {scraperDividends.map((dividend, index) => {
+                      const registeredProvento = findRegisteredProvento(dividend, existingProventos);
+                      return (
+                      <tr
+                        key={dividend.id || index}
+                        className={`border-t border-gray-200 dark:border-gray-700 ${
+                          registeredProvento ? '' : 'bg-orange-500/10 dark:bg-orange-500/15'
+                        }`}
+                        title={registeredProvento ? 'Provento cadastrado no SQL' : 'Provento pendente no SQL'}
+                      >
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{dividend.date || '—'}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{dividend.movement || '—'}</td>
                         <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{dividend.product || '—'}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{dividend.quantity || '—'}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{dividend.total || '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2">
+                          <span className={`rounded-full px-2 py-1 text-xs font-medium ${
+                            registeredProvento
+                              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-orange-500/10 text-orange-700 dark:text-orange-300'
+                          }`}>
+                            {registeredProvento ? 'Cadastrado' : 'Pendente'}
+                          </span>
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {scraperDividends.length === 0 && (
-                      <tr><td colSpan="5" className="px-3 py-6 text-center text-gray-500 dark:text-gray-400">Nenhum dividendo capturado ainda.</td></tr>
+                      <tr><td colSpan="6" className="px-3 py-6 text-center text-gray-500 dark:text-gray-400">Nenhum provento encontrado ainda.</td></tr>
                     )}
                   </tbody>
                 </table>
-              </div>
+              </div>}
             </div>
 
             <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
-              <div className="mb-3 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setIsContributionsExpanded((expanded) => !expanded)}
+                aria-expanded={isContributionsExpanded}
+                aria-controls="contributions-captured-table"
+                className="mb-3 flex w-full items-center justify-between rounded-lg px-2 py-2 text-left transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-gray-700/60"
+              >
                 <div>
                   <p className="font-medium text-gray-900 dark:text-white">Aportes capturados</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Compras encontradas na aba Negociação da B3</p>
-                  <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">Laranja: ainda não cadastrado</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    No SQL: {registeredContributionCount} cadastrados · {pendingContributionCount} pendentes
+                  </p>
                 </div>
-                <span className="text-sm text-gray-500 dark:text-gray-400">{scraperContributions.length}</span>
-              </div>
-              <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                <span className="inline-flex items-center gap-2 rounded-md bg-gray-100 px-2 py-1 text-sm text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                  {scraperContributions.length}
+                  <ChevronDown className={`h-4 w-4 transition-transform ${isContributionsExpanded ? 'rotate-180' : ''}`} />
+                </span>
+              </button>
+              {isContributionsExpanded && <div id="contributions-captured-table" className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
                 <table className="min-w-full text-left text-sm">
                   <thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-700/50 dark:text-gray-400">
                     <tr>
                       <th className="px-3 py-2">Data negociação (B3)</th>
                       <th className="px-3 py-2">Data liquidação</th>
+                      <th className="px-3 py-2">Status no SQL</th>
                       <th className="px-3 py-2">Movimentação</th>
                       <th className="px-3 py-2">Produto</th>
                       <th className="px-3 py-2">Quantidade</th>
@@ -634,6 +724,15 @@ export default function Settings() {
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">
                           {formatIsoDate(registeredPurchase?.settlement_date || getConfirmedSettlementDate(contribution))}
                         </td>
+                        <td className="whitespace-nowrap px-3 py-2">
+                          <span className={`rounded-full px-2 py-1 text-xs font-medium ${
+                            registeredPurchase
+                              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-orange-500/10 text-orange-700 dark:text-orange-300'
+                          }`}>
+                            {registeredPurchase ? 'Cadastrado' : 'Pendente'}
+                          </span>
+                        </td>
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.movement || '—'}</td>
                         <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.product || '—'}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">{contribution.quantity || '—'}</td>
@@ -642,11 +741,11 @@ export default function Settings() {
                       );
                     })}
                     {scraperContributions.length === 0 && (
-                      <tr><td colSpan="6" className="px-3 py-6 text-center text-gray-500 dark:text-gray-400">Nenhum aporte capturado ainda.</td></tr>
+                      <tr><td colSpan="7" className="px-3 py-6 text-center text-gray-500 dark:text-gray-400">Nenhum aporte capturado ainda.</td></tr>
                     )}
                   </tbody>
                 </table>
-              </div>
+              </div>}
             </div>
 
             <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">

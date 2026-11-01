@@ -63,6 +63,17 @@ export const getWalletPurchases = async () => {
   return await response.json();
 };
 
+export const getWalletProventos = async () => {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${API_BASE}/wallet/proventos`, {
+    method: 'GET',
+    headers,
+  });
+
+  if (!response.ok) throw new Error('Falha ao buscar proventos');
+  return await response.json();
+};
+
 export const createPurchase = async (payload) => {
   const headers = await getAuthHeaders();
 
