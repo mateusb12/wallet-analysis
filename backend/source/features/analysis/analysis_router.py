@@ -10,18 +10,13 @@ from backend.source.persistence.ports import AnalysisRepository, WalletRepositor
 analysis_bp = APIRouter(prefix="/analysis", tags=["Analysis"])
 
 @analysis_bp.get("/zscore/{ticker}")
-def calculate_zscore(ticker: str, window_months: int = 12):
-    supabase = get_supabase()
-
+def calculate_zscore(
+    ticker: str,
+    window_months: int = 12,
+    analysis: AnalysisRepository = Depends(get_analysis_repository),
+):
     # 1. Fetch Price History
-    response = supabase.table("b3_prices") \
-        .select("trade_date,close") \
-        .eq("ticker", ticker.upper()) \
-        .order("trade_date", desc=True) \
-        .limit(window_months * 30 + 100) \
-        .execute()
-
-    data = response.data
+    data = analysis.get_price_history(ticker.upper(), window_months * 30 + 100)
     if not data:
         raise HTTPException(status_code=404, detail="Ticker not found")
 
