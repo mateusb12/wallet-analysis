@@ -4,7 +4,9 @@ services:
       POSTGRES_HOST: host.docker.internal
       POSTGRES_PORT: ${POSTGRES_PORT:-15432}
     volumes:
+      - ./backend:/app/backend
       - ./backend/data:/app/backend/data
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/backend
 
   frontend:
     build:
