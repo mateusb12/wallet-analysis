@@ -10,6 +10,35 @@ import {
   CheckCircle2,
   Loader2,
 } from 'lucide-react';
+import alimentos from '../../assets/alimentos.png';
+import bancos from '../../assets/bancos.png';
+import desenvolvimento from '../../assets/desenvolvimento.png';
+import imobiliarios from '../../assets/imobiliarios.png';
+import industria from '../../assets/industria.png';
+import inflacao from '../../assets/inflacao.png';
+import internacionais from '../../assets/internacionais.png';
+import papel from '../../assets/papel.png';
+import rendaFixa from '../../assets/renda-fixa.png';
+import tijolo from '../../assets/tijolo.png';
+
+const SUBTYPE_ICONS = {
+  fii: {
+    Tijolo: tijolo,
+    Papel: papel,
+    Desenvolvimento: desenvolvimento,
+  },
+  acoes: {
+    'Bancos e Seguradoras': bancos,
+    Alimentos: alimentos,
+    Indústria: industria,
+  },
+  etf: {
+    'Ações Internacionais': internacionais,
+    'Renda Fixa': rendaFixa,
+    Inflação: inflacao,
+    Imobiliários: imobiliarios,
+  },
+};
 
 const COLOR_MAP = {
   fii: { bg: 'bg-blue-500', text: 'text-blue-600', hex: '#3b82f6', bgLight: 'bg-blue-500/20' },
@@ -69,7 +98,7 @@ const StackedBar = ({ data, colorMap, total }) => {
   );
 };
 
-const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, colorStyles }) => {
+const RangeSlider = ({ label, icon, value, initialValue, maxPotential, onChange, colorStyles }) => {
   const isOverLimit = value > maxPotential;
   const safeValue = isOverLimit ? maxPotential : value;
   const safeWidth = `${Math.max(0, safeValue)}%`;
@@ -85,12 +114,17 @@ const RangeSlider = ({ label, value, initialValue, maxPotential, onChange, color
 
   return (
     <div className="flex items-center gap-4 py-3 group">
-      <div className="w-28 shrink-0">
+      <div className="w-40 shrink-0">
         <label
-          className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize truncate block"
+          className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 capitalize truncate"
           title={label}
         >
-          {label}
+          {icon && (
+            <span className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center justify-center shrink-0">
+              <img src={icon} alt="" className="w-6 h-6 object-contain" />
+            </span>
+          )}
+          <span className="truncate">{label}</span>
         </label>
       </div>
 
@@ -401,6 +435,7 @@ const TargetConfigModal = ({ isOpen, onClose, currentTargets, schema, onSave, on
                           <RangeSlider
                             key={subKey}
                             label={subKey}
+                            icon={SUBTYPE_ICONS[macroKey]?.[subKey]}
                             value={val}
                             initialValue={initialVal}
                             maxPotential={maxPotential}

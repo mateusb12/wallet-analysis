@@ -39,7 +39,12 @@ import imobiliarios from '../../assets/imobiliarios.png';
 import inflacao from '../../assets/inflacao.png';
 import internacionais from '../../assets/internacionais.png';
 import rendaFixa from '../../assets/renda-fixa.png';
-import { BALANCING_SCHEMA, classifyAsset, normalizeBalancingTargets } from './balancingUtils.js';
+import {
+  BALANCING_SCHEMA,
+  classifyAsset,
+  DEFAULT_BALANCING_TARGETS,
+  normalizeBalancingTargets,
+} from './balancingUtils.js';
 import { FII_COMPOSITIONS } from './fiiCompositions.js';
 import { distributeFiiExposure } from './fiiRiskAllocation.js';
 
@@ -546,32 +551,6 @@ const AssetListTable = ({ assets, totalValue, isUnclassified, showValues }) => {
   );
 };
 
-const DEFAULT_TARGETS = {
-  macro: { fii: 34, acoes: 33, etf: 33, outros: 0 },
-  micro: {
-    fii: {
-      Tijolo: 40,
-      Papel: 30,
-      Desenvolvimento: 10,
-      Outros: 20,
-    },
-    acoes: {
-      'Bancos e Seguradoras': 40,
-      Alimentos: 25,
-      Indústria: 25,
-      Outros: 10,
-    },
-    etf: {
-      'Ações Internacionais': 45,
-      'Renda Fixa': 25,
-      Inflação: 15,
-      Imobiliários: 10,
-      Outros: 5,
-    },
-    outros: { Indefinido: 0 },
-  },
-};
-
 const WalletBalancer = () => {
   const { session, loading: authLoading } = useAuth();
 
@@ -585,7 +564,7 @@ const WalletBalancer = () => {
       ),
     []
   );
-  const [targets, setTargets] = useState(DEFAULT_TARGETS);
+  const [targets, setTargets] = useState(DEFAULT_BALANCING_TARGETS);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [portfolioTree, setPortfolioTree] = useState(null);
 
@@ -608,12 +587,14 @@ const WalletBalancer = () => {
       }
 
       try {
-        let userPrefs = DEFAULT_TARGETS;
+        let userPrefs = DEFAULT_BALANCING_TARGETS;
 
         if (session) {
           const userProfile = await userService.getProfile();
           if (userProfile?.balancing_settings) {
-            userPrefs = normalizeBalancingTargets(userProfile.balancing_settings);
+            const savedPrefs = normalizeBalancingTargets(userProfile.balancing_settings);
+            const hasConfiguredTargets = Object.values(savedPrefs.macro).some((value) => value > 0);
+            userPrefs = hasConfiguredTargets ? savedPrefs : DEFAULT_BALANCING_TARGETS;
           }
         }
 
@@ -675,7 +656,7 @@ const WalletBalancer = () => {
 
   const handleResetTargets = async () => {
     if (window.confirm('Deseja restaurar as configurações padrão (Modelo Binário)?')) {
-      await handleSaveTargets(DEFAULT_TARGETS);
+      await handleSaveTargets(DEFAULT_BALANCING_TARGETS);
       setIsConfigOpen(false);
     }
   };
@@ -735,8 +716,9 @@ const WalletBalancer = () => {
 
         if (BALANCING_SCHEMA[macro]?.includes(sectorStr)) {
           subType = sectorStr;
-        } else if (macro === 'fii') {
-          subType = 'Outros';
+        } else if (macro !== 'outros') {
+          macro = 'outros';
+          subType = 'Indefinido';
         }
 
         if (!newTree[macro]) newTree[macro] = { totalValue: 0, percentOfTotal: 0, subTypes: {} };

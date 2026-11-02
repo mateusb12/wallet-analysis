@@ -1,8 +1,31 @@
 export const BALANCING_SCHEMA = {
-  fii: ['Tijolo', 'Papel', 'Desenvolvimento', 'Outros'],
-  acoes: ['Bancos e Seguradoras', 'Alimentos', 'Indústria', 'Outros'],
-  etf: ['Ações Internacionais', 'Renda Fixa', 'Inflação', 'Imobiliários', 'Outros'],
+  fii: ['Tijolo', 'Papel', 'Desenvolvimento'],
+  acoes: ['Bancos e Seguradoras', 'Alimentos', 'Indústria'],
+  etf: ['Ações Internacionais', 'Renda Fixa', 'Inflação', 'Imobiliários'],
   outros: ['Indefinido'],
+};
+
+const DEFAULT_MACRO_TARGETS = { fii: 34, acoes: 33, etf: 33, outros: 0 };
+const DEFAULT_MICRO_TARGET_VALUES = {
+  fii: [40, 30, 30],
+  acoes: [40, 30, 30],
+  etf: [45, 25, 15, 15],
+  outros: [0],
+};
+
+export const DEFAULT_BALANCING_TARGETS = {
+  macro: DEFAULT_MACRO_TARGETS,
+  micro: Object.fromEntries(
+    Object.entries(BALANCING_SCHEMA).map(([macroKey, categories]) => [
+      macroKey,
+      Object.fromEntries(
+        categories.map((category, index) => [
+          category,
+          DEFAULT_MICRO_TARGET_VALUES[macroKey]?.[index] || 0,
+        ])
+      ),
+    ])
+  ),
 };
 
 export const LEGACY_SUBTYPE_MAP = {
