@@ -5,6 +5,23 @@ export const BALANCING_SCHEMA = {
   outros: ['Indefinido'],
 };
 
+export const compareProportionalExposure = (assetA, assetB) => {
+  const hasExposureA = assetA?.exposurePercent != null;
+  const hasExposureB = assetB?.exposurePercent != null;
+
+  if (hasExposureA !== hasExposureB) return hasExposureA ? 1 : -1;
+  if (!hasExposureA) return 0;
+
+  const valueA =
+    Number(assetA.exposureValue ?? assetA.total_value_current ?? assetA.total_value) || 0;
+  const valueB =
+    Number(assetB.exposureValue ?? assetB.total_value_current ?? assetB.total_value) || 0;
+  return valueB - valueA;
+};
+
+export const sortAssetsByProportionalExposureLast = (assets) =>
+  [...assets].sort(compareProportionalExposure);
+
 const DEFAULT_MACRO_TARGETS = { fii: 34, acoes: 33, etf: 33, outros: 0 };
 const DEFAULT_MICRO_TARGET_VALUES = {
   fii: [40, 30, 30],
@@ -62,7 +79,6 @@ export function normalizeBalancingTargets(targets) {
 
   return { macro, micro };
 }
-
 
 // Classificações conhecidas para o balanceamento.
 // Novos tickers continuam usando o classificador do backend.

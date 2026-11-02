@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { sortAssetsByProportionalExposureLast } from './balancingUtils.js';
 import {
   ArrowRight,
   Calculator,
@@ -471,7 +472,7 @@ const ContributionAllocator = ({ tree, targets }) => {
                               <span>Onde Alocar:</span>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              {item.assets.map((asset) => {
+                              {sortAssetsByProportionalExposureLast(item.assets).map((asset) => {
                                 const assetIsTooExpensive = asset.price > item.amount;
 
                                 const activeClass =

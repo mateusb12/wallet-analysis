@@ -44,9 +44,11 @@ import {
   classifyAsset,
   DEFAULT_BALANCING_TARGETS,
   normalizeBalancingTargets,
+  sortAssetsByProportionalExposureLast,
 } from './balancingUtils.js';
 import { FII_COMPOSITIONS } from './fiiCompositions.js';
 import { distributeFiiExposure } from './fiiRiskAllocation.js';
+import { calculateXfixRiskExposure } from './xfixRiskAllocation.js';
 
 const FormatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -55,6 +57,21 @@ const FormatPercent = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'percent', minimumFractionDigits: 1 }).format(
     value / 100
   );
+
+const exposureQuantityFormatter = new Intl.NumberFormat('pt-BR', {
+  maximumFractionDigits: 1,
+});
+
+const FormatExposureQuantity = (asset) => {
+  const quantity = Number(asset.qty);
+
+  const equivalentQuantity =
+    asset.exposurePercent == null
+      ? quantity
+      : quantity * (Number(asset.exposurePercent) / 100);
+
+  return exposureQuantityFormatter.format(equivalentQuantity);
+};
 
 export const MACRO_ICONS = {
   fii: fiis,
@@ -396,6 +413,7 @@ const DriftIndicator = ({
 
 const AssetListTable = ({ assets, totalValue, isUnclassified, showValues }) => {
   const [expandedTicker, setExpandedTicker] = useState(null);
+  const sortedAssets = useMemo(() => sortAssetsByProportionalExposureLast(assets), [assets]);
 
   return (
     <div className="mt-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300 shadow-inner">
@@ -415,7 +433,7 @@ const AssetListTable = ({ assets, totalValue, isUnclassified, showValues }) => {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-          {assets.map((asset) => {
+          {sortedAssets.map((asset) => {
             const assetValue = asset.exposureValue ?? asset.qty * asset.price;
             const assetWeight = totalValue > 0 ? (assetValue / totalValue) * 100 : 0;
             const composition = FII_COMPOSITIONS[String(asset.ticker).toUpperCase()];
@@ -466,7 +484,7 @@ const AssetListTable = ({ assets, totalValue, isUnclassified, showValues }) => {
                   </div>
                 </td>
                 <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400 font-mono">
-                  {asset.qty}
+                  {FormatExposureQuantity(asset)}
                 </td>
                 {showValues && (
                   <td className="px-4 py-3 text-right font-bold text-gray-800 dark:text-gray-200 font-mono group-hover:text-blue-600 dark:group-hover:text-blue-400">
@@ -744,6 +762,56 @@ const WalletBalancer = () => {
       });
 
       newTree.fii = distributeFiiExposure(newTree.fii);
+
+      // Exposição econômica do XFIX11, preservando a macroclasse ETF.
+      const xfixAsset = (
+        newTree.etf.subTypes.Imobiliários?.assets || []
+      ).find((asset) =>
+        String(asset.ticker).toUpperCase() === 'XFIX11'
+      );
+
+      if (xfixAsset) {
+        const exposure = calculateXfixRiskExposure(
+          Number(xfixAsset.qty) * Number(xfixAsset.price)
+        );
+
+        // Mantém o XFIX11 integralmente na macroclasse ETF.
+        newTree.etf.xfixExposure = exposure;
+
+        // Acrescenta suas exposições às três categorias de risco
+        // dos FIIs, sem alterar o patrimônio da macroclasse FII.
+        for (const [category, value] of Object.entries(exposure.exposures)) {
+          if (value <= 0) continue;
+
+          if (!newTree.fii.subTypes[category]) {
+            newTree.fii.subTypes[category] = {
+              value: 0,
+              assets: [],
+            };
+          }
+
+          newTree.fii.subTypes[category].value += value;
+
+          newTree.fii.subTypes[category].assets.push({
+            ticker: 'XFIX11',
+            sector: category,
+            qty: xfixAsset.qty,
+            price: xfixAsset.price,
+            exposureValue: value,
+            exposurePercent: exposure.percentages[category],
+          });
+        }
+
+        // O denominador do balanceamento por risco precisa
+        // incluir as exposições indiretas do ETF.
+        newTree.fii.allocatedValue =
+          (newTree.fii.allocatedValue ?? newTree.fii.totalValue) +
+          exposure.allocatedValue;
+
+        // totalValue e percentOfTotal NÃO são modificados.
+        // unallocatedValue continua representando apenas
+        // a parcela não rateada dos FIIs diretos.
+      }
       setPortfolioTree(newTree);
     } catch (error) {
       console.error('Critical error building wallet tree:', error);
@@ -973,6 +1041,59 @@ const WalletBalancer = () => {
                     showAmount={showAssetValues}
                   />
                 </div>
+
+
+                {isExpanded && assetClass === 'etf' && data.xfixExposure && (
+                  <div className="mb-4 rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
+                    <div className="mb-4">
+                      <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                        XFIX11 — Composição por risco
+                      </h4>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Rateio proporcional dos FIIs da carteira do ETF.
+                        O valor continua contabilizado na macroclasse ETFs.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {['Tijolo', 'Papel', 'Desenvolvimento'].map((category) => {
+                        const percentage = data.xfixExposure.percentages[category];
+                        const amount = data.xfixExposure.exposures[category];
+
+                        return (
+                          <div key={category} className="rounded-lg bg-white/60 p-3 dark:bg-gray-800/60">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {category}
+                            </p>
+                            <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">
+                              {FormatPercent(percentage)}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {FormatCurrency(amount)}
+                            </p>
+                          </div>
+                        );
+                      })}
+
+                      <div className="rounded-lg bg-white/60 p-3 dark:bg-gray-800/60">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Não rateado
+                        </p>
+                        <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">
+                          {FormatPercent(data.xfixExposure.unallocatedPercent)}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {FormatCurrency(data.xfixExposure.unallocatedValue)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                      Parcela não rateada não participa das três categorias
+                      de risco. Não representa uma nova categoria.
+                    </p>
+                  </div>
+                )}
 
                 {isExpanded && data.subTypes && (
                   <div className="bg-gray-50/80 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700 p-4 sm:p-6 space-y-3 rounded-b-2xl">

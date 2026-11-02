@@ -10,6 +10,7 @@ import {
   ArrowUp,
 } from 'lucide-react';
 import VariationBadge from './components/VariationBadge.jsx';
+import { compareProportionalExposure } from '../balancing/balancingUtils.js';
 
 import tijolo from '../../assets/tijolo.png';
 import papel from '../../assets/papel.png';
@@ -228,6 +229,9 @@ const PositionsTable = ({
 
   const sortedPositions = useMemo(() => {
     return [...filteredPositions].sort((a, b) => {
+      const exposureComparison = compareProportionalExposure(a, b);
+      if (exposureComparison !== 0) return exposureComparison;
+
       const dataA = getDisplayData(a);
       const dataB = getDisplayData(b);
       const getSortValue = (row, data) => {

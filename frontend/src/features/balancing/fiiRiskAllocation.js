@@ -6,7 +6,7 @@ const BALANCING_CATEGORIES = new Set([
   'Desenvolvimento',
 ]);
 
-function categoryForSegment(segment) {
+export function categoryForSegment(segment) {
   const label = String(segment.label || '').toLowerCase();
 
   if (label.startsWith('tijolo')) return 'Tijolo';
