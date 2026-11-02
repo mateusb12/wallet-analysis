@@ -1,7 +1,7 @@
 export const BALANCING_SCHEMA = {
   fii: ['Tijolo', 'Papel', 'Desenvolvimento', 'Outros'],
   acoes: ['Bancos e Seguradoras', 'Alimentos', 'Indústria', 'Outros'],
-  etf: ['Ações Internacionais', 'Baixa Volatilidade', 'Inflação', 'Imobiliários', 'Outros'],
+  etf: ['Ações Internacionais', 'Renda Fixa', 'Inflação', 'Imobiliários', 'Outros'],
   outros: ['Indefinido'],
 };
 
@@ -10,8 +10,9 @@ export const LEGACY_SUBTYPE_MAP = {
   Híbrido: 'Outros',
   'Fundos de Fundos': 'Outros',
   Multiestratégia: 'Outros',
-  'Pós-fixados': 'Baixa Volatilidade',
-  'Renda Fixa': 'Baixa Volatilidade',
+  'Baixa Volatilidade': 'Renda Fixa',
+  'Pós-fixados': 'Renda Fixa',
+  'Renda Fixa': 'Renda Fixa',
   'Perenes (Renda/Defesa)': 'Outros',
   'Cíclicas (Valor/Crescimento)': 'Outros',
   'Base Global': 'Ações Internacionais',
@@ -56,8 +57,8 @@ const LOCAL_CLASSIFICATIONS = Object.freeze({
   IVVB11: ['ETF - Internacional (S&P 500)', 'Ações Internacionais'],
   QQQQ11: ['ETF - Tech (Nasdaq)', 'Ações Internacionais'],
   IMAB11: ['ETF - Juros Reais', 'Inflação'],
-  LFTB11: ['ETF - Baixa Volatilidade', 'Baixa Volatilidade'],
-  AUPO11: ['ETF - Baixa Volatilidade', 'Baixa Volatilidade'],
+  LFTB11: ['ETF - Renda Fixa', 'Renda Fixa'],
+  AUPO11: ['ETF - Renda Fixa', 'Renda Fixa'],
 
   WEGE3: ['Ação - Indústria Global', 'Indústria'],
   BBAS3: ['Ação - Financeiro Brasileiro', 'Bancos e Seguradoras'],

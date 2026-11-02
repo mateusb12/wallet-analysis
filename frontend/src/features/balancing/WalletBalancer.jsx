@@ -11,6 +11,9 @@ import {
   AlertTriangle,
   Copy,
   Check,
+  X,
+  Eye,
+  EyeOff,
   Settings,
   Lightbulb,
   Sparkles,
@@ -32,6 +35,10 @@ import stocks from '../../assets/stocks.png';
 import alimentos from '../../assets/alimentos.png';
 import bancos from '../../assets/bancos.png';
 import industria from '../../assets/industria.png';
+import imobiliarios from '../../assets/imobiliarios.png';
+import inflacao from '../../assets/inflacao.png';
+import internacionais from '../../assets/internacionais.png';
+import rendaFixa from '../../assets/renda-fixa.png';
 import { BALANCING_SCHEMA, classifyAsset, normalizeBalancingTargets } from './balancingUtils.js';
 import { FII_COMPOSITIONS } from './fiiCompositions.js';
 import { distributeFiiExposure } from './fiiRiskAllocation.js';
@@ -61,6 +68,13 @@ export const STOCK_SUBTYPE_ICONS = {
   Alimentos: alimentos,
   'Bancos e Seguradoras': bancos,
   Indústria: industria,
+};
+
+export const ETF_SUBTYPE_ICONS = {
+  'Ações Internacionais': internacionais,
+  'Renda Fixa': rendaFixa,
+  Inflação: inflacao,
+  Imobiliários: imobiliarios,
 };
 
 const AssetIcon = ({ src, alt, className = '' }) => {
@@ -291,7 +305,14 @@ const AIAnalysisReport = ({ tree, targets }) => {
   );
 };
 
-const DriftIndicator = ({ label, currentPct, targetPct, amount, compact = false }) => {
+const DriftIndicator = ({
+  label,
+  currentPct,
+  targetPct,
+  amount,
+  compact = false,
+  showAmount = true,
+}) => {
   const diff = currentPct - targetPct;
   const isUnderweight = diff < -1;
   const isOverweight = diff > 1;
@@ -357,16 +378,18 @@ const DriftIndicator = ({ label, currentPct, targetPct, amount, compact = false 
           />
         </div>
       </div>
-      <div className="flex justify-between mt-1">
-        <span className="text-xs font-semibold font-mono text-gray-300 dark:text-gray-300">
-          {FormatCurrency(amount)}
-        </span>
-      </div>
+      {showAmount && (
+        <div className="flex justify-between mt-1">
+          <span className="text-xs font-semibold font-mono text-gray-300 dark:text-gray-300">
+            {FormatCurrency(amount)}
+          </span>
+        </div>
+      )}
     </div>
   );
 };
 
-const AssetListTable = ({ assets, totalValue, isUnclassified }) => {
+const AssetListTable = ({ assets, totalValue, isUnclassified, showValues }) => {
   const [expandedTicker, setExpandedTicker] = useState(null);
 
   return (
@@ -382,7 +405,7 @@ const AssetListTable = ({ assets, totalValue, isUnclassified }) => {
           <tr>
             <th className="px-4 py-3">Ativo</th>
             <th className="px-4 py-3 text-right">Qtd</th>
-            <th className="px-4 py-3 text-right">Valor</th>
+            {showValues && <th className="px-4 py-3 text-right">Valor</th>}
             <th className="px-4 py-3 text-center w-28">Peso Relativo</th>
           </tr>
         </thead>
@@ -440,9 +463,11 @@ const AssetListTable = ({ assets, totalValue, isUnclassified }) => {
                 <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400 font-mono">
                   {asset.qty}
                 </td>
-                <td className="px-4 py-3 text-right font-bold text-gray-800 dark:text-gray-200 font-mono group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                  {FormatCurrency(assetValue)}
-                </td>
+                {showValues && (
+                  <td className="px-4 py-3 text-right font-bold text-gray-800 dark:text-gray-200 font-mono group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                    {FormatCurrency(assetValue)}
+                  </td>
+                )}
                 <td className="px-4 py-3 text-center">
                   <div className="flex flex-col gap-1 items-end w-full">
                     <div className="w-full bg-gray-200 dark:bg-gray-700 h-1.5 rounded-full overflow-hidden">
@@ -463,7 +488,7 @@ const AssetListTable = ({ assets, totalValue, isUnclassified }) => {
                   onClick={(event) => event.stopPropagation()}
                   className="bg-gray-50 dark:bg-gray-900/40"
                 >
-                  <td colSpan={4} className="p-3 sm:p-4">
+                  <td colSpan={showValues ? 4 : 3} className="p-3 sm:p-4">
                     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                         <h5 className="text-sm font-bold text-gray-800 dark:text-gray-100">
@@ -538,7 +563,7 @@ const DEFAULT_TARGETS = {
     },
     etf: {
       'Ações Internacionais': 45,
-      'Baixa Volatilidade': 25,
+      'Renda Fixa': 25,
       Inflação: 15,
       Imobiliários: 10,
       Outros: 5,
@@ -571,6 +596,8 @@ const WalletBalancer = () => {
 
   const [expanded, setExpanded] = useState({ fii: true, acoes: false, etf: false, outros: true });
   const [expandedSub, setExpandedSub] = useState({});
+  const [dismissedDescriptions, setDismissedDescriptions] = useState({});
+  const [showAssetValues, setShowAssetValues] = useState(true);
   const [copied, setCopied] = useState(false);
 
 
@@ -761,6 +788,9 @@ const WalletBalancer = () => {
 
   const toggleSubExpand = (e, uniqueKey) => {
     e.stopPropagation();
+    if (!expandedSub[uniqueKey]) {
+      setDismissedDescriptions((prev) => ({ ...prev, [uniqueKey]: false }));
+    }
     setExpandedSub((prev) => ({ ...prev, [uniqueKey]: !prev[uniqueKey] }));
   };
 
@@ -847,6 +877,15 @@ const WalletBalancer = () => {
             </p>
           </div>
           <div className="ml-auto flex gap-2">
+            <button
+              onClick={() => setShowAssetValues((visible) => !visible)}
+              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              title={showAssetValues ? 'Ocultar valores' : 'Mostrar valores'}
+              aria-label={showAssetValues ? 'Ocultar valores' : 'Mostrar valores'}
+              aria-pressed={!showAssetValues}
+            >
+              {showAssetValues ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+            </button>
             <button
               onClick={() => setIsConfigOpen(true)}
               className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -949,6 +988,7 @@ const WalletBalancer = () => {
                     currentPct={currentPct}
                     targetPct={target}
                     amount={data.totalValue}
+                    showAmount={showAssetValues}
                   />
                 </div>
 
@@ -976,7 +1016,7 @@ const WalletBalancer = () => {
                           : assetClass === 'acoes'
                             ? STOCK_SUBTYPE_ICONS[subType]
                           : assetClass === 'etf'
-                            ? iconEtf
+                            ? ETF_SUBTYPE_ICONS[subType] || iconEtf
                             : null;
 
                       return (
@@ -1040,6 +1080,7 @@ const WalletBalancer = () => {
                               targetPct={subTarget}
                               amount={subData.value}
                               compact={true}
+                              showAmount={showAssetValues}
                             />
                           </div>
 
@@ -1047,8 +1088,23 @@ const WalletBalancer = () => {
                           {isSubExpanded && subData.assets && (
                             <div className="bg-gray-50/50 dark:bg-gray-900/20 border-t border-gray-100 dark:border-gray-700 animate-in slide-in-from-top-2">
                               {}
-                              {fiiInfo && (
-                                <div className="mx-4 mt-4 p-4 rounded-lg bg-blue-50/80 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/30 flex gap-3 shadow-sm">
+                              {fiiInfo && !dismissedDescriptions[uniqueKey] && (
+                                <div className="relative mx-4 mt-4 p-4 pr-10 rounded-lg bg-blue-50/80 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/30 flex gap-3 shadow-sm">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDismissedDescriptions((prev) => ({
+                                        ...prev,
+                                        [uniqueKey]: true,
+                                      }));
+                                    }}
+                                    className="absolute top-2 right-2 p-1 rounded-md text-blue-500/70 hover:text-blue-700 hover:bg-blue-100 dark:text-blue-300/70 dark:hover:text-blue-200 dark:hover:bg-blue-800/40 transition-colors"
+                                    aria-label="Fechar descrição"
+                                    title="Fechar descrição"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
                                   <div className="p-2 bg-blue-100 dark:bg-blue-800/30 rounded-full h-fit text-blue-600 dark:text-blue-400 shrink-0">
                                     <Lightbulb className="w-4 h-4" />
                                   </div>
@@ -1069,6 +1125,7 @@ const WalletBalancer = () => {
                                   assets={subData.assets}
                                   totalValue={subData.value}
                                   isUnclassified={isUnclassified}
+                                  showValues={showAssetValues}
                                 />
                               </div>
                             </div>
