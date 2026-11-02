@@ -29,6 +29,9 @@ import desenvolvimento from '../../assets/desenvolvimento.png';
 import fiis from '../../assets/fiis.png';
 import etf from '../../assets/etf.png';
 import stocks from '../../assets/stocks.png';
+import alimentos from '../../assets/alimentos.png';
+import bancos from '../../assets/bancos.png';
+import industria from '../../assets/industria.png';
 import { BALANCING_SCHEMA, classifyAsset, normalizeBalancingTargets } from './balancingUtils.js';
 import { FII_COMPOSITIONS } from './fiiCompositions.js';
 import { distributeFiiExposure } from './fiiRiskAllocation.js';
@@ -52,6 +55,12 @@ export const FII_SUBTYPE_ICONS = {
   Papel: papel,
   Desenvolvimento: desenvolvimento,
   Outros: hibrido,
+};
+
+export const STOCK_SUBTYPE_ICONS = {
+  Alimentos: alimentos,
+  'Bancos e Seguradoras': bancos,
+  Indústria: industria,
 };
 
 const AssetIcon = ({ src, alt, className = '' }) => {
@@ -81,18 +90,6 @@ const FII_DESCRIPTIONS = {
     text: 'Focam em construir imóveis para vender com lucro, funcionando como uma incorporadora. Possuem maior risco (obra, permuta), mas oferecem potencial de ganho de capital explosivo ao final do ciclo.',
   },
 };
-
-async function fetchAssetConstants() {
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-  try {
-    const response = await fetch(`${API_URL}/sync/constants`);
-    if (!response.ok) throw new Error('Falha ao buscar constantes');
-    return await response.json();
-  } catch (error) {
-    console.error('Usando fallback de constantes:', error);
-    return null;
-  }
-}
 
 const findPriorityPath = (tree, targets) => {
   if (!targets || !targets.macro) return null;
@@ -553,7 +550,16 @@ const DEFAULT_TARGETS = {
 const WalletBalancer = () => {
   const { session, loading: authLoading } = useAuth();
 
-  const [schema, setSchema] = useState(null);
+  const schema = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(BALANCING_SCHEMA).map(([key, categories]) => [
+          key,
+          { categories },
+        ])
+      ),
+    []
+  );
   const [targets, setTargets] = useState(DEFAULT_TARGETS);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [portfolioTree, setPortfolioTree] = useState(null);
@@ -567,17 +573,6 @@ const WalletBalancer = () => {
   const [expandedSub, setExpandedSub] = useState({});
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    async function fetchConstantsOnly() {
-      try {
-        const backendSchema = await fetchAssetConstants();
-        setSchema(backendSchema);
-      } catch (err) {
-        console.error('Erro buscando constantes:', err);
-      }
-    }
-    fetchConstantsOnly();
-  }, []);
 
   useEffect(() => {
     async function syncUserPreferences() {
@@ -778,7 +773,7 @@ const WalletBalancer = () => {
     });
   };
 
-  const isLoading = walletLoading || authLoading || settingsLoading;
+  const isLoading = walletLoading || authLoading;
 
   if (isLoading) {
     return (
@@ -820,6 +815,14 @@ const WalletBalancer = () => {
 
   return (
     <>
+      {settingsLoading && (
+        <div
+          role="status"
+          className="mb-4 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm text-blue-600 dark:text-blue-300"
+        >
+          Atualizando metas salvas... Os indicadores de meta podem mudar.
+        </div>
+      )}
       <TargetConfigModal
         isOpen={isConfigOpen}
         onClose={() => setIsConfigOpen(false)}
@@ -970,6 +973,8 @@ const WalletBalancer = () => {
                       const typeIcon =
                         assetClass === 'fii'
                           ? FII_SUBTYPE_ICONS[subType]
+                          : assetClass === 'acoes'
+                            ? STOCK_SUBTYPE_ICONS[subType]
                           : assetClass === 'etf'
                             ? iconEtf
                             : null;
@@ -999,8 +1004,8 @@ const WalletBalancer = () => {
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center gap-3">
                                 {typeIcon && (
-                                  <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-600">
-                                    <AssetIcon src={typeIcon} alt={subType} size={20} />
+                                  <div className="w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-600">
+                                    <AssetIcon src={typeIcon} alt={subType} className="w-10 h-10" />
                                   </div>
                                 )}
                                 <span

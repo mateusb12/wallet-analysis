@@ -39,7 +39,47 @@ export function normalizeBalancingTargets(targets) {
   return { macro, micro };
 }
 
+
+// Classificações conhecidas para o balanceamento.
+// Novos tickers continuam usando o classificador do backend.
+const LOCAL_CLASSIFICATIONS = Object.freeze({
+  BTLG11: ['FII - Tijolo (Logística)', 'Tijolo'],
+  XPCM11: ['FII - Tijolo (Renda)', 'Tijolo'],
+  KFOF11: ['FII - Tijolo (Fundo de Fundos)', 'Tijolo'],
+  KNCR11: ['FII - Papel (CRI)', 'Papel'],
+  VGIR11: ['FII - Papel (CDI)', 'Papel'],
+  KNHF11: ['FII - Papel (CRI)', 'Papel'],
+  TGAR11: ['FII - Desenvolvimento', 'Desenvolvimento'],
+
+  XFIX11: ['ETF - Imobiliários', 'Imobiliários'],
+  WRLD11: ['ETF - Internacional (Global)', 'Ações Internacionais'],
+  IVVB11: ['ETF - Internacional (S&P 500)', 'Ações Internacionais'],
+  QQQQ11: ['ETF - Tech (Nasdaq)', 'Ações Internacionais'],
+  IMAB11: ['ETF - Juros Reais', 'Inflação'],
+  LFTB11: ['ETF - Baixa Volatilidade', 'Baixa Volatilidade'],
+  AUPO11: ['ETF - Baixa Volatilidade', 'Baixa Volatilidade'],
+
+  WEGE3: ['Ação - Indústria Global', 'Indústria'],
+  BBAS3: ['Ação - Financeiro Brasileiro', 'Bancos e Seguradoras'],
+  BBSE3: ['Ação - Financeiro Brasileiro', 'Bancos e Seguradoras'],
+  MDIA3: ['Ação - Consumo Essencial', 'Alimentos'],
+});
+
 export async function classifyAsset(ticker) {
+  const normalizedTicker = String(ticker).trim().toUpperCase().replace(/\.SA$/, '');
+  const local = LOCAL_CLASSIFICATIONS[normalizedTicker];
+
+  if (local) {
+    return {
+      ticker: normalizedTicker,
+      detected_type: local[0],
+      sector: local[1],
+      confidence: 100,
+      source: 'local',
+      reasoning: 'Classificação definida localmente para balanceamento.',
+    };
+  }
+
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
   try {
     const response = await fetch(`${API_URL}/sync/classify`, {
