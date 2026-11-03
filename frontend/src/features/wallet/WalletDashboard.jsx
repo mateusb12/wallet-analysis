@@ -215,12 +215,18 @@ const WalletSkeleton = () => {
   );
 };
 
-const ProfitabilityBreakdown = ({ items }) => {
+const ProfitabilityBreakdown = ({ items, format = 'percent' }) => {
+  const isCurrency = format === 'currency';
+  const getValue = (item, key) =>
+    isCurrency ? item[`${key}Value`] || 0 : item[`${key}Percent`] || 0;
+  const formatValue = (value) => (isCurrency ? formatCurrency(value) : formatPercent(value));
+
   const maxComponent = Math.max(
     ...items.map((item) => {
-      const positiveTotal = Math.max(item.valuationPercent, 0) + Math.max(item.dividendsPercent, 0);
-      const negativeTotal =
-        Math.abs(Math.min(item.valuationPercent, 0)) + Math.abs(Math.min(item.dividendsPercent, 0));
+      const valuation = getValue(item, 'valuation');
+      const dividends = getValue(item, 'dividends');
+      const positiveTotal = Math.max(valuation, 0) + Math.max(dividends, 0);
+      const negativeTotal = Math.abs(Math.min(valuation, 0)) + Math.abs(Math.min(dividends, 0));
       return Math.max(positiveTotal, negativeTotal);
     }),
     1
@@ -239,14 +245,16 @@ const ProfitabilityBreakdown = ({ items }) => {
 
       <div className="space-y-3">
         {items.map((item) => {
-          const valuationWidth = (Math.abs(item.valuationPercent) / maxComponent) * 50;
-          const dividendsWidth = (Math.abs(item.dividendsPercent) / maxComponent) * 50;
-          const total = item.yield;
+          const valuation = getValue(item, 'valuation');
+          const dividends = getValue(item, 'dividends');
+          const valuationWidth = (Math.abs(valuation) / maxComponent) * 50;
+          const dividendsWidth = (Math.abs(dividends) / maxComponent) * 50;
+          const total = isCurrency ? item.totalValue || 0 : item.yield || 0;
 
           return (
             <div
               key={item.label}
-              className="grid grid-cols-[68px_minmax(0,1fr)_52px] items-center gap-3"
+              className="grid grid-cols-[68px_minmax(0,1fr)_96px] items-center gap-3"
             >
               <span
                 className={`truncate text-xs ${item.isTotal ? 'font-semibold text-gray-200' : 'text-gray-400'}`}
@@ -257,29 +265,29 @@ const ProfitabilityBreakdown = ({ items }) => {
 
               <div className="relative h-5 rounded-sm bg-gray-700/30">
                 <span className="absolute inset-y-0 left-1/2 w-px bg-gray-500/70" />
-                {item.valuationPercent !== 0 && (
+                {valuation !== 0 && (
                   <span
                     className={`absolute top-1/2 h-3 -translate-y-1/2 rounded-sm ${
-                      item.valuationPercent < 0 ? 'bg-red-500' : 'bg-green-500'
+                      valuation < 0 ? 'bg-red-500' : 'bg-green-500'
                     }`}
                     style={
-                      item.valuationPercent < 0
+                      valuation < 0
                         ? { right: '50%', width: `${valuationWidth}%` }
                         : { left: '50%', width: `${valuationWidth}%` }
                     }
                   />
                 )}
-                {item.dividendsPercent !== 0 && (
+                {dividends !== 0 && (
                   <span
                     className="absolute top-1/2 h-3 -translate-y-1/2 rounded-sm bg-purple-500"
                     style={
-                      item.dividendsPercent < 0
+                      dividends < 0
                         ? {
-                            right: `calc(50% + ${item.valuationPercent < 0 ? valuationWidth : 0}%)`,
+                            right: `calc(50% + ${valuation < 0 ? valuationWidth : 0}%)`,
                             width: `${dividendsWidth}%`,
                           }
                         : {
-                            left: `calc(50% + ${item.valuationPercent > 0 ? valuationWidth : 0}%)`,
+                            left: `calc(50% + ${valuation > 0 ? valuationWidth : 0}%)`,
                             width: `${dividendsWidth}%`,
                           }
                     }
@@ -288,11 +296,11 @@ const ProfitabilityBreakdown = ({ items }) => {
               </div>
 
               <span
-                className={`text-right text-xs ${
+                className={`whitespace-nowrap text-right text-xs ${
                   item.isTotal ? 'font-bold text-green-400' : 'font-medium text-gray-300'
                 }`}
               >
-                {formatPercent(total)}
+                {formatValue(total)}
               </span>
             </div>
           );
@@ -310,6 +318,7 @@ const SummaryCard = ({
   rawValue,
   secondaryItems = [],
   horizontalItems = [],
+  breakdownFormat = 'percent',
   horizontal = false,
   onClick,
   onClose,
@@ -356,7 +365,9 @@ const SummaryCard = ({
             title.includes('Retorno Total')) && <DollarSign className="w-6 h-6" />}
           {title.includes('%') && <Percent className="w-6 h-6" />}
         </div>
-        {horizontalItems.length > 0 && <ProfitabilityBreakdown items={horizontalItems} />}
+        {horizontalItems.length > 0 && (
+          <ProfitabilityBreakdown items={horizontalItems} format={breakdownFormat} />
+        )}
       </div>
       {onClose && (
         <button
@@ -809,7 +820,7 @@ function WalletDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
-  const [isProfitabilityExpanded, setIsProfitabilityExpanded] = useState(false);
+  const [expandedSummary, setExpandedSummary] = useState(null);
 
   const {
     activeTab,
@@ -994,20 +1005,28 @@ function WalletDashboard() {
               </div>
             </div>
 
-            {isProfitabilityExpanded ? (
+            {expandedSummary ? (
               <div className="mb-8">
                 <SummaryCard
-                  title="Rentabilidade (%)"
-                  value={formatPercent(periodStats.yield)}
-                  rawValue={periodStats.yield}
+                  title={expandedSummary === 'return' ? 'Retorno Total (R$)' : 'Rentabilidade (%)'}
+                  value={
+                    expandedSummary === 'return'
+                      ? formatCurrency(periodStats.profit)
+                      : formatPercent(periodStats.yield)
+                  }
+                  rawValue={expandedSummary === 'return' ? periodStats.profit : periodStats.yield}
                   type="profit"
                   horizontal
-                  onClose={() => setIsProfitabilityExpanded(false)}
+                  onClose={() => setExpandedSummary(null)}
+                  breakdownFormat={expandedSummary === 'return' ? 'currency' : 'percent'}
                   horizontalItems={
                     activeTab === 'total'
                       ? [
                           {
                             label: 'Carteira',
+                            totalValue: periodStats.profit,
+                            valuationValue: periodStats.valuation,
+                            dividendsValue: periodStats.dividends,
                             yield: periodStats.yield,
                             valuationPercent: periodStats.valuationPercent,
                             dividendsPercent: periodStats.dividendsPercent,
@@ -1018,12 +1037,20 @@ function WalletDashboard() {
                       : topImpactAssets
                   }
                   secondaryItems={[
-                    {
-                      label: 'Valorização',
-                      value: periodStats.valuationPercent,
-                      format: 'percent',
-                    },
-                    { label: 'Dividendos', value: periodStats.dividendsPercent, format: 'percent' },
+                    expandedSummary === 'return'
+                      ? { label: 'Valorização', value: periodStats.valuation }
+                      : {
+                          label: 'Valorização',
+                          value: periodStats.valuationPercent,
+                          format: 'percent',
+                        },
+                    expandedSummary === 'return'
+                      ? { label: 'Dividendos', value: periodStats.dividends }
+                      : {
+                          label: 'Dividendos',
+                          value: periodStats.dividendsPercent,
+                          format: 'percent',
+                        },
                   ]}
                   subtext={periodStats.labelSuffix}
                 />
@@ -1045,6 +1072,7 @@ function WalletDashboard() {
                   value={formatCurrency(periodStats.profit)}
                   rawValue={periodStats.profit}
                   type="profit"
+                  onClick={() => setExpandedSummary('return')}
                   secondaryItems={[
                     { label: 'Valorização', value: periodStats.profit - periodStats.dividends },
                     { label: 'Dividendos', value: periodStats.dividends },
@@ -1056,7 +1084,7 @@ function WalletDashboard() {
                   value={formatPercent(periodStats.yield)}
                   rawValue={periodStats.yield}
                   type="profit"
-                  onClick={() => setIsProfitabilityExpanded(true)}
+                  onClick={() => setExpandedSummary('profitability')}
                   secondaryItems={[
                     {
                       label: 'Valorização',

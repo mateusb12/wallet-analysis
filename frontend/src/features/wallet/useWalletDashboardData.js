@@ -190,6 +190,9 @@ export const useWalletDashboardData = (user) => {
       return {
         type,
         label: CATEGORIES_CONFIG[type].label,
+        totalValue: Number(stats.profit) || 0,
+        valuationValue: Number(stats.valuation) || 0,
+        dividendsValue: Number(stats.dividends) || 0,
         yield: Number(stats.yield) || 0,
         valuationPercent:
           Number(safeData.invested_by_type?.[type]) > 0
@@ -228,6 +231,9 @@ export const useWalletDashboardData = (user) => {
         label: ticker,
         name: positionNames.get(ticker) || ticker,
         totalReturn: values.valuation + values.dividends,
+        totalValue: values.valuation + values.dividends,
+        valuationValue: values.valuation,
+        dividendsValue: values.dividends,
         yield:
           values.invested > 0 ? ((values.valuation + values.dividends) / values.invested) * 100 : 0,
         valuationPercent: values.invested > 0 ? (values.valuation / values.invested) * 100 : 0,
@@ -331,6 +337,7 @@ export const useWalletDashboardData = (user) => {
 
     periodStats: {
       profit: dashboardStats.profit,
+      valuation: dashboardStats.valuation,
       yield: dashboardStats.yield,
       valuationPercent: dashboardStats.valuationPercent,
       dividendsPercent: dashboardStats.dividendsPercent,
