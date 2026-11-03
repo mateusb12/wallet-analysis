@@ -480,7 +480,7 @@ const PerformanceSection = ({
   };
 
   return (
-    <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700 flex flex-col h-full">
+    <div className="min-w-0 lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700 flex flex-col h-full">
       <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
         <div className="flex flex-col gap-1 w-full sm:w-auto">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
@@ -828,11 +828,11 @@ function WalletDashboard() {
 
           <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="flex flex-col sm:flex-row justify-between items-end sm:items-center mb-4 gap-2">
-              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              <h3 className="w-full text-center text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 sm:w-auto sm:text-left">
                 Resumo Financeiro
               </h3>
 
-              <div className="bg-gray-100 dark:bg-gray-800 p-1 rounded-lg inline-flex items-center border border-gray-200 dark:border-gray-700">
+              <div className="grid w-full grid-cols-2 gap-1 rounded-lg border border-gray-200 bg-gray-100 p-1 dark:border-gray-700 dark:bg-gray-800 sm:inline-flex sm:w-auto sm:grid-cols-none sm:items-center">
                 {availablePeriods.map((period) => {
                   const isActive = profitPeriod === period.id;
                   return (
@@ -840,7 +840,7 @@ function WalletDashboard() {
                       key={period.id}
                       onClick={() => setProfitPeriod(period.id)}
                       className={`
-          relative px-4 py-1.5 text-xs font-medium rounded-md transition-all duration-200
+          relative min-h-10 w-full rounded-md px-2 py-1.5 text-center text-xs font-medium leading-tight transition-all duration-200 sm:min-h-0 sm:w-auto sm:px-4
           ${
             isActive
               ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-300 shadow-sm ring-1 ring-black/5 dark:ring-white/10'

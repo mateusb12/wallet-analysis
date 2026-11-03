@@ -268,9 +268,10 @@ function WalletHistoryChart({
   const textColor = isDark ? '#9ca3af' : '#666666';
 
   return (
-    <div style={{ width: '100%', height: 350 }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart
+    <div className="w-full overflow-x-auto sm:overflow-visible" style={{ height: 350 }}>
+      <div className="h-full min-w-[480px] sm:min-w-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart
           data={processedData}
           margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
           onClick={(state) => {
@@ -377,8 +378,9 @@ function WalletHistoryChart({
               />
             </ReferenceLine>
           )}
-        </ComposedChart>
-      </ResponsiveContainer>
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
