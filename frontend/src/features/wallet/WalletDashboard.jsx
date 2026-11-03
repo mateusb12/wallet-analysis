@@ -15,6 +15,7 @@ import {
   Percent,
   TrendingUp,
   Wallet,
+  X,
 } from 'lucide-react';
 
 import WalletHistoryChart from './WalletHistoryChart.jsx';
@@ -214,6 +215,93 @@ const WalletSkeleton = () => {
   );
 };
 
+const ProfitabilityBreakdown = ({ items }) => {
+  const maxComponent = Math.max(
+    ...items.map((item) => {
+      const positiveTotal = Math.max(item.valuationPercent, 0) + Math.max(item.dividendsPercent, 0);
+      const negativeTotal =
+        Math.abs(Math.min(item.valuationPercent, 0)) + Math.abs(Math.min(item.dividendsPercent, 0));
+      return Math.max(positiveTotal, negativeTotal);
+    }),
+    1
+  );
+
+  return (
+    <div className="min-w-0 flex-1">
+      <div className="mb-3 flex items-center gap-4 text-[10px] text-gray-400 dark:text-gray-500">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-green-500" /> Valorização
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-purple-500" /> Dividendos
+        </span>
+      </div>
+
+      <div className="space-y-3">
+        {items.map((item) => {
+          const valuationWidth = (Math.abs(item.valuationPercent) / maxComponent) * 50;
+          const dividendsWidth = (Math.abs(item.dividendsPercent) / maxComponent) * 50;
+          const total = item.yield;
+
+          return (
+            <div
+              key={item.label}
+              className="grid grid-cols-[68px_minmax(0,1fr)_52px] items-center gap-3"
+            >
+              <span
+                className={`truncate text-xs ${item.isTotal ? 'font-semibold text-gray-200' : 'text-gray-400'}`}
+                title={item.label}
+              >
+                {item.label}
+              </span>
+
+              <div className="relative h-5 rounded-sm bg-gray-700/30">
+                <span className="absolute inset-y-0 left-1/2 w-px bg-gray-500/70" />
+                {item.valuationPercent !== 0 && (
+                  <span
+                    className={`absolute top-1/2 h-3 -translate-y-1/2 rounded-sm ${
+                      item.valuationPercent < 0 ? 'bg-red-500' : 'bg-green-500'
+                    }`}
+                    style={
+                      item.valuationPercent < 0
+                        ? { right: '50%', width: `${valuationWidth}%` }
+                        : { left: '50%', width: `${valuationWidth}%` }
+                    }
+                  />
+                )}
+                {item.dividendsPercent !== 0 && (
+                  <span
+                    className="absolute top-1/2 h-3 -translate-y-1/2 rounded-sm bg-purple-500"
+                    style={
+                      item.dividendsPercent < 0
+                        ? {
+                            right: `calc(50% + ${item.valuationPercent < 0 ? valuationWidth : 0}%)`,
+                            width: `${dividendsWidth}%`,
+                          }
+                        : {
+                            left: `calc(50% + ${item.valuationPercent > 0 ? valuationWidth : 0}%)`,
+                            width: `${dividendsWidth}%`,
+                          }
+                    }
+                  />
+                )}
+              </div>
+
+              <span
+                className={`text-right text-xs ${
+                  item.isTotal ? 'font-bold text-green-400' : 'font-medium text-gray-300'
+                }`}
+              >
+                {formatPercent(total)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const SummaryCard = ({
   title,
   value,
@@ -221,6 +309,10 @@ const SummaryCard = ({
   type = 'neutral',
   rawValue,
   secondaryItems = [],
+  horizontalItems = [],
+  horizontal = false,
+  onClick,
+  onClose,
 }) => {
   let colorClass = 'text-gray-900 dark:text-white';
   let iconColor = 'text-blue-500';
@@ -236,15 +328,20 @@ const SummaryCard = ({
     bgIcon = isPositive ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20';
   }
 
-  return (
-    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700 relative overflow-hidden group hover:shadow-md transition-shadow">
-      <div className="flex justify-between items-start">
+  const cardContent = (
+    <>
+      <div
+        className={`flex justify-between ${horizontal ? 'w-full items-center gap-8 pr-10' : 'items-start'}`}
+      >
         <div>
           <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{title}</p>
           <p className={`text-2xl font-bold ${colorClass}`}>{value}</p>
           {secondaryItems.map(({ label, value: secondaryValue, format = 'currency' }) => (
             <p key={label} className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              {label}: {format === 'percent' ? formatPercent(secondaryValue) : formatCurrency(secondaryValue)}
+              {label}:{' '}
+              {format === 'percent'
+                ? formatPercent(secondaryValue)
+                : formatCurrency(secondaryValue)}
             </p>
           ))}
           {subtext && <p className="text-xs text-gray-400 mt-1">{subtext}</p>}
@@ -256,12 +353,51 @@ const SummaryCard = ({
             title.includes('Prejuízo') ||
             title.includes('Valorização') ||
             title.includes('Desvalorização') ||
-            title.includes('Retorno Total')) && (
-            <DollarSign className="w-6 h-6" />
-          )}
+            title.includes('Retorno Total')) && <DollarSign className="w-6 h-6" />}
           {title.includes('%') && <Percent className="w-6 h-6" />}
         </div>
+        {horizontalItems.length > 0 && <ProfitabilityBreakdown items={horizontalItems} />}
       </div>
+      {onClose && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onClose();
+          }}
+          className="absolute right-4 top-4 rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+          aria-label="Recolher rentabilidade"
+          title="Recolher rentabilidade"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      )}
+    </>
+  );
+
+  const cardClassName = `bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700 relative overflow-hidden group transition-shadow ${
+    onClick ? 'cursor-pointer hover:shadow-md' : ''
+  } ${horizontal ? 'min-h-[142px] flex items-center' : ''}`;
+
+  if (!onClick) {
+    return <div className={cardClassName}>{cardContent}</div>;
+  }
+
+  return (
+    <div
+      className={cardClassName}
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label="Expandir rentabilidade"
+    >
+      {cardContent}
     </div>
   );
 };
@@ -673,6 +809,7 @@ function WalletDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
+  const [isProfitabilityExpanded, setIsProfitabilityExpanded] = useState(false);
 
   const {
     activeTab,
@@ -703,6 +840,8 @@ function WalletDashboard() {
     totalValue,
     totalInvested,
     periodStats,
+    categoryProfitability,
+    topImpactAssets,
     availablePeriods,
     earliestPurchaseDate,
     showEmptyState,
@@ -855,40 +994,81 @@ function WalletDashboard() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <SummaryCard
-                title="Total Investido"
-                value={formatCurrency(totalInvested)}
-                subtext={selectedAssetTicker ? selectedAssetTicker : 'Custo de aquisição'}
-              />
-              <SummaryCard
-                title="Valor Atual"
-                value={formatCurrency(totalValue)}
-                subtext={`Cotação Atual (${selectedAssetTicker ? selectedAssetTicker : CATEGORIES_CONFIG[activeTab].label})`}
-              />
-              <SummaryCard
-                title="Retorno Total (R$)"
-                value={formatCurrency(periodStats.profit)}
-                rawValue={periodStats.profit}
-                type="profit"
-                secondaryItems={[
-                  { label: 'Valorização', value: periodStats.profit - periodStats.dividends },
-                  { label: 'Dividendos', value: periodStats.dividends },
-                ]}
-                subtext={periodStats.labelSuffix}
-              />
-              <SummaryCard
-                title="Rentabilidade (%)"
-                value={formatPercent(periodStats.yield)}
-                rawValue={periodStats.yield}
-                type="profit"
-                secondaryItems={[
-                  { label: 'Valorização', value: periodStats.valuationPercent, format: 'percent' },
-                  { label: 'Dividendos', value: periodStats.dividendsPercent, format: 'percent' },
-                ]}
-                subtext={periodStats.labelSuffix}
-              />
-            </div>
+            {isProfitabilityExpanded ? (
+              <div className="mb-8">
+                <SummaryCard
+                  title="Rentabilidade (%)"
+                  value={formatPercent(periodStats.yield)}
+                  rawValue={periodStats.yield}
+                  type="profit"
+                  horizontal
+                  onClose={() => setIsProfitabilityExpanded(false)}
+                  horizontalItems={
+                    activeTab === 'total'
+                      ? [
+                          {
+                            label: 'Carteira',
+                            yield: periodStats.yield,
+                            valuationPercent: periodStats.valuationPercent,
+                            dividendsPercent: periodStats.dividendsPercent,
+                            isTotal: true,
+                          },
+                          ...categoryProfitability,
+                        ]
+                      : topImpactAssets
+                  }
+                  secondaryItems={[
+                    {
+                      label: 'Valorização',
+                      value: periodStats.valuationPercent,
+                      format: 'percent',
+                    },
+                    { label: 'Dividendos', value: periodStats.dividendsPercent, format: 'percent' },
+                  ]}
+                  subtext={periodStats.labelSuffix}
+                />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <SummaryCard
+                  title="Total Investido"
+                  value={formatCurrency(totalInvested)}
+                  subtext={selectedAssetTicker ? selectedAssetTicker : 'Custo de aquisição'}
+                />
+                <SummaryCard
+                  title="Valor Atual"
+                  value={formatCurrency(totalValue)}
+                  subtext={`Cotação Atual (${selectedAssetTicker ? selectedAssetTicker : CATEGORIES_CONFIG[activeTab].label})`}
+                />
+                <SummaryCard
+                  title="Retorno Total (R$)"
+                  value={formatCurrency(periodStats.profit)}
+                  rawValue={periodStats.profit}
+                  type="profit"
+                  secondaryItems={[
+                    { label: 'Valorização', value: periodStats.profit - periodStats.dividends },
+                    { label: 'Dividendos', value: periodStats.dividends },
+                  ]}
+                  subtext={periodStats.labelSuffix}
+                />
+                <SummaryCard
+                  title="Rentabilidade (%)"
+                  value={formatPercent(periodStats.yield)}
+                  rawValue={periodStats.yield}
+                  type="profit"
+                  onClick={() => setIsProfitabilityExpanded(true)}
+                  secondaryItems={[
+                    {
+                      label: 'Valorização',
+                      value: periodStats.valuationPercent,
+                      format: 'percent',
+                    },
+                    { label: 'Dividendos', value: periodStats.dividendsPercent, format: 'percent' },
+                  ]}
+                  subtext={periodStats.labelSuffix}
+                />
+              </div>
+            )}
 
             {activeTab === 'total' && <TopPerformersSection positions={positions} />}
 

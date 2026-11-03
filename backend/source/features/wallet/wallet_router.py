@@ -109,6 +109,15 @@ def _format_asset_age(first_purchase_date) -> str:
     return " ".join(parts)
 
 
+def _resolve_asset_type(stored_type: str, classification: Dict) -> str:
+    detected_type = str(classification.get("subtype") or "").upper()
+    if detected_type.startswith("ETF"):
+        return "etf"
+    if detected_type.startswith("FII"):
+        return "fii"
+    return stored_type
+
+
 def _build_cdi_factors(benchmark_query, common_idx):
     """Build CDI factors without applying a business-day rate on calendar gaps."""
     factors = pd.Series(1.0, index=common_idx, dtype=float)
@@ -433,6 +442,12 @@ def get_dashboard_data(
             classification_map[r.ticker] = {"subtype": r.detected_type, "sector": r.sector}
     except Exception: pass
 
+    for transaction in transactions_list:
+        classification = classification_map.get(transaction["ticker"], {})
+        transaction["asset_type"] = _resolve_asset_type(
+            transaction.get("asset_type", "stock"), classification
+        )
+
     # --- NOVO: BUSCAR PREÇOS ANUAIS (FECHAMENTO DE DEZEMBRO) PARA TOOLTIP ---
     # Busca desde o ano anterior ao início da carteira (para calcular a variação do primeiro ano)
     yearly_closes_map = _get_yearly_prices(wallets, active_tickers, start_year_portfolio)
@@ -480,7 +495,7 @@ def get_dashboard_data(
         if val_total_raw is not None:
             total_current_global += val_total_raw
 
-        atype = data['type']
+        atype = _resolve_asset_type(data['type'], classification_map.get(ticker, {}))
         if val_total_raw is not None:
             allocation_by_type[atype] = allocation_by_type.get(atype, 0) + val_total_raw
 

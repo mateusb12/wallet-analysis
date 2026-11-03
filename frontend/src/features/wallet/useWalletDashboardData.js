@@ -184,6 +184,58 @@ export const useWalletDashboardData = (user) => {
     };
   }, [safeData, activeTab, profitPeriod]);
 
+  const categoryProfitability = useMemo(() => {
+    return ['stock', 'etf', 'fii'].map((type) => {
+      const stats = safeData.period_projections?.[type]?.[profitPeriod] || {};
+      return {
+        type,
+        label: CATEGORIES_CONFIG[type].label,
+        yield: Number(stats.yield) || 0,
+        valuationPercent:
+          Number(safeData.invested_by_type?.[type]) > 0
+            ? ((Number(stats.valuation) || 0) / Number(safeData.invested_by_type[type])) * 100
+            : 0,
+        dividendsPercent:
+          Number(safeData.invested_by_type?.[type]) > 0
+            ? ((Number(stats.dividends) || 0) / Number(safeData.invested_by_type[type])) * 100
+            : 0,
+      };
+    });
+  }, [safeData, profitPeriod]);
+
+  const topImpactAssets = useMemo(() => {
+    const positionNames = new Map(
+      safeData.positions.map((position) => [position.ticker, position.name])
+    );
+    const impactByTicker = (safeData.transactions || [])
+      .filter(
+        (transaction) =>
+          activeTab === 'total' || (transaction.asset_type || transaction.type) === activeTab
+      )
+      .reduce((assets, transaction) => {
+        const ticker = transaction.ticker;
+        if (!assets[ticker]) assets[ticker] = { invested: 0, valuation: 0, dividends: 0 };
+        assets[ticker].invested +=
+          (Number(transaction.price) || 0) * (Number(transaction.qty) || 0);
+        assets[ticker].valuation += Number(transaction.valuation_value) || 0;
+        assets[ticker].dividends += Number(transaction.dividend_value) || 0;
+        return assets;
+      }, {});
+
+    return Object.entries(impactByTicker)
+      .map(([ticker, values]) => ({
+        ticker,
+        label: ticker,
+        name: positionNames.get(ticker) || ticker,
+        totalReturn: values.valuation + values.dividends,
+        yield:
+          values.invested > 0 ? ((values.valuation + values.dividends) / values.invested) * 100 : 0,
+        valuationPercent: values.invested > 0 ? (values.valuation / values.invested) * 100 : 0,
+        dividendsPercent: values.invested > 0 ? (values.dividends / values.invested) * 100 : 0,
+      }))
+      .sort((a, b) => b.totalReturn - a.totalReturn);
+  }, [safeData, activeTab]);
+
   const currentPieData = useMemo(() => {
     if (activeTab === 'total' && allocationView === 'general') {
       const { stock, fii, etf } = safeData.allocation;
@@ -285,6 +337,8 @@ export const useWalletDashboardData = (user) => {
       dividends: dashboardStats.dividends,
       labelSuffix: dashboardStats.labelSuffix,
     },
+    categoryProfitability,
+    topImpactAssets,
 
     positions: safeData.positions,
     filteredPositions,
