@@ -20,6 +20,7 @@ import {
 
 import WalletHistoryChart from './WalletHistoryChart.jsx';
 import DataConsistencyAlert from '../../components/DataConsistencyAlert.jsx';
+import { BreakdownTooltip } from '../../components/Tooltip.jsx';
 import SourceDataTable from './SourceDataTable.jsx';
 import PositionsTable from './PositionsTable.jsx';
 import VariationBadge from './components/VariationBadge.jsx';
@@ -256,20 +257,23 @@ const ProfitabilityBreakdown = ({ items, format = 'percent' }) => {
               key={item.label}
               className="grid grid-cols-[68px_minmax(0,1fr)_96px] items-center gap-3"
             >
-              <span
-                className={`truncate text-xs ${item.isTotal ? 'font-semibold text-gray-200' : 'text-gray-400'}`}
-                title={item.label}
-              >
-                {item.label}
-              </span>
+              <div className="min-w-0">
+                <span
+                  className={`block truncate text-xs ${item.isTotal ? 'font-semibold text-gray-200' : 'text-gray-400'}`}
+                  title={item.label}
+                >
+                  {item.label}
+                </span>
+                {item.age && <span className="block text-[10px] text-gray-500">{item.age}</span>}
+              </div>
 
               <div className="relative h-5 rounded-sm bg-gray-700/30">
                 <span className="absolute inset-y-0 left-1/2 w-px bg-gray-500/70" />
                 {valuation !== 0 && (
-                  <span
-                    className={`absolute top-1/2 h-3 -translate-y-1/2 rounded-sm ${
-                      valuation < 0 ? 'bg-red-500' : 'bg-green-500'
-                    }`}
+                  <BreakdownTooltip
+                    label={valuation < 0 ? 'Desvalorização' : 'Valorização'}
+                    value={formatCurrency(valuation)}
+                    className={`${valuation < 0 ? 'bg-red-500' : 'bg-green-500'}`}
                     style={
                       valuation < 0
                         ? { right: '50%', width: `${valuationWidth}%` }
@@ -278,8 +282,10 @@ const ProfitabilityBreakdown = ({ items, format = 'percent' }) => {
                   />
                 )}
                 {dividends !== 0 && (
-                  <span
-                    className="absolute top-1/2 h-3 -translate-y-1/2 rounded-sm bg-purple-500"
+                  <BreakdownTooltip
+                    label="Dividendos"
+                    value={formatCurrency(dividends)}
+                    className="bg-purple-500"
                     style={
                       dividends < 0
                         ? {
@@ -297,8 +303,8 @@ const ProfitabilityBreakdown = ({ items, format = 'percent' }) => {
 
               <span
                 className={`whitespace-nowrap text-right text-xs ${
-                  item.isTotal ? 'font-bold text-green-400' : 'font-medium text-gray-300'
-                }`}
+                  item.isTotal ? 'font-bold' : 'font-medium'
+                } ${total < 0 ? 'text-red-300' : 'text-green-300'}`}
               >
                 {formatValue(total)}
               </span>

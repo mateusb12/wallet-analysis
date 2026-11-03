@@ -207,8 +207,8 @@ export const useWalletDashboardData = (user) => {
   }, [safeData, profitPeriod]);
 
   const topImpactAssets = useMemo(() => {
-    const positionNames = new Map(
-      safeData.positions.map((position) => [position.ticker, position.name])
+    const positionByTicker = new Map(
+      safeData.positions.map((position) => [position.ticker, position])
     );
     const impactByTicker = (safeData.transactions || [])
       .filter(
@@ -229,7 +229,8 @@ export const useWalletDashboardData = (user) => {
       .map(([ticker, values]) => ({
         ticker,
         label: ticker,
-        name: positionNames.get(ticker) || ticker,
+        name: positionByTicker.get(ticker)?.name || ticker,
+        age: positionByTicker.get(ticker)?.age,
         totalReturn: values.valuation + values.dividends,
         totalValue: values.valuation + values.dividends,
         valuationValue: values.valuation,
