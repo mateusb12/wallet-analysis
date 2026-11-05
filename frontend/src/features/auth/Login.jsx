@@ -3,9 +3,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { authService, systemService } from '../../services/api';
 import { signInWithGoogle } from '../../services/authClient.js';
 import { useAuth } from './AuthContext';
-import { Wifi, WifiOff, Loader2, Sun, Moon, Eye, EyeOff, Copy, Check } from 'lucide-react';
-
-const POSTGRES_TUNNEL_COMMAND = './scripts/dev-postgres-tunnel.sh';
+import { Wifi, WifiOff, Loader2, Sun, Moon, Eye, EyeOff } from 'lucide-react';
 
 export default function Login({ onSwitchToRegister }) {
   const [loading, setLoading] = useState(false);
@@ -15,7 +13,6 @@ export default function Login({ onSwitchToRegister }) {
   const [message, setMessage] = useState({ type: '', content: '' });
   const [apiStatus, setApiStatus] = useState('checking');
   const [tooltipPosition, setTooltipPosition] = useState(null);
-  const [tunnelCommandCopied, setTunnelCommandCopied] = useState(false);
 
   const { theme, toggleTheme } = useTheme();
   const { setBackendSession } = useAuth();
@@ -58,17 +55,6 @@ export default function Login({ onSwitchToRegister }) {
       console.error('Erro de Login:', error);
       setMessage({ type: 'error', content: error.message });
       setLoading(false);
-    }
-  };
-
-  const handleCopyTunnelCommand = async () => {
-    try {
-      await navigator.clipboard.writeText(POSTGRES_TUNNEL_COMMAND);
-      setTunnelCommandCopied(true);
-      window.setTimeout(() => setTunnelCommandCopied(false), 2000);
-    } catch (error) {
-      console.error('Não foi possível copiar o comando do tunnel:', error);
-      setMessage({ type: 'error', content: 'Não foi possível copiar o comando.' });
     }
   };
 
@@ -288,32 +274,6 @@ export default function Login({ onSwitchToRegister }) {
             {renderApiBadge()}
           </div>
 
-          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left dark:border-amber-800/50 dark:bg-amber-900/10">
-            <p className="mb-2 text-xs font-semibold text-amber-800 dark:text-amber-300">
-              Precisa conectar o banco local? Rode o tunnel:
-            </p>
-            <div className="flex items-center gap-2 rounded-lg bg-gray-900 px-3 py-2 text-gray-100 dark:bg-gray-950">
-              <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap text-[11px]">
-                {POSTGRES_TUNNEL_COMMAND}
-              </code>
-              <button
-                type="button"
-                onClick={handleCopyTunnelCommand}
-                className="shrink-0 rounded-md p-1.5 text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
-                aria-label="Copiar comando do tunnel"
-                title="Copiar comando"
-              >
-                {tunnelCommandCopied ? (
-                  <Check className="h-4 w-4 text-emerald-400" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </button>
-            </div>
-            {tunnelCommandCopied && (
-              <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-400">Copiado!</p>
-            )}
-          </div>
         </div>
       </div>
     </div>
