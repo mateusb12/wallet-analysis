@@ -31,6 +31,7 @@ import iconEtf from '../../assets/etf.png';
 import iconFiis from '../../assets/fiis.png';
 import iconTotal from '../../assets/all.png';
 import { formatChartDate } from '../../utils/dateUtils.js';
+import Toast, { useToast } from '../../components/Toast.jsx';
 
 import shotA from '../../assets/screenshots/A.jpeg';
 import shotB from '../../assets/screenshots/B.jpeg';
@@ -41,6 +42,7 @@ export default function AssetsManager() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef(null);
+  const { toast, showToast, hideToast } = useToast();
 
   const [purchases, setPurchases] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -180,6 +182,8 @@ export default function AssetsManager() {
   const handleEditClick = (item) => {
     setEditingId(item.id);
     setEditForm({
+      ticker: item.ticker,
+      name: item.name,
       date:
         item.trade_date || item.settlement_date
           ? (item.trade_date || item.settlement_date).split('T')[0]
@@ -187,6 +191,40 @@ export default function AssetsManager() {
       price: item.price,
       qty: item.qty,
       type: item.type,
+      total: Number(item.qty) * Number(item.price),
+    });
+  };
+
+  const handleEditQuantityChange = (value) => {
+    const quantity = Number(value);
+    const total = Number(editForm.total);
+
+    setEditForm({
+      ...editForm,
+      qty: value,
+      price: quantity > 0 && Number.isFinite(total) ? total / quantity : '',
+    });
+  };
+
+  const handleEditPriceChange = (value) => {
+    const price = Number(value);
+    const quantity = Number(editForm.qty);
+
+    setEditForm({
+      ...editForm,
+      price: value,
+      total: Number.isFinite(price) ? price * quantity : '',
+    });
+  };
+
+  const handleEditTotalChange = (value) => {
+    const total = Number(value);
+    const quantity = Number(editForm.qty);
+
+    setEditForm({
+      ...editForm,
+      total: value,
+      price: quantity > 0 && Number.isFinite(total) ? total / quantity : '',
     });
   };
 
@@ -194,6 +232,8 @@ export default function AssetsManager() {
     try {
       await updatePurchase(id, {
         user_id: user.id,
+        ticker: editForm.ticker,
+        name: editForm.name,
         trade_date: editForm.date,
         price: Number(editForm.price),
         qty: Number(editForm.qty),
@@ -203,7 +243,7 @@ export default function AssetsManager() {
       await fetchPurchases();
       setEditingId(null);
     } catch (error) {
-      alert('Erro ao salvar alterações.');
+      showToast(error.message || 'Erro ao salvar alterações.', 'error');
     }
   };
 
@@ -215,7 +255,7 @@ export default function AssetsManager() {
       invalidateDashboard();
       await fetchPurchases();
     } catch (error) {
-      alert('Erro ao excluir.');
+      showToast('Erro ao excluir.', 'error');
     } finally {
       setIsDeleting(null);
     }
@@ -249,7 +289,7 @@ export default function AssetsManager() {
   const handleManualSubmit = async (e) => {
     e.preventDefault();
     if (!addForm.ticker || !addForm.qty || !addForm.price || !addForm.date) {
-      alert('Preencha todos os campos obrigatórios.');
+      showToast('Preencha todos os campos obrigatórios.', 'warning');
       return;
     }
 
@@ -281,7 +321,7 @@ export default function AssetsManager() {
       await fetchPurchases();
     } catch (error) {
       console.error(error);
-      alert(`Erro ao adicionar: ${error.message}`);
+      showToast(`Erro ao adicionar: ${error.message}`, 'error');
     } finally {
       setIsSavingManual(false);
     }
@@ -431,12 +471,12 @@ export default function AssetsManager() {
       };
       const data = await importPurchases(payload);
       invalidateDashboard();
-      alert(`Sucesso! ${data.count} novos ativos salvos.`);
+      showToast(`Sucesso! ${data.count} novos ativos salvos.`, 'success');
       await fetchPurchases();
       handleCloseModal();
     } catch (error) {
       console.error(error);
-      alert(`Erro ao salvar: ${error.message}`);
+      showToast(`Erro ao salvar: ${error.message}`, 'error');
     } finally {
       setIsProcessingImport(false);
     }
@@ -456,6 +496,7 @@ export default function AssetsManager() {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col h-full transition-all duration-300">
+      {toast && <Toast {...toast} onClose={hideToast} />}
       {}
       <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
@@ -594,19 +635,20 @@ export default function AssetsManager() {
                   <th className="px-6 py-3 text-center tracking-wider">Tipo</th>
                   <th className="px-6 py-3 text-center tracking-wider">Qtd</th>
                   <th className="px-6 py-3 text-center tracking-wider">Preço</th>
+                  <th className="px-6 py-3 text-center tracking-wider">Total</th>
                   <th className="px-6 py-3 text-center tracking-wider">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {isLoading ? (
                   <tr>
-                    <td colSpan="6" className="p-8 text-center text-gray-500">
+                    <td colSpan="7" className="p-8 text-center text-gray-500">
                       Carregando...
                     </td>
                   </tr>
                 ) : filteredPurchases.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="p-12 text-center text-gray-400">
+                    <td colSpan="7" className="p-12 text-center text-gray-400">
                       Nenhum resultado para a busca.
                     </td>
                   </tr>
@@ -614,6 +656,9 @@ export default function AssetsManager() {
                   filteredPurchases.map((item) => {
                     const isEditing = editingId === item.id;
                     const typeConfig = getTypeConfig(item.type);
+                    const totalValue =
+                      Number(isEditing ? editForm.qty : item.qty) *
+                      Number(isEditing ? editForm.price : item.price);
 
                     return (
                       <tr
@@ -665,7 +710,18 @@ export default function AssetsManager() {
                           )}
                         </td>
                         <td className="px-6 py-4 text-center font-medium text-gray-900 dark:text-white">
-                          {item.qty}
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              step="1"
+                              min="0"
+                              value={editForm.qty}
+                              onChange={(e) => handleEditQuantityChange(e.target.value)}
+                              className="w-20 bg-white dark:bg-gray-900 border rounded px-2 py-1 text-center text-gray-900 dark:text-white"
+                            />
+                          ) : (
+                            item.qty
+                          )}
                         </td>
                         <td className="px-6 py-4 text-center font-medium text-gray-600 dark:text-gray-300">
                           {isEditing ? (
@@ -673,7 +729,7 @@ export default function AssetsManager() {
                               type="number"
                               step="0.01"
                               value={editForm.price}
-                              onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                              onChange={(e) => handleEditPriceChange(e.target.value)}
                               className="w-24 bg-white dark:bg-gray-900 border rounded px-2 py-1 text-gray-900 dark:text-white"
                             />
                           ) : (
@@ -681,6 +737,25 @@ export default function AssetsManager() {
                               style: 'currency',
                               currency: 'BRL',
                             })
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center font-medium text-gray-900 dark:text-white">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={editForm.total}
+                              onChange={(e) => handleEditTotalChange(e.target.value)}
+                              className="w-28 bg-white dark:bg-gray-900 border rounded px-2 py-1 text-center text-gray-900 dark:text-white"
+                            />
+                          ) : Number.isFinite(totalValue) ? (
+                            totalValue.toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })
+                          ) : (
+                            'R$ 0,00'
                           )}
                         </td>
                         <td className="px-6 py-4 text-center">

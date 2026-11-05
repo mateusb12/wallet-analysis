@@ -116,7 +116,10 @@ export const updatePurchase = async (id, payload) => {
     body: JSON.stringify(cleanPayload),
   });
 
-  if (!response.ok) throw new Error('Erro ao atualizar');
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || 'Erro ao atualizar');
+  }
   cachedPositions = null;
   return await response.json();
 };
