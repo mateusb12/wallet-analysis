@@ -16,6 +16,16 @@ import { formatChartDate } from '../../utils/dateUtils.js';
 
 const parseNum = (str) => (typeof str === 'string' ? parseFloat(str.replace(',', '.')) : str);
 
+export const getXAxisTicks = (ticks, maxTicks = 8) => {
+  if (ticks.length <= maxTicks) return ticks;
+  if (maxTicks <= 1) return [ticks[0]];
+
+  return Array.from({ length: maxTicks }, (_, index) => {
+    const position = index / (maxTicks - 1);
+    return ticks[Math.round(position * (ticks.length - 1))];
+  });
+};
+
 function ZScoreChart({ historicalPrices, analysisResult }) {
   const isMobile = useMediaQuery('(max-width: 768px)');
   const [isDark, setIsDark] = useState(false);
@@ -111,6 +121,7 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
         shortDate: formatChartDate(dateObj).split('/').slice(0, 2).join('/'),
         monthKey: `${year}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`,
         longDate: dateObj.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+        monthLabel: `${dateObj.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}/${String(year).slice(-2)}`,
         axisLabel: formatChartDate(dateObj).split('/').slice(0, 2).join('/'),
         fullDate: dateObj.toLocaleDateString('pt-BR'),
         price: d.close,
@@ -126,9 +137,7 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
       monthTicks.push(item.index);
     });
 
-    const yearChangeIndices = data
-      .filter((item) => item.isYearChange)
-      .map((item) => item.index);
+    const yearChangeIndices = data.filter((item) => item.isYearChange).map((item) => item.index);
 
     return { chartData: data, boundaries: b, monthTicks, yearChangeIndices };
   }, [historicalPrices, analysisResult]);
@@ -175,9 +184,9 @@ function ZScoreChart({ historicalPrices, analysisResult }) {
 
           <XAxis
             dataKey="index"
-            ticks={monthTicks}
+            ticks={getXAxisTicks(monthTicks, isMobile ? 6 : 8)}
             interval={0}
-            tickFormatter={(value) => chartData[value]?.axisLabel || ''}
+            tickFormatter={(value) => chartData[value]?.monthLabel || ''}
             minTickGap={40}
             tick={{ fontSize: 11, fill: theme.text }}
             tickLine={false}

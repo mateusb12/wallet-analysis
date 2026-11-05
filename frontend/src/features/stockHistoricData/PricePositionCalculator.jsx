@@ -6,6 +6,14 @@ import { analysisService } from '../../services/api.js';
 
 const MAX_MONTHS = 60;
 
+export const getWalletAnalysisProgressText = ({ completed, total, currentTicker }) => {
+  if (completed >= total) {
+    return `Análises da carteira concluídas (${total} de ${total}).`;
+  }
+
+  return `Calculando ${currentTicker || 'carteira'}... (${completed} de ${total} concluídos)`;
+};
+
 function getWindowLabel(months) {
   if (months < 12) return `(${months} meses)`;
   if (months === 12) return `(~1 ano)`;
@@ -49,7 +57,15 @@ function PricePositionCalculator() {
   const [tickerList, setTickerList] = useState([]);
   const [walletTickers, setWalletTickers] = useState([]);
   const [walletZScores, setWalletZScores] = useState({});
+  const [walletAnalysisStatus, setWalletAnalysisStatus] = useState({});
+  const [walletAnalysisProgress, setWalletAnalysisProgress] = useState({
+    completed: 0,
+    total: 0,
+    currentTicker: '',
+  });
   const [isLoadingWalletZScores, setIsLoadingWalletZScores] = useState(false);
+  const [walletTickersLoaded, setWalletTickersLoaded] = useState(false);
+  const walletAnalysisResultsRef = useRef({});
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const comboboxRef = useRef(null);
@@ -81,26 +97,61 @@ function PricePositionCalculator() {
 
   useEffect(() => {
     if (!walletTickers.length) {
+      setIsLoadingWalletZScores(false);
       setWalletZScores({});
+      setWalletAnalysisStatus({});
+      setWalletAnalysisProgress({ completed: 0, total: 0, currentTicker: '' });
       return undefined;
     }
 
     let isMounted = true;
+    const total = walletTickers.length;
+
     setIsLoadingWalletZScores(true);
+    setWalletZScores({});
+    setWalletAnalysisStatus(
+      Object.fromEntries(walletTickers.map((position) => [position.ticker, 'loading']))
+    );
+    setWalletAnalysisProgress({ completed: 0, total, currentTicker: walletTickers[0].ticker });
+    walletAnalysisResultsRef.current = {};
 
     Promise.all(
       walletTickers.map(async (position) => {
+        if (isMounted) {
+          setWalletAnalysisProgress((current) => ({
+            ...current,
+            currentTicker: position.ticker,
+          }));
+        }
+
         try {
           const data = await analysisService.getZScore(position.ticker, deferredTimeWindow);
-          return [position.ticker, data.stats.zScore];
+          if (isMounted) {
+            walletAnalysisResultsRef.current[position.ticker] = data;
+            setWalletZScores((current) => ({
+              ...current,
+              [position.ticker]: data.stats.zScore,
+            }));
+            setWalletAnalysisStatus((current) => ({ ...current, [position.ticker]: 'done' }));
+            setWalletAnalysisProgress((current) => ({
+              ...current,
+              completed: current.completed + 1,
+              currentTicker: position.ticker,
+            }));
+          }
         } catch {
-          return [position.ticker, null];
+          if (isMounted) {
+            setWalletAnalysisStatus((current) => ({ ...current, [position.ticker]: 'error' }));
+            setWalletAnalysisProgress((current) => ({
+              ...current,
+              completed: current.completed + 1,
+              currentTicker: position.ticker,
+            }));
+          }
         }
       })
-    ).then((scores) => {
+    ).then(() => {
       if (!isMounted) return;
-
-      setWalletZScores(Object.fromEntries(scores));
       setIsLoadingWalletZScores(false);
     });
 
@@ -113,21 +164,25 @@ function PricePositionCalculator() {
     let isMounted = true;
 
     async function loadWalletTickers() {
-      const positions = await fetchWalletPositions();
-      if (!isMounted) return;
+      try {
+        const positions = await fetchWalletPositions();
+        if (!isMounted) return;
 
-      const uniqueTickers = Array.from(
-        new Map(
-          positions
-            .filter((position) => position.ticker)
-            .map((position) => [
-              position.ticker.toUpperCase(),
-              { ...position, ticker: position.ticker.toUpperCase() },
-            ])
-        ).values()
-      ).sort((a, b) => a.ticker.localeCompare(b.ticker));
+        const uniqueTickers = Array.from(
+          new Map(
+            positions
+              .filter((position) => position.ticker)
+              .map((position) => [
+                position.ticker.toUpperCase(),
+                { ...position, ticker: position.ticker.toUpperCase() },
+              ])
+          ).values()
+        ).sort((a, b) => a.ticker.localeCompare(b.ticker));
 
-      setWalletTickers(uniqueTickers);
+        setWalletTickers(uniqueTickers);
+      } finally {
+        if (isMounted) setWalletTickersLoaded(true);
+      }
     }
 
     loadWalletTickers();
@@ -138,13 +193,33 @@ function PricePositionCalculator() {
   }, []);
 
   useEffect(() => {
-    if (!selectedTicker) return;
+    if (!selectedTicker || !walletTickersLoaded) return;
+
+    const isWalletTicker = walletTickers.some((position) => position.ticker === selectedTicker);
+    const walletTickerStatus = walletAnalysisStatus[selectedTicker];
+
+    if (isWalletTicker && !walletTickerStatus) return;
+    if (isWalletTicker && walletTickerStatus === 'loading') return;
 
     const fetchData = async () => {
       setLoading(true);
       setErrorMessage('');
       setResult(null);
       setChartData([]);
+
+      const cachedAnalysis = walletAnalysisResultsRef.current[selectedTicker];
+      if (cachedAnalysis?.window_months === deferredTimeWindow) {
+        setResult(cachedAnalysis.stats);
+        setChartData(cachedAnalysis.chart_data);
+        setLoading(false);
+        return undefined;
+      }
+
+      if (isWalletTicker && walletTickerStatus === 'error') {
+        setErrorMessage(`Não foi possível analisar ${selectedTicker}: histórico insuficiente.`);
+        setLoading(false);
+        return undefined;
+      }
 
       try {
         const data = await analysisService.getZScore(selectedTicker, deferredTimeWindow);
@@ -160,7 +235,14 @@ function PricePositionCalculator() {
     };
 
     fetchData();
-  }, [selectedTicker, deferredTimeWindow]);
+  }, [
+    selectedTicker,
+    deferredTimeWindow,
+    walletTickersLoaded,
+    walletTickers,
+    walletAnalysisStatus,
+    isLoadingWalletZScores,
+  ]);
 
   const filteredTickers = tickerList.filter((t) =>
     t.toLowerCase().includes(selectedTicker.toLowerCase())
@@ -252,9 +334,11 @@ function PricePositionCalculator() {
             />
           </div>
 
-          {loading && (
+          {(loading || isLoadingWalletZScores) && (
             <div className="mt-6 text-center text-blue-600 dark:text-blue-400 font-semibold animate-pulse">
-              Processando estatísticas no servidor...
+              {isLoadingWalletZScores
+                ? getWalletAnalysisProgressText(walletAnalysisProgress)
+                : `Calculando ${selectedTicker}...`}
             </div>
           )}
 
@@ -326,7 +410,9 @@ function PricePositionCalculator() {
                     <th className="px-3 py-2 text-left font-semibold">Ticker</th>
                     <th className="px-3 py-2 text-left font-semibold">Tipo</th>
                     <th className="px-3 py-2 text-right font-semibold">
-                      {isLoadingWalletZScores ? 'Z-Score…' : 'Z-Score'}
+                      {isLoadingWalletZScores
+                        ? `Z-Score (${walletAnalysisProgress.completed}/${walletAnalysisProgress.total})`
+                        : 'Z-Score'}
                     </th>
                   </tr>
                 </thead>
@@ -359,6 +445,8 @@ function PricePositionCalculator() {
                           <span className={getZScoreTextClass(walletZScores[position.ticker])}>
                             {walletZScores[position.ticker]}
                           </span>
+                        ) : walletAnalysisStatus[position.ticker] === 'loading' ? (
+                          <span className="text-blue-500 animate-pulse">calculando…</span>
                         ) : (
                           '—'
                         )}
