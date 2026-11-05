@@ -238,7 +238,7 @@ class SqlAlchemyAnalysisRepository:
             .limit(limit)
             .all()
         )
-        return [_model_dict(row, only={"trade_date", "close"}) for row in rows]
+        return [_model_dict(row, only={"trade_date", "close", "adjusted_close"}) for row in rows]
 
     def get_fii_dividends(self, ticker: str):
         rows = (

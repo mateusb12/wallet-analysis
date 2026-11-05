@@ -85,7 +85,7 @@ class PositionSnapshot(BaseModel):
     # --- TOTAIS ---
     total_value: Optional[float]            # Saldo Real
 
-    # --- RENTABILIDADE REAL (CAIXA) ---
+    # --- RENTABILIDADE TOTAL: valorização + proventos registrados no SQL ---
     profit: Optional[float]
     profit_percent: Optional[float]
 

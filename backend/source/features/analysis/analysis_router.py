@@ -23,6 +23,10 @@ def calculate_zscore(
     # 2. Pandas Processing
     df = pd.DataFrame(data)
     df['close'] = pd.to_numeric(df['close'])
+    if 'adjusted_close' not in df:
+        df['adjusted_close'] = df['close']
+    else:
+        df['adjusted_close'] = pd.to_numeric(df['adjusted_close']).fillna(df['close'])
     df['trade_date'] = pd.to_datetime(df['trade_date'])
     df = df.sort_values('trade_date', ascending=True)
 
@@ -62,7 +66,9 @@ def calculate_zscore(
     else: status = "❌ Muito caro (Z ≥ 2)"
 
     # Format chart data
-    chart_data = df_window[['trade_date', 'close']].rename(columns={'trade_date': 'date'}).to_dict(orient='records')
+    chart_data = df_window[['trade_date', 'close', 'adjusted_close']].rename(
+        columns={'trade_date': 'date'}
+    ).to_dict(orient='records')
     for item in chart_data:
         item['date'] = item['date'].strftime('%Y-%m-%d')
 

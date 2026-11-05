@@ -187,17 +187,30 @@ export const syncService = {
 
 export const analysisService = {
   async getZScore(ticker, windowMonths = 12) {
-    const response = await fetch(
-      `${API_URL}/analysis/zscore/${ticker}?window_months=${windowMonths}`,
-      {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.detail || 'Failed to fetch analysis');
-    return data;
+    try {
+      const response = await fetch(
+        `${API_URL}/analysis/zscore/${ticker}?window_months=${windowMonths}`,
+        {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Failed to fetch analysis');
+      return data;
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error(`A análise de ${ticker} excedeu o tempo limite.`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   },
 
   async runFiiSimulation(payload) {

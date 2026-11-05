@@ -36,14 +36,14 @@ wallet_bp = APIRouter(prefix="/wallet", tags=["Wallet"])
 
 def _calculate_period_stats(
         profit: float,
-        yield_pct: float,
+        yield_percentage: float,
         start_date: Optional[date],
         dividends: float = 0.0,
 ) -> Dict:
     valuation = profit - dividends
     if not start_date:
         return {
-            "total": {"profit": profit, "yield": yield_pct, "valuation": valuation, "dividends": dividends},
+            "total": {"profit": profit, "yield": yield_percentage, "valuation": valuation, "dividends": dividends},
             "day": {"profit": 0, "yield": 0, "valuation": 0, "dividends": 0},
             "month": {"profit": 0, "yield": 0, "valuation": 0, "dividends": 0},
             "year": {"profit": 0, "yield": 0, "valuation": 0, "dividends": 0}
@@ -53,38 +53,38 @@ def _calculate_period_stats(
     if isinstance(start_date, datetime):
         start_date = start_date.date()
 
-    diff_days = (today - start_date).days
-    days = max(1, diff_days)
+    elapsed_days = (today - start_date).days
+    days = max(1, elapsed_days)
 
-    avg_day_profit = profit / days
-    avg_day_yield = yield_pct / days
-    avg_day_dividends = dividends / days
-    avg_day_valuation = valuation / days
+    average_daily_profit = profit / days
+    average_daily_yield = yield_percentage / days
+    average_daily_dividends = dividends / days
+    average_daily_valuation = valuation / days
 
     return {
         "total": {
             "profit": round(profit, 2),
-            "yield": round(yield_pct, 2),
+            "yield": round(yield_percentage, 2),
             "valuation": round(valuation, 2),
             "dividends": round(dividends, 2),
         },
         "day": {
-            "profit": round(avg_day_profit, 2),
-            "yield": round(avg_day_yield, 4),
-            "valuation": round(avg_day_valuation, 2),
-            "dividends": round(avg_day_dividends, 2),
+            "profit": round(average_daily_profit, 2),
+            "yield": round(average_daily_yield, 4),
+            "valuation": round(average_daily_valuation, 2),
+            "dividends": round(average_daily_dividends, 2),
         },
         "month": {
-            "profit": round(avg_day_profit * 30, 2),
-            "yield": round(avg_day_yield * 30, 2),
-            "valuation": round(avg_day_valuation * 30, 2),
-            "dividends": round(avg_day_dividends * 30, 2),
+            "profit": round(average_daily_profit * 30, 2),
+            "yield": round(average_daily_yield * 30, 2),
+            "valuation": round(average_daily_valuation * 30, 2),
+            "dividends": round(average_daily_dividends * 30, 2),
         },
         "year": {
-            "profit": round(avg_day_profit * 365, 2),
-            "yield": round(avg_day_yield * 365, 2),
-            "valuation": round(avg_day_valuation * 365, 2),
-            "dividends": round(avg_day_dividends * 365, 2),
+            "profit": round(average_daily_profit * 365, 2),
+            "yield": round(average_daily_yield * 365, 2),
+            "valuation": round(average_daily_valuation * 365, 2),
+            "dividends": round(average_daily_dividends * 365, 2),
         }
     }
 
@@ -118,19 +118,19 @@ def _resolve_asset_type(stored_type: str, classification: Dict) -> str:
     return stored_type
 
 
-def _build_cdi_factors(benchmark_query, common_idx):
+def _build_cdi_factors(benchmark_query, common_date_index):
     """Build CDI factors without applying a business-day rate on calendar gaps."""
-    factors = pd.Series(1.0, index=common_idx, dtype=float)
-    df_cdi = pd.DataFrame(benchmark_query, columns=['trade_date', 'value'])
+    factors = pd.Series(1.0, index=common_date_index, dtype=float)
+    cdi_data_frame = pd.DataFrame(benchmark_query, columns=['trade_date', 'value'])
 
-    if df_cdi.empty:
+    if cdi_data_frame.empty:
         return factors.values
 
-    df_cdi['trade_date'] = pd.to_datetime(df_cdi['trade_date'])
-    df_cdi.set_index('trade_date', inplace=True)
-    df_cdi.sort_index(inplace=True)
+    cdi_data_frame['trade_date'] = pd.to_datetime(cdi_data_frame['trade_date'])
+    cdi_data_frame.set_index('trade_date', inplace=True)
+    cdi_data_frame.sort_index(inplace=True)
 
-    observed_cdi = pd.to_numeric(df_cdi['value']).reindex(common_idx)
+    observed_cdi = pd.to_numeric(cdi_data_frame['value']).reindex(common_date_index)
     observed_dates = observed_cdi.notna()
     factors.loc[observed_dates] = 1 + (observed_cdi.loc[observed_dates] / 100.0)
     return factors.values
@@ -141,15 +141,15 @@ def _calculate_cdb_return(purchases, cdi_rows):
     if not purchases or not cdi_rows:
         return 0.0
 
-    def row_value(row, key, index):
+    def get_row_value(row, key, position):
         if isinstance(row, dict):
             return row[key]
         if hasattr(row, key):
             return getattr(row, key)
-        return row[index]
+        return row[position]
 
     rates = sorted(
-        (pd.Timestamp(row_value(row, "trade_date", 0)), float(row_value(row, "value", 1)))
+        (pd.Timestamp(get_row_value(row, "trade_date", 0)), float(get_row_value(row, "value", 1)))
         for row in cdi_rows
     )
     cash_flows = sorted(
@@ -164,18 +164,18 @@ def _calculate_cdb_return(purchases, cdi_rows):
         return 0.0
 
     balance = 0.0
-    flow_index = 0
+    cash_flow_index = 0
     # Cash flows start earning after the factor for their own date. This also
     # makes weekend purchases start on the next CDI observation.
     for rate_date, daily_rate in rates:
         balance *= 1 + (daily_rate / 100.0)
-        while flow_index < len(cash_flows) and cash_flows[flow_index][0] <= rate_date:
-            balance += cash_flows[flow_index][1]
-            flow_index += 1
+        while cash_flow_index < len(cash_flows) and cash_flows[cash_flow_index][0] <= rate_date:
+            balance += cash_flows[cash_flow_index][1]
+            cash_flow_index += 1
 
-    while flow_index < len(cash_flows):
-        balance += cash_flows[flow_index][1]
-        flow_index += 1
+    while cash_flow_index < len(cash_flows):
+        balance += cash_flows[cash_flow_index][1]
+        cash_flow_index += 1
 
     invested = sum(value for _, value in cash_flows)
     return round(balance - invested, 2)
@@ -207,13 +207,13 @@ def _calculate_history_logic(
     purchases = history_data.purchases
     if not purchases: return []
 
-    df_purchases = pd.DataFrame(purchases, columns=['ticker', 'qty', 'price', 'trade_date', 'type'])
-    df_purchases['trade_date'] = pd.to_datetime(df_purchases['trade_date'])
-    df_purchases['price'] = df_purchases['price'].astype(float)
-    df_purchases['cash_flow'] = df_purchases['qty'] * df_purchases['price']
+    purchases_data_frame = pd.DataFrame(purchases, columns=['ticker', 'qty', 'price', 'trade_date', 'type'])
+    purchases_data_frame['trade_date'] = pd.to_datetime(purchases_data_frame['trade_date'])
+    purchases_data_frame['price'] = purchases_data_frame['price'].astype(float)
+    purchases_data_frame['cash_flow'] = purchases_data_frame['qty'] * purchases_data_frame['price']
 
-    start_date = df_purchases['trade_date'].min()
-    unique_tickers = df_purchases['ticker'].unique().tolist()
+    start_date = purchases_data_frame['trade_date'].min()
+    unique_tickers = purchases_data_frame['ticker'].unique().tolist()
 
     prices_query = [
         row for row in history_data.prices
@@ -224,30 +224,30 @@ def _calculate_history_logic(
 
     if not prices_query: return []
 
-    df_prices = pd.DataFrame(
+    prices_data_frame = pd.DataFrame(
         prices_query,
         columns=['ticker', 'trade_date', 'close', 'dividend_value'],
     )
-    df_prices['trade_date'] = pd.to_datetime(df_prices['trade_date'])
-    df_prices['close'] = pd.to_numeric(df_prices['close'])
-    df_prices['dividend_value'] = pd.to_numeric(df_prices['dividend_value'], errors='coerce').fillna(0.0)
+    prices_data_frame['trade_date'] = pd.to_datetime(prices_data_frame['trade_date'])
+    prices_data_frame['close'] = pd.to_numeric(prices_data_frame['close'])
+    prices_data_frame['dividend_value'] = pd.to_numeric(prices_data_frame['dividend_value'], errors='coerce').fillna(0.0)
 
-    price_matrix = df_prices.pivot(index='trade_date', columns='ticker', values='close').resample('D').ffill()
+    price_matrix = prices_data_frame.pivot(index='trade_date', columns='ticker', values='close').resample('D').ffill()
     holdings_matrix = pd.DataFrame(0.0, index=price_matrix.index, columns=unique_tickers)
-    daily_cash_flow = df_purchases.groupby('trade_date')['cash_flow'].sum()
+    daily_cash_flow = purchases_data_frame.groupby('trade_date')['cash_flow'].sum()
 
-    for _, row in df_purchases.iterrows():
+    for _, purchase_row in purchases_data_frame.iterrows():
         try:
-            holdings_matrix.loc[row['trade_date']:, row['ticker']] += row['qty']
+            holdings_matrix.loc[purchase_row['trade_date']:, purchase_row['ticker']] += purchase_row['qty']
         except KeyError: pass
 
-    common_idx = price_matrix.index.intersection(holdings_matrix.index)
-    price_matrix = price_matrix.loc[common_idx]
-    holdings_matrix = holdings_matrix.loc[common_idx]
+    common_date_index = price_matrix.index.intersection(holdings_matrix.index)
+    price_matrix = price_matrix.loc[common_date_index]
+    holdings_matrix = holdings_matrix.loc[common_date_index]
     daily_portfolio = (holdings_matrix * price_matrix).sum(axis=1)
     dividend_series = calculate_dividend_series(
-        df_prices,
-        common_idx,
+        prices_data_frame,
+        common_date_index,
         holdings_matrix,
         proventos,
         set(unique_tickers),
@@ -259,42 +259,42 @@ def _calculate_history_logic(
     confirmed_accumulated = confirmed_dividends.cumsum()
     estimated_accumulated = estimated_dividends.cumsum()
 
-    aligned_cash_flow = daily_cash_flow.reindex(common_idx, fill_value=0.0)
+    aligned_cash_flow = daily_cash_flow.reindex(common_date_index, fill_value=0.0)
     benchmark_values = []
     if benchmark in {'IBOV', 'IFIX'}:
-        df_benchmark = pd.DataFrame(benchmark_query, columns=['trade_date', 'value'])
-        if not df_benchmark.empty:
-            df_benchmark['trade_date'] = pd.to_datetime(df_benchmark['trade_date'])
-            df_benchmark.set_index('trade_date', inplace=True)
-            prices = pd.to_numeric(df_benchmark['value']).reindex(common_idx).ffill()
+        benchmark_data_frame = pd.DataFrame(benchmark_query, columns=['trade_date', 'value'])
+        if not benchmark_data_frame.empty:
+            benchmark_data_frame['trade_date'] = pd.to_datetime(benchmark_data_frame['trade_date'])
+            benchmark_data_frame.set_index('trade_date', inplace=True)
+            prices = pd.to_numeric(benchmark_data_frame['value']).reindex(common_date_index).ffill()
             benchmark_factors = (prices / prices.shift(1)).fillna(1.0).values
         else:
-            benchmark_factors = [1.0] * len(common_idx)
+            benchmark_factors = [1.0] * len(common_date_index)
     elif benchmark == 'SP500':
-        df_benchmark = pd.DataFrame(
+        benchmark_data_frame = pd.DataFrame(
             benchmark_query,
             columns=['ticker', 'trade_date', 'value', 'dividend_value'],
         )
-        if not df_benchmark.empty:
-            df_benchmark['trade_date'] = pd.to_datetime(df_benchmark['trade_date'])
-            df_benchmark['value'] = pd.to_numeric(df_benchmark['value'])
-            prices = df_benchmark.set_index('trade_date')['value'].sort_index()
-            prices = prices.reindex(common_idx).ffill()
+        if not benchmark_data_frame.empty:
+            benchmark_data_frame['trade_date'] = pd.to_datetime(benchmark_data_frame['trade_date'])
+            benchmark_data_frame['value'] = pd.to_numeric(benchmark_data_frame['value'])
+            prices = benchmark_data_frame.set_index('trade_date')['value'].sort_index()
+            prices = prices.reindex(common_date_index).ffill()
             benchmark_factors = (prices / prices.shift(1)).fillna(1.0).values
         else:
-            benchmark_factors = [1.0] * len(common_idx)
+            benchmark_factors = [1.0] * len(common_date_index)
     else:
-        benchmark_factors = _build_cdi_factors(benchmark_query, common_idx)
+        benchmark_factors = _build_cdi_factors(benchmark_query, common_date_index)
 
-    curr_bench = 0.0
-    cash_flows_vals = aligned_cash_flow.values
-    limit = min(len(common_idx), len(cash_flows_vals), len(benchmark_factors))
-    for i in range(limit):
-        curr_bench = (curr_bench * benchmark_factors[i]) + cash_flows_vals[i]
-        benchmark_values.append(curr_bench)
+    current_benchmark_value = 0.0
+    cash_flow_values = aligned_cash_flow.values
+    limit = min(len(common_date_index), len(cash_flow_values), len(benchmark_factors))
+    for date_index in range(limit):
+        current_benchmark_value = (current_benchmark_value * benchmark_factors[date_index]) + cash_flow_values[date_index]
+        benchmark_values.append(current_benchmark_value)
 
     return [{
-        "trade_date": common_idx[i].strftime("%Y-%m-%d"),
+        "trade_date": common_date_index[i].strftime("%Y-%m-%d"),
         "portfolio_value": round(float(daily_portfolio.iloc[i]), 2),
         "dividends_value": round(float(daily_dividends.iloc[i]), 2),
         "dividends_accumulated": round(float(accumulated_dividends.iloc[i]), 2),
@@ -317,19 +317,19 @@ def _get_yearly_prices(
     # map: ticker -> { 2021: 15.50, 2022: 18.20 }
     yearly_closes = {}
 
-    for r in rows:
-        tck = r.ticker
-        if not r.adjusted_close: continue
+    for price_record in rows:
+        ticker = price_record.ticker
+        if not price_record.adjusted_close: continue
 
-        if r.trade_date.month != 12 or r.trade_date.day <= 20:
+        if price_record.trade_date.month != 12 or price_record.trade_date.day <= 20:
             continue
 
-        y = r.trade_date.year
-        val = float(r.adjusted_close)
+        year = price_record.trade_date.year
+        adjusted_close = float(price_record.adjusted_close)
 
-        if tck not in yearly_closes: yearly_closes[tck] = {}
+        if ticker not in yearly_closes: yearly_closes[ticker] = {}
         # Como ordenamos ASC, o último valor sobrescreve os anteriores, ficando o último de Dezembro
-        yearly_closes[tck][y] = val
+        yearly_closes[ticker][year] = adjusted_close
 
     return yearly_closes
 
@@ -361,17 +361,22 @@ def get_dashboard_data(
         return empty_response
 
     dividend_by_purchase = calculate_purchase_dividends(purchases, proventos)
+    dividends_by_ticker = {}
+    for purchase, dividend_value in zip(purchases, dividend_by_purchase):
+        dividends_by_ticker[purchase.ticker] = (
+            dividends_by_ticker.get(purchase.ticker, 0.0) + dividend_value
+        )
 
     # Identificar Data Inicial Global da Carteira para buscar histórico anual
-    effective_dates = [p.trade_date or p.settlement_date for p in purchases]
+    effective_dates = [purchase.trade_date or purchase.settlement_date for purchase in purchases]
     min_trade_date = min(d for d in effective_dates if d is not None)
     start_year_portfolio = min_trade_date.year if isinstance(min_trade_date, date) else min_trade_date.year
 
     # 2. Buscar Histórico de Preços Ajustados (Para cálculo de Total Return da posição)
     purchase_keys = list({
-        (p.ticker, p.trade_date or p.settlement_date)
-        for p in purchases
-        if p.trade_date or p.settlement_date
+        (purchase.ticker, purchase.trade_date or purchase.settlement_date)
+        for purchase in purchases
+        if purchase.trade_date or purchase.settlement_date
     })
     history_map = {}
 
@@ -386,40 +391,44 @@ def get_dashboard_data(
             print(f"⚠️ Erro ao buscar histórico ajustado: {e}")
 
     # 3. Consolidar Posições
-    pos_map = {}
+    positions_by_ticker = {}
     transactions_list = []
 
-    for purchase_index, p in enumerate(purchases):
-        purchase_date = p.trade_date or p.settlement_date
+    for purchase_index, purchase in enumerate(purchases):
+        purchase_date = purchase.trade_date or purchase.settlement_date
         # Adiciona à lista de transações
         transactions_list.append({
-            "ticker": p.ticker, "price": float(p.price), "qty": p.qty,
-            "trade_date": purchase_date, "type": "buy", "asset_type": p.type,
+            "ticker": purchase.ticker, "price": float(purchase.price), "qty": purchase.qty,
+            "trade_date": purchase_date, "type": "buy", "asset_type": purchase.type,
             "dividend_value": round(dividend_by_purchase[purchase_index], 2),
         })
 
-        price_raw = float(p.price)
-        hist_key = f"{p.ticker}_{purchase_date}"
-        price_adj = history_map.get(hist_key, price_raw)
-        if not price_adj or price_adj <= 0: price_adj = price_raw
+        raw_purchase_price = float(purchase.price)
+        history_key = f"{purchase.ticker}_{purchase_date}"
+        adjusted_purchase_price = history_map.get(history_key, raw_purchase_price)
+        if not adjusted_purchase_price or adjusted_purchase_price <= 0:
+            adjusted_purchase_price = raw_purchase_price
 
-        if p.ticker not in pos_map:
-            pos_map[p.ticker] = {
+        if purchase.ticker not in positions_by_ticker:
+            positions_by_ticker[purchase.ticker] = {
                 'qty': 0.0,
                 'cost_raw': 0.0,
                 'cost_adjusted': 0.0,
-                'type': p.type,
+                'type': purchase.type,
                 'min_date': purchase_date
             }
 
-        pos = pos_map[p.ticker]
-        pos['qty'] += p.qty
-        pos['cost_raw'] += (p.qty * price_raw)
-        pos['cost_adjusted'] += (p.qty * price_adj)
-        if purchase_date and purchase_date < pos['min_date']:
-            pos['min_date'] = purchase_date
+        position = positions_by_ticker[purchase.ticker]
+        position['qty'] += purchase.qty
+        position['cost_raw'] += (purchase.qty * raw_purchase_price)
+        position['cost_adjusted'] += (purchase.qty * adjusted_purchase_price)
+        if purchase_date and purchase_date < position['min_date']:
+            position['min_date'] = purchase_date
 
-    active_tickers = [t for t, d in pos_map.items() if d['qty'] > 0.0001]
+    active_tickers = [
+        ticker for ticker, position in positions_by_ticker.items()
+        if position['qty'] > 0.0001
+    ]
 
     if not active_tickers:
         return empty_response
@@ -457,20 +466,24 @@ def get_dashboard_data(
     # 4. Buscar Preços Atuais (Raw e Adjusted)
     latest_prices = wallets.get_latest_prices(active_tickers)
 
-    price_map_raw = {}
-    price_map_adj = {}
+    raw_price_by_ticker = {}
+    adjusted_price_by_ticker = {}
     name_map = {}
 
     for row in latest_prices:
-        if row.ticker not in price_map_raw:
-            raw_val = float(row.close)
-            adj_val = float(row.adjusted_close) if row.adjusted_close and row.adjusted_close > 0 else raw_val
-            price_map_raw[row.ticker] = raw_val
-            price_map_adj[row.ticker] = adj_val
+        if row.ticker not in raw_price_by_ticker:
+            raw_value = float(row.close)
+            adjusted_value = (
+                float(row.adjusted_close)
+                if row.adjusted_close and row.adjusted_close > 0
+                else raw_value
+            )
+            raw_price_by_ticker[row.ticker] = raw_value
+            adjusted_price_by_ticker[row.ticker] = adjusted_value
             name_map[row.ticker] = row.name
 
     for transaction, purchase in zip(transactions_list, purchases):
-        current_price = price_map_raw.get(purchase.ticker)
+        current_price = raw_price_by_ticker.get(purchase.ticker)
         valuation = (
             (current_price - float(purchase.price)) * float(purchase.qty)
             if current_price is not None
@@ -509,51 +522,70 @@ def get_dashboard_data(
     total_current_global = 0.0
     allocation_by_type = {"stock": 0.0, "fii": 0.0, "etf": 0.0}
 
-    cat_stats = {k: {'invested': 0.0, 'current': 0.0, 'start_date': None} for k in ['stock', 'fii', 'etf']}
+    statistics_by_asset_type = {
+        asset_type: {'invested': 0.0, 'current': 0.0, 'start_date': None}
+        for asset_type in ['stock', 'fii', 'etf']
+    }
 
     for ticker in active_tickers:
-        data = pos_map[ticker]
-        qty = data['qty']
+        position_data = positions_by_ticker[ticker]
+        quantity = position_data['qty']
 
-        curr_price_raw = price_map_raw.get(ticker)
-        curr_price_adj = price_map_adj.get(ticker)
+        current_raw_price = raw_price_by_ticker.get(ticker)
+        current_adjusted_price = adjusted_price_by_ticker.get(ticker)
 
-        pm_raw = data['cost_raw'] / qty
-        val_total_raw = qty * curr_price_raw if curr_price_raw is not None else None
-        profit_raw = val_total_raw - data['cost_raw'] if val_total_raw is not None else None
-        profit_pct_raw = (
-            (profit_raw / data['cost_raw'] * 100)
-            if profit_raw is not None and data['cost_raw'] > 0
+        average_raw_price = position_data['cost_raw'] / quantity
+        total_raw_value = quantity * current_raw_price if current_raw_price is not None else None
+        raw_profit = total_raw_value - position_data['cost_raw'] if total_raw_value is not None else None
+        raw_profit_percentage = (
+            (raw_profit / position_data['cost_raw'] * 100)
+            if raw_profit is not None and position_data['cost_raw'] > 0
             else None
         )
 
-        pm_adj = data['cost_adjusted'] / qty
-        val_total_adj_theoretical = qty * curr_price_adj if curr_price_adj is not None else None
-        profit_adj = (
-            val_total_adj_theoretical - data['cost_adjusted']
-            if val_total_adj_theoretical is not None
-            else None
+        dividends_total = dividends_by_ticker.get(ticker, 0.0)
+        total_return_profit_sql = (
+            raw_profit + dividends_total if raw_profit is not None else None
         )
-        profit_pct_adj = (
-            (profit_adj / data['cost_adjusted'] * 100)
-            if profit_adj is not None and data['cost_adjusted'] > 0
+        total_return_pct_sql = (
+            (total_return_profit_sql / position_data['cost_raw'] * 100)
+            if total_return_profit_sql is not None and position_data['cost_raw'] > 0
             else None
         )
 
-        total_invested_global += data['cost_raw']
-        if val_total_raw is not None:
-            total_current_global += val_total_raw
+        average_adjusted_price = position_data['cost_adjusted'] / quantity
+        theoretical_adjusted_value = (
+            quantity * current_adjusted_price
+            if current_adjusted_price is not None
+            else None
+        )
+        adjusted_profit = (
+            theoretical_adjusted_value - position_data['cost_adjusted']
+            if theoretical_adjusted_value is not None
+            else None
+        )
+        adjusted_profit_percentage = (
+            (adjusted_profit / position_data['cost_adjusted'] * 100)
+            if adjusted_profit is not None and position_data['cost_adjusted'] > 0
+            else None
+        )
 
-        atype = _resolve_asset_type(data['type'], classification_map.get(ticker, {}))
-        if val_total_raw is not None:
-            allocation_by_type[atype] = allocation_by_type.get(atype, 0) + val_total_raw
+        total_invested_global += position_data['cost_raw']
+        if total_raw_value is not None:
+            total_current_global += total_raw_value
 
-        if atype in cat_stats:
-            cat_stats[atype]['invested'] += data['cost_raw']
-            if val_total_raw is not None:
-                cat_stats[atype]['current'] += val_total_raw
-            if not cat_stats[atype]['start_date'] or data['min_date'] < cat_stats[atype]['start_date']:
-                cat_stats[atype]['start_date'] = data['min_date']
+        resolved_asset_type = _resolve_asset_type(
+            position_data['type'], classification_map.get(ticker, {})
+        )
+        if total_raw_value is not None:
+            allocation_by_type[resolved_asset_type] = allocation_by_type.get(resolved_asset_type, 0) + total_raw_value
+
+        if resolved_asset_type in statistics_by_asset_type:
+            statistics_by_asset_type[resolved_asset_type]['invested'] += position_data['cost_raw']
+            if total_raw_value is not None:
+                statistics_by_asset_type[resolved_asset_type]['current'] += total_raw_value
+            if not statistics_by_asset_type[resolved_asset_type]['start_date'] or position_data['min_date'] < statistics_by_asset_type[resolved_asset_type]['start_date']:
+                statistics_by_asset_type[resolved_asset_type]['start_date'] = position_data['min_date']
 
         # --- CALCULA BREAKDOWN ANUAL DO ATIVO ---
         yearly_breakdown = []
@@ -565,54 +597,59 @@ def get_dashboard_data(
 
         # Considerar preço atual como fechamento do ano corrente (YTD)
         # Adiciona o ano corrente no mapa temporariamente para o calculo
-        if curr_price_adj is not None:
-            ticker_yearly_closes[current_year] = curr_price_adj
+        if current_adjusted_price is not None:
+            ticker_yearly_closes[current_year] = current_adjusted_price
 
         sorted_years = sorted(ticker_yearly_closes.keys())
 
-        for i in range(1, len(sorted_years)):
-            prev_year = sorted_years[i-1]
-            curr_loop_year = sorted_years[i]
+        for year_index in range(1, len(sorted_years)):
+            previous_year = sorted_years[year_index - 1]
+            current_loop_year = sorted_years[year_index]
 
             # Só calculamos se o ano estiver dentro do horizonte da carteira (ou 1 antes pra base)
-            if curr_loop_year < start_year_portfolio:
+            if current_loop_year < start_year_portfolio:
                 continue
 
-            v_start = ticker_yearly_closes[prev_year]
-            v_end = ticker_yearly_closes[curr_loop_year]
+            starting_value = ticker_yearly_closes[previous_year]
+            ending_value = ticker_yearly_closes[current_loop_year]
 
-            if v_start > 0:
-                y_perf = ((v_end - v_start) / v_start) * 100
+            if starting_value > 0:
+                yearly_performance = ((ending_value - starting_value) / starting_value) * 100
                 yearly_breakdown.append({
-                    "year": curr_loop_year,
-                    "value": round(y_perf, 2),
-                    "start_price": v_start,
-                    "end_price": v_end
+                    "year": current_loop_year,
+                    "value": round(yearly_performance, 2),
+                    "start_price": starting_value,
+                    "end_price": ending_value
                 })
 
-        cls = classification_map.get(ticker, {})
+        classification = classification_map.get(ticker, {})
 
         positions_list.append({
             "ticker": ticker,
             "name": name_map.get(ticker, ticker),
-            "type": atype,
-            "subtype": cls.get("subtype", "Indefinido"),
-            "sector": cls.get("sector", "Outros"),
-            "qty": round(qty, 4),
-            "age": _format_asset_age(data['min_date']),
+            "type": resolved_asset_type,
+            "subtype": classification.get("subtype", "Indefinido"),
+            "sector": classification.get("sector", "Outros"),
+            "qty": round(quantity, 4),
+            "age": _format_asset_age(position_data['min_date']),
 
-            "avg_price": round(pm_raw, 2),
-            "avg_price_adjusted": round(pm_adj, 2),
-            "current_price": round(curr_price_raw, 2) if curr_price_raw is not None else None,
-            "current_adjusted": round(curr_price_adj, 2) if curr_price_adj is not None else None,
+            "avg_price": round(average_raw_price, 2),
+            "avg_price_adjusted": round(average_adjusted_price, 2),
+            "current_price": round(current_raw_price, 2) if current_raw_price is not None else None,
+            "current_adjusted": (
+                round(current_adjusted_price, 2)
+                if current_adjusted_price is not None
+                else None
+            ),
 
-            "total_value": round(val_total_raw, 2) if val_total_raw is not None else None,
+            "total_value": round(total_raw_value, 2) if total_raw_value is not None else None,
 
-            "profit": round(profit_raw, 2) if profit_raw is not None else None,
-            "profit_percent": round(profit_pct_raw, 2) if profit_pct_raw is not None else None,
+            # Rentabilidade total: valorização da posição + proventos registrados no SQL.
+            "profit": round(total_return_profit_sql, 2) if total_return_profit_sql is not None else None,
+            "profit_percent": round(total_return_pct_sql, 2) if total_return_pct_sql is not None else None,
 
-            "total_return_profit": round(profit_adj, 2) if profit_adj is not None else None,
-            "total_return_percent": round(profit_pct_adj, 2) if profit_pct_adj is not None else None,
+            "total_return_profit": round(total_return_profit_sql, 2) if total_return_profit_sql is not None else None,
+            "total_return_percent": round(total_return_pct_sql, 2) if total_return_pct_sql is not None else None,
 
             # INSERE OS DADOS REAIS
             "yearly_breakdown": yearly_breakdown,
@@ -623,17 +660,22 @@ def get_dashboard_data(
     # 6. Finalização
     positions_list.sort(key=lambda x: x['total_value'] or 0, reverse=True)
 
-    for p in positions_list:
+    for position in positions_list:
         if total_current_global > 0:
-            p['allocation_percent'] = round(((p['total_value'] or 0) / total_current_global) * 100, 2)
+            position['allocation_percent'] = round(
+                ((position['total_value'] or 0) / total_current_global) * 100,
+                2,
+            )
 
     valuation_profit_global = total_current_global - total_invested_global
 
-    start_date_global = min([p['min_date'] for p in pos_map.values()]) if pos_map else None
+    start_date_global = min(
+        position['min_date'] for position in positions_by_ticker.values()
+    ) if positions_by_ticker else None
 
     resolved_type_by_ticker = {
-        ticker: _resolve_asset_type(data['type'], classification_map.get(ticker, {}))
-        for ticker, data in pos_map.items()
+        ticker: _resolve_asset_type(position['type'], classification_map.get(ticker, {}))
+        for ticker, position in positions_by_ticker.items()
     }
 
     history_by_type = {
@@ -711,15 +753,21 @@ def get_dashboard_data(
         )
     }
 
-    for cat, stats in cat_stats.items():
-        c_valuation = stats['current'] - stats['invested']
-        c_profit = c_valuation + dividends_by_type.get(cat, 0.0)
-        c_yield = (c_profit / stats['invested'] * 100) if stats['invested'] > 0 else 0
-        projections[cat] = _calculate_period_stats(
-            c_profit,
-            c_yield,
-            stats['start_date'],
-            dividends_by_type.get(cat, 0.0),
+    for asset_type, asset_type_statistics in statistics_by_asset_type.items():
+        asset_type_valuation = (
+            asset_type_statistics['current'] - asset_type_statistics['invested']
+        )
+        asset_type_profit = asset_type_valuation + dividends_by_type.get(asset_type, 0.0)
+        asset_type_yield = (
+            asset_type_profit / asset_type_statistics['invested'] * 100
+            if asset_type_statistics['invested'] > 0
+            else 0
+        )
+        projections[asset_type] = _calculate_period_stats(
+            asset_type_profit,
+            asset_type_yield,
+            asset_type_statistics['start_date'],
+            dividends_by_type.get(asset_type, 0.0),
         )
 
     benchmark_by_type = {"stock": "IBOV", "fii": "IFIX", "etf": "SP500"}
@@ -738,7 +786,7 @@ def get_dashboard_data(
             ),
             preloaded_proventos=proventos,
         )
-        for ticker, position in pos_map.items()
+        for ticker, position in positions_by_ticker.items()
     }
 
     return {
@@ -756,7 +804,8 @@ def get_dashboard_data(
         "transactions": transactions_list,
         "allocation": {k: round(v, 2) for k, v in allocation_by_type.items()},
         "invested_by_type": {
-            k: round(v['invested'], 2) for k, v in cat_stats.items()
+            asset_type: round(statistics['invested'], 2)
+            for asset_type, statistics in statistics_by_asset_type.items()
         },
         "cdb_return": cdb_return_global,
         "cdb_return_by_type": cdb_return_by_type,
