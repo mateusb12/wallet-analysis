@@ -46,6 +46,14 @@ const formatMissingDates = (entries) => {
 
 const toDateKey = (date) => date.toISOString().slice(0, 10);
 
+const getTodayKey = () => {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const getLastExpectedTradingDate = () => {
   const date = new Date();
   while (date.getDay() === 0 || date.getDay() === 6) date.setDate(date.getDate() - 1);
@@ -403,10 +411,14 @@ export default function ManualPriceSync() {
         {sqlCoverage && (
           <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-200">
             <p>
-              Última data encontrada no SQL:{' '}
+              Último pregão salvo no SQL:{' '}
               <span className="font-semibold">{formatShortDate(sqlCoverage.latest_date) || 'nenhuma'}</span>
             </p>
-            {getMissingWeekdays(sqlCoverage.latest_date).length > 0 ? (
+            {getMissingWeekdays(sqlCoverage.latest_date).includes(getTodayKey()) ? (
+              <p className="mt-1 font-semibold">
+                O Yahoo ainda não disponibilizou o pregão de hoje ({formatShortDate(getTodayKey())}). Aguardando a publicação da cotação.
+              </p>
+            ) : getMissingWeekdays(sqlCoverage.latest_date).length > 0 ? (
               <p className="mt-1">
                 <span className="font-semibold">Está faltando no SQL desde {formatShortDate(getMissingWeekdays(sqlCoverage.latest_date)[0])}:</span>{' '}
                 {formatMissingDates(getMissingWeekdays(sqlCoverage.latest_date))}
