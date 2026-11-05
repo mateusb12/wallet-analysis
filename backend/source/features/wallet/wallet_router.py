@@ -135,6 +135,51 @@ def _build_cdi_factors(benchmark_query, common_idx):
     factors.loc[observed_dates] = 1 + (observed_cdi.loc[observed_dates] / 100.0)
     return factors.values
 
+
+def _calculate_cdb_return(purchases, cdi_rows):
+    """Estimate the gross return of investing each purchase at 100% of CDI."""
+    if not purchases or not cdi_rows:
+        return 0.0
+
+    def row_value(row, key, index):
+        if isinstance(row, dict):
+            return row[key]
+        if hasattr(row, key):
+            return getattr(row, key)
+        return row[index]
+
+    rates = sorted(
+        (pd.Timestamp(row_value(row, "trade_date", 0)), float(row_value(row, "value", 1)))
+        for row in cdi_rows
+    )
+    cash_flows = sorted(
+        (
+            pd.Timestamp(purchase.trade_date or purchase.settlement_date),
+            float(purchase.qty) * float(purchase.price),
+        )
+        for purchase in purchases
+        if purchase.trade_date or purchase.settlement_date
+    )
+    if not rates or not cash_flows:
+        return 0.0
+
+    balance = 0.0
+    flow_index = 0
+    # Cash flows start earning after the factor for their own date. This also
+    # makes weekend purchases start on the next CDI observation.
+    for rate_date, daily_rate in rates:
+        balance *= 1 + (daily_rate / 100.0)
+        while flow_index < len(cash_flows) and cash_flows[flow_index][0] <= rate_date:
+            balance += cash_flows[flow_index][1]
+            flow_index += 1
+
+    while flow_index < len(cash_flows):
+        balance += cash_flows[flow_index][1]
+        flow_index += 1
+
+    invested = sum(value for _, value in cash_flows)
+    return round(balance - invested, 2)
+
 def _calculate_history_logic(
         user_id: str,
         wallets: WalletRepository,
@@ -145,6 +190,7 @@ def _calculate_history_logic(
         preloaded_prices=None,
         preloaded_benchmark=None,
         preloaded_proventos=None,
+        asset_type_by_ticker=None,
 ) -> List[Dict]:
     history_data = load_history_data(
         user_id,
@@ -156,6 +202,7 @@ def _calculate_history_logic(
         preloaded_prices,
         preloaded_benchmark,
         preloaded_proventos,
+        asset_type_by_ticker,
     )
     purchases = history_data.purchases
     if not purchases: return []
@@ -306,6 +353,8 @@ def get_dashboard_data(
         "positions": [], "history": [], "transactions": [],
         "allocation": {"stock": 0, "fii": 0, "etf": 0},
         "invested_by_type": {"stock": 0, "fii": 0, "etf": 0},
+        "cdb_return": 0,
+        "cdb_return_by_type": {"stock": 0, "fii": 0, "etf": 0},
     }
 
     if not purchases:
@@ -582,24 +631,32 @@ def get_dashboard_data(
 
     start_date_global = min([p['min_date'] for p in pos_map.values()]) if pos_map else None
 
+    resolved_type_by_ticker = {
+        ticker: _resolve_asset_type(data['type'], classification_map.get(ticker, {}))
+        for ticker, data in pos_map.items()
+    }
+
     history_by_type = {
         "stock": _calculate_history_logic(
             current_user, wallets, "stock", "IBOV", preloaded_prices=history_prices,
             preloaded_purchases=history_purchases,
             preloaded_benchmark=history_benchmarks["IBOV"],
             preloaded_proventos=proventos,
+            asset_type_by_ticker=resolved_type_by_ticker,
         ),
         "fii": _calculate_history_logic(
             current_user, wallets, "fii", "IFIX", preloaded_prices=history_prices,
             preloaded_purchases=history_purchases,
             preloaded_benchmark=history_benchmarks["IFIX"],
             preloaded_proventos=proventos,
+            asset_type_by_ticker=resolved_type_by_ticker,
         ),
         "etf": _calculate_history_logic(
             current_user, wallets, "etf", "SP500", preloaded_prices=history_prices,
             preloaded_purchases=history_purchases,
             preloaded_benchmark=history_benchmarks["SP500"],
             preloaded_proventos=proventos,
+            asset_type_by_ticker=resolved_type_by_ticker,
         ),
     }
     history_total = _calculate_history_logic(
@@ -625,6 +682,25 @@ def get_dashboard_data(
 
     total_profit_global = valuation_profit_global + dividends_global
     total_profit_pct_global = (total_profit_global / total_invested_global * 100) if total_invested_global > 0 else 0
+    cdb_benchmark_value = (
+        float(history_total[-1].get("benchmark_value", 0.0))
+        if history_total
+        else 0.0
+    )
+    cdb_return_global = round(cdb_benchmark_value - total_invested_global, 2)
+    if cdb_return_global <= 0:
+        cdb_return_global = _calculate_cdb_return(purchases, history_benchmarks["CDI"])
+    cdb_return_by_type = {
+        asset_type: _calculate_cdb_return(
+            [
+                purchase
+                for purchase in purchases
+                if resolved_type_by_ticker.get(purchase.ticker, purchase.type) == asset_type
+            ],
+            history_benchmarks["CDI"],
+        )
+        for asset_type in ("stock", "fii", "etf")
+    }
 
     projections = {
         "total": _calculate_period_stats(
@@ -682,6 +758,8 @@ def get_dashboard_data(
         "invested_by_type": {
             k: round(v['invested'], 2) for k, v in cat_stats.items()
         },
+        "cdb_return": cdb_return_global,
+        "cdb_return_by_type": cdb_return_by_type,
     }
 
 # --- OUTROS ENDPOINTS (CRUD) PERMANECEM IGUAIS ---

@@ -27,6 +27,7 @@ def load_history_data(
     preloaded_prices=None,
     preloaded_benchmark=None,
     preloaded_proventos=None,
+    asset_type_by_ticker: dict[str, str] | None = None,
 ) -> HistoryData:
     """Resolve history inputs from preloaded data or the repository.
 
@@ -38,7 +39,10 @@ def load_history_data(
     else:
         purchases = [
             purchase for purchase in preloaded_purchases
-            if (not asset_type or purchase.type == asset_type)
+            if (
+                not asset_type
+                or (asset_type_by_ticker or {}).get(purchase.ticker, purchase.type) == asset_type
+            )
             and (not ticker or purchase.ticker == ticker)
         ]
 

@@ -11,6 +11,7 @@ from backend.source.features.wallet.wallet_router import (
     get_dashboard_data,
 )
 from backend.source.features.wallet.dividend_calculator import resolve_provento_ex_dates
+from backend.source.features.wallet.history_data import load_history_data
 
 
 class CdiFactorsTest(unittest.TestCase):
@@ -95,6 +96,33 @@ class PurchaseDividendAllocationTest(unittest.TestCase):
 
         self.assertEqual(resolve_provento_ex_dates([provento], prices), 1)
         self.assertEqual(provento.ex_date, date(2026, 10, 23))
+
+
+class HistoryCategoryAllocationTest(unittest.TestCase):
+    def test_ticker_proventos_are_filtered_by_canonical_category(self):
+        purchases = [
+            SimpleNamespace(ticker='BTLG11', type='stock', trade_date=date(2025, 11, 18)),
+            SimpleNamespace(ticker='BTLG11', type='fii', trade_date=date(2025, 12, 30)),
+        ]
+        wallets = SimpleNamespace(
+            list_proventos=lambda user_id: [],
+            get_prices_from=lambda tickers, start_date: [],
+            get_cdi_from=lambda start_date: [],
+        )
+
+        fii = load_history_data(
+            'user-1', wallets, asset_type='fii', preloaded_purchases=purchases,
+            preloaded_prices=[], preloaded_benchmark=[], preloaded_proventos=[],
+            asset_type_by_ticker={'BTLG11': 'fii'},
+        )
+        stock = load_history_data(
+            'user-1', wallets, asset_type='stock', preloaded_purchases=purchases,
+            preloaded_prices=[], preloaded_benchmark=[], preloaded_proventos=[],
+            asset_type_by_ticker={'BTLG11': 'fii'},
+        )
+
+        self.assertEqual(len(fii.purchases), 2)
+        self.assertEqual(stock.purchases, [])
 
 
 if __name__ == '__main__':

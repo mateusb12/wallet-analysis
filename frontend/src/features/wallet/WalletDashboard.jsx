@@ -359,7 +359,12 @@ const SummaryCard = ({
                 : formatCurrency(secondaryValue)}
             </p>
           ))}
-          {subtext && <p className="text-xs text-gray-400 mt-1">{subtext}</p>}
+          {subtext &&
+            (typeof subtext === 'string' ? (
+              <p className="text-xs text-gray-400 mt-1">{subtext}</p>
+            ) : (
+              subtext
+            ))}
         </div>
         <div className={`p-3 rounded-xl border border-blue-400/30 ${bgIcon} ${iconColor}`}>
           {title.includes('Investido') && <Wallet className="w-6 h-6" />}
@@ -415,6 +420,49 @@ const SummaryCard = ({
       aria-label="Expandir rentabilidade"
     >
       {cardContent}
+    </div>
+  );
+};
+
+const CdbComparison = ({
+  periodLabel,
+  invested,
+  actualReturn,
+  cdbReturn,
+  difference,
+  percentage = false,
+}) => {
+  const cdbOutperformed = difference >= 0;
+  const formatResult = (value) =>
+    percentage
+      ? formatPercent(invested > 0 ? (value / invested) * 100 : 0)
+      : formatCurrency(value);
+
+  return (
+    <div className="mt-2 space-y-2 text-xs">
+      <p className="text-gray-400">{periodLabel}</p>
+      <div className="rounded-lg border border-gray-700/80 bg-gray-900/30 px-3 py-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-gray-400">Investido</span>
+          <span className="font-semibold text-gray-200">{formatCurrency(invested)}</span>
+        </div>
+        <div className="mt-1.5 flex items-center justify-between gap-3 border-t border-gray-700/60 pt-1.5">
+          <span className="text-blue-300">Rendeu</span>
+          <span className="font-semibold text-blue-300">{formatResult(actualReturn)}</span>
+        </div>
+        <div className="mt-1.5 flex items-center justify-between gap-3 border-t border-gray-700/60 pt-1.5">
+          <span className="text-purple-300">Se fosse CDB</span>
+          <span className="font-semibold text-purple-300">{formatResult(cdbReturn)}</span>
+        </div>
+        <div className="mt-1.5 flex items-center justify-between gap-3 border-t border-gray-700/60 pt-1.5">
+          <span className="text-gray-500">
+            {cdbOutperformed ? 'Perdeu para o CDB' : 'Ganhou do CDB'}
+          </span>
+          <span className={`font-semibold ${cdbOutperformed ? 'text-red-300' : 'text-green-300'}`}>
+            {formatResult(Math.abs(difference))}
+          </span>
+        </div>
+      </div>
     </div>
   );
 };
@@ -866,6 +914,9 @@ function WalletDashboard() {
     transactionsMap,
   } = useWalletDashboardData(user);
 
+  const showCdbComparison = profitPeriod === 'total';
+  const cdbDifference = periodStats.cdbReturn - periodStats.profit;
+
   const handleCopyDashboard = () => {
     const dashboardSnapshot = {
       summary: {
@@ -1058,7 +1109,20 @@ function WalletDashboard() {
                           format: 'percent',
                         },
                   ]}
-                  subtext={periodStats.labelSuffix}
+                  subtext={
+                    showCdbComparison ? (
+                      <CdbComparison
+                        periodLabel={periodStats.labelSuffix}
+                        invested={totalInvested}
+                        actualReturn={periodStats.profit}
+                        cdbReturn={periodStats.cdbReturn}
+                        difference={cdbDifference}
+                        percentage={expandedSummary === 'profitability'}
+                      />
+                    ) : (
+                      periodStats.labelSuffix
+                    )
+                  }
                 />
               </div>
             ) : (

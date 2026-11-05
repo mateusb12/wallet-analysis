@@ -89,6 +89,8 @@ export const useWalletDashboardData = (user) => {
       transactions: [],
       allocation: { stock: 0, fii: 0, etf: 0 },
       invested_by_type: { stock: 0, fii: 0, etf: 0 },
+      cdb_return: 0,
+      cdb_return_by_type: { stock: 0, fii: 0, etf: 0 },
     };
 
     const adaptedPositions = raw.positions.map((p) => {
@@ -170,6 +172,23 @@ export const useWalletDashboardData = (user) => {
     const numericValuation = Number.isFinite(Number(stats.valuation))
       ? Number(stats.valuation)
       : numericProfit - numericDividends;
+    const hasCategoryCdbReturn =
+      activeTab === 'total' || Object.prototype.hasOwnProperty.call(safeData.cdb_return_by_type || {}, activeTab);
+    const categoryCdbFallback =
+      (Number(safeData.cdb_return) || 0) *
+      ((Number(safeData.invested_by_type?.[activeTab]) || 0) /
+        (Number(safeData.summary.total_invested) || 1));
+    const apiCdbReturn =
+      activeTab === 'total'
+        ? Number(safeData.cdb_return) || 0
+        : hasCategoryCdbReturn
+          ? Number(safeData.cdb_return_by_type[activeTab]) || 0
+          : categoryCdbFallback;
+    const historyBenchmarkValue = Number(safeData.history?.at(-1)?.benchmark_value) || 0;
+    const historyCdbReturn =
+      activeTab === 'total'
+        ? historyBenchmarkValue - (Number(safeData.summary.total_invested) || 0)
+        : 0;
 
     return {
       invested: numericInvested,
@@ -178,6 +197,7 @@ export const useWalletDashboardData = (user) => {
       yield: Number(stats.yield) || 0,
       valuation: numericValuation,
       dividends: numericDividends,
+      cdbReturn: apiCdbReturn > 0 ? apiCdbReturn : Math.max(0, historyCdbReturn),
       valuationPercent: numericInvested > 0 ? (numericValuation / numericInvested) * 100 : 0,
       dividendsPercent: numericInvested > 0 ? (numericDividends / numericInvested) * 100 : 0,
       labelSuffix: labels[profitPeriod],
@@ -343,6 +363,7 @@ export const useWalletDashboardData = (user) => {
       valuationPercent: dashboardStats.valuationPercent,
       dividendsPercent: dashboardStats.dividendsPercent,
       dividends: dashboardStats.dividends,
+      cdbReturn: dashboardStats.cdbReturn,
       labelSuffix: dashboardStats.labelSuffix,
     },
     categoryProfitability,
