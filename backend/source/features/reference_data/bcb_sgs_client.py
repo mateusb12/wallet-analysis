@@ -22,10 +22,23 @@ def fetch_series(series_id: int, start_date: str, end_date: str) -> list[dict[st
             headers={"User-Agent": "wallet-analysis/1.0"},
             timeout=15,
         )
+        # O SGS usa 404 para representar um intervalo sem observações.
+        # Quando isso acontece, não há motivo para tentar o SOAP legado.
+        if response.status_code == 404:
+            return []
         response.raise_for_status()
         data = response.json()
         if isinstance(data, list):
             return data
+        # O SGS responde HTTP 200 com este payload quando o intervalo ainda
+        # não possui observações publicadas (por exemplo, o CDI de hoje).
+        # Isso não é indisponibilidade do serviço e não deve acionar o SOAP.
+        if (
+            isinstance(data, dict)
+            and isinstance(data.get("erro"), dict)
+            and data["erro"].get("statusCode") == 404
+        ):
+            return []
     except (requests.RequestException, ValueError):
         pass
 

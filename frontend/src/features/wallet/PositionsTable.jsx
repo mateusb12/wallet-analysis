@@ -142,25 +142,19 @@ const getFiiTypeStyle = (type) => {
 };
 
 const getDisplayData = (row) => {
-  const isFii = row.type === 'fii';
-
-  const avgPrice = isFii && row.avg_price_adjusted ? row.avg_price_adjusted : row.purchase_price;
-  const currentPrice = isFii && row.current_adjusted ? row.current_adjusted : row.current_price;
-
-  let variationValue, rentabilityPercent;
-
-  if (isFii && row.total_return_profit !== undefined) {
-    variationValue = row.total_return_profit;
-    rentabilityPercent = row.total_return_percent;
-  } else {
-    const costBasis = row.purchase_price * row.qty;
-    const marketValue = row.current_price * row.qty;
-    variationValue = marketValue - costBasis;
-    rentabilityPercent = costBasis > 0 ? (variationValue / costBasis) * 100 : 0;
-  }
+  // A tabela de posições deve refletir a carteira da corretora: preço bruto
+  // de compra, cotação bruta atual e valor de mercado bruto. Os campos
+  // *_adjusted são usados em análises de retorno total e não representam o
+  // preço médio pago pelo usuário.
+  const avgPrice = row.purchase_price;
+  const currentPrice = row.current_price;
+  const costBasis = row.purchase_price * row.qty;
+  const marketValue = row.current_price * row.qty;
+  const variationValue = marketValue - costBasis;
+  const rentabilityPercent = costBasis > 0 ? (variationValue / costBasis) * 100 : 0;
 
   return {
-    isFii,
+    isFii: row.type === 'fii',
     avgPrice,
     currentPrice,
     variationValue,
