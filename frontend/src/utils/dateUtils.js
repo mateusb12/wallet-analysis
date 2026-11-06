@@ -30,7 +30,29 @@ export const formatFullDate = (dateInput) => {
   if (!dateInput) return '';
 
   const date = new Date(dateInput);
-  return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(date);
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
+};
+
+export const formatShortMonthDate = (dateInput) => {
+  if (!dateInput) return '';
+
+  const date = new Date(dateInput);
+  if (isNaN(date.getTime())) return '';
+
+  const parts = new Intl.DateTimeFormat('pt-BR', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).formatToParts(date);
+  const getPart = (type) => parts.find((part) => part.type === type)?.value || '';
+
+  return `${getPart('day')}/${getPart('month').replace('.', '')} de ${getPart('year')}`;
 };
 
 export const formatDateTimeLong = (dateInput, { includeYear = false } = {}) => {
@@ -109,4 +131,20 @@ export const formatElapsedPeriod = (startDateInput, endDateInput = new Date()) =
   const days = Math.floor((endDate - monthDate) / 86400000);
 
   return `${months}m${days}d`;
+};
+
+export const formatElapsedPeriodCompact = (startDateInput, endDateInput = new Date()) => {
+  const elapsedPeriod = formatElapsedPeriod(startDateInput, endDateInput);
+  const match = elapsedPeriod.match(/^(\d+)m(\d+)d$/);
+  if (!match) return elapsedPeriod;
+
+  const months = Number(match[1]);
+  const days = Number(match[2]);
+  if (months < 12) return months === 0 ? `${days}d` : elapsedPeriod;
+
+  const years = Math.floor(months / 12);
+  const remainingMonths = months % 12;
+  return [`${years}a`, remainingMonths ? `${remainingMonths}m` : '', days ? `${days}d` : '']
+    .filter(Boolean)
+    .join(' ');
 };

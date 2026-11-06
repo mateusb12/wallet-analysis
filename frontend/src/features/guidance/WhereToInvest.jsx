@@ -3,7 +3,12 @@ import { Info, RefreshCw } from 'lucide-react';
 import { fetchDashboardData, fetchTickerFundamentals } from '../../services/walletDataService.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { Tooltip } from '../../components/Tooltip.jsx';
-import { formatDateTimeLong } from '../../utils/dateUtils.js';
+import {
+  formatDateTimeLong,
+  formatElapsedPeriodCompact,
+  formatFullDate,
+  formatShortMonthDate,
+} from '../../utils/dateUtils.js';
 
 import iconStocks from '../../assets/stocks.png';
 import iconEtf from '../../assets/etf.png';
@@ -22,7 +27,7 @@ const metricDescriptions = {
     'Mostra o crescimento médio anualizado do preço da ação nos últimos 5 anos. O cálculo usa os preços ajustados para considerar os proventos distribuídos.',
 };
 
-const FUNDAMENTALS_CACHE_KEY = 'wallet-analysis:ticker-fundamentals:v9';
+const FUNDAMENTALS_CACHE_KEY = 'wallet-analysis:ticker-fundamentals:v18';
 
 const readFundamentalsCache = (ticker) => {
   try {
@@ -47,7 +52,7 @@ const fetchAndCacheFundamentals = async (ticker, force = false) => {
   const cached = !force && readFundamentalsCache(ticker);
   if (cached) return cached;
 
-  const data = await fetchTickerFundamentals(ticker);
+  const data = await fetchTickerFundamentals(ticker, { fresh: force });
   const cachedData = { data, fetchedAt: new Date().toISOString() };
   saveFundamentalsCache(ticker, data);
   return cachedData;
@@ -94,7 +99,7 @@ const formatShares = (value) => {
   return numericValue.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 };
 
-const formatEstimatedProfit = (value) => {
+const formatLargeCurrency = (value) => {
   if (!hasValue(value)) return '—';
 
   const absoluteValue = Math.abs(Number(value));
@@ -112,8 +117,33 @@ const formatEstimatedProfit = (value) => {
 };
 
 const getMetricDescription = (key, fundamentals) => {
-  if (key === 'pvp' && hasValue(fundamentals?.pvp)) {
-    return `Compara o preço de mercado da ação com o valor patrimonial correspondente. Neste ativo, o P/VP é ${formatMetric(fundamentals.pvp)}: cada R$ 1,00 de patrimônio por ação é avaliado pelo mercado em R$ ${Number(fundamentals.pvp).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`;
+  if (
+    key === 'pvp' &&
+    hasValue(fundamentals?.pvp) &&
+    hasValue(fundamentals?.price) &&
+    hasValue(fundamentals?.shares_outstanding)
+  ) {
+    const bookValuePerShare = hasValue(fundamentals?.book_value_per_share)
+      ? Number(fundamentals.book_value_per_share)
+      : Number(fundamentals.price) / Number(fundamentals.pvp);
+    const equityValue = bookValuePerShare * Number(fundamentals.shares_outstanding);
+
+    return (
+      <span className="block text-left">
+        <ul className="list-disc pl-4">
+          <li>Valor patrimonial total (VPT) = {formatLargeCurrency(equityValue)}</li>
+          <li>Quantidade de ações = {formatShares(fundamentals.shares_outstanding)}</li>
+          <li>Valor patrimonial por ação (VP) = {formatCurrency(bookValuePerShare)}</li>
+        </ul>
+        <span className="mt-1 block">
+          Valor atual da ação (P) = {formatCurrency(fundamentals.price)}
+        </span>
+        <span className="mt-1 block">
+          P/VP = {formatCurrency(fundamentals.price)} / {formatCurrency(bookValuePerShare)} ={' '}
+          {formatMetric(fundamentals.pvp)}
+        </span>
+      </span>
+    );
   }
 
   if (key === 'pl' && hasValue(fundamentals?.price) && hasValue(fundamentals?.eps)) {
@@ -127,11 +157,31 @@ const getMetricDescription = (key, fundamentals) => {
         <span className="block">
           Quantidade de ações = {formatShares(fundamentals.shares_outstanding)}
         </span>
-        <span className="block">Lucro total estimado = {formatEstimatedProfit(totalProfit)}</span>
+        <span className="block">Lucro total estimado = {formatLargeCurrency(totalProfit)}</span>
         <span className="block">Lucro por ação = {formatCurrency(fundamentals.eps)}</span>
         <span className="block">
           P/L = {formatMetric(fundamentals.price)} / {formatMetric(fundamentals.eps)} ={' '}
           {formatMetric(fundamentals.pl)}
+        </span>
+      </span>
+    );
+  }
+
+  if (key === 'roe' && hasValue(fundamentals?.roe)) {
+    const equityValue =
+      hasValue(fundamentals?.book_value_per_share) && hasValue(fundamentals?.shares_outstanding)
+        ? Number(fundamentals.book_value_per_share) * Number(fundamentals.shares_outstanding)
+        : null;
+    const estimatedNetIncome = equityValue === null ? null : Number(fundamentals.roe) * equityValue;
+
+    return (
+      <span className="block text-left">
+        <span className="block">
+          Lucro líquido estimado = {formatLargeCurrency(estimatedNetIncome)}
+        </span>
+        <span className="block">Patrimônio líquido (VPT) = {formatLargeCurrency(equityValue)}</span>
+        <span className="block">
+          ROE ≈ lucro líquido ÷ patrimônio líquido = {formatMetric(fundamentals.roe, true)}
         </span>
       </span>
     );
@@ -143,6 +193,22 @@ const getMetricDescription = (key, fundamentals) => {
 
   if (key === 'pl') {
     return 'Compara o preço da ação com o lucro anual por ação.';
+  }
+
+  if (key === 'cagr5' && fundamentals?.annual_returns?.length) {
+    return (
+      <span className="block text-left">
+        <span className="block">Retorno anual:</span>
+        {fundamentals.annual_returns.map(({ year, value }) => (
+          <span className="block" key={year}>
+            {year}:{' '}
+            <span className={value > 0 ? 'text-green-400' : value < 0 ? 'text-red-400' : ''}>
+              {formatMetric(value, true)}
+            </span>
+          </span>
+        ))}
+      </span>
+    );
   }
 
   if (key === 'cagr5' && hasValue(fundamentals?.cagr_5y)) {
@@ -218,19 +284,21 @@ const groupPositions = (positions, transactions) => {
 
     return {
       ...group,
-      contributions: contributions.map((contribution) => {
-        const qty = Number(contribution.qty) || 0;
-        const price = Number(contribution.price ?? contribution.purchase_price) || 0;
-        const totalValue =
-          Number(contribution.total_value ?? contribution.total_value_current) || price * qty;
+      contributions: contributions
+        .map((contribution) => {
+          const qty = Number(contribution.qty) || 0;
+          const price = Number(contribution.price ?? contribution.purchase_price) || 0;
+          const totalValue =
+            Number(contribution.total_value ?? contribution.total_value_current) || price * qty;
 
-        return {
-          qty,
-          price,
-          totalValue,
-          date: contribution.trade_date || contribution.purchaseDate,
-        };
-      }),
+          return {
+            qty,
+            price,
+            totalValue,
+            date: contribution.trade_date || contribution.purchaseDate,
+          };
+        })
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     };
   });
 };
@@ -290,6 +358,14 @@ export default function WhereToInvest() {
   const refreshFundamentals = () => {
     if (!selectedTicker || fundamentalsLoading) return;
 
+    try {
+      const cache = JSON.parse(localStorage.getItem(FUNDAMENTALS_CACHE_KEY) || '{}');
+      delete cache[selectedTicker];
+      localStorage.setItem(FUNDAMENTALS_CACHE_KEY, JSON.stringify(cache));
+    } catch {
+      // A atualização ainda deve continuar mesmo se o cache local estiver indisponível.
+    }
+
     setFundamentalsLoading(true);
     fetchAndCacheFundamentals(selectedTicker, true)
       .then(({ data, fetchedAt }) => {
@@ -335,6 +411,45 @@ export default function WhereToInvest() {
     transactions
   );
   const selectedPosition = selectedPositions.find((position) => position.ticker === selectedTicker);
+  const renderMetricCard = ([label, key]) => (
+    <div
+      key={key}
+      className="relative h-24 rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+    >
+      <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+        <span>{label}</span>
+        {key !== 'price' && key !== 'allTimeHigh' && (
+          <Tooltip content={getMetricDescription(key, tickerFundamentals)} maxTooltipWidth="24rem">
+            <span aria-label={`Explicação de ${label}`} className="inline-flex cursor-help">
+              <Info className="h-3.5 w-3.5" />
+            </span>
+          </Tooltip>
+        )}
+      </div>
+      <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+        {key === 'price' && formatCurrency(tickerFundamentals?.price)}
+        {key === 'allTimeHigh' &&
+          (hasValue(tickerFundamentals?.all_time_high)
+            ? formatCurrency(tickerFundamentals.all_time_high)
+            : '—')}
+        {key === 'pvp' && formatMetric(tickerFundamentals?.pvp)}
+        {key === 'pl' && formatMetric(tickerFundamentals?.pl)}
+        {key === 'dy' && formatMetric(tickerFundamentals?.dy, true)}
+        {key === 'roe' && formatMetric(tickerFundamentals?.roe, true)}
+        {key === 'cagr5' && formatMetric(tickerFundamentals?.cagr_5y, true)}
+      </p>
+      {key === 'allTimeHigh' && tickerFundamentals?.all_time_high_date && (
+        <Tooltip
+          content={formatShortMonthDate(tickerFundamentals.all_time_high_date)}
+          className="!absolute !bottom-3 !right-3"
+        >
+          <p className="cursor-help whitespace-nowrap border-b border-dashed border-gray-500 text-xs text-gray-500 dark:border-gray-400 dark:text-gray-400">
+            ({formatElapsedPeriodCompact(tickerFundamentals.all_time_high_date)} atrás)
+          </p>
+        </Tooltip>
+      )}
+    </div>
+  );
 
   return (
     <section className="w-full min-w-0 max-w-none space-y-6">
@@ -473,41 +588,22 @@ export default function WhereToInvest() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-                {[
-                  ['P/VP', 'pvp'],
-                  ['P/L', 'pl'],
-                  ['Dividend Yield', 'dy'],
-                  ['ROE', 'roe'],
-                  ['CAGR 5 anos', 'cagr5'],
-                ].map(([label, key]) => (
-                  <div
-                    key={key}
-                    className="rounded-lg border border-gray-200 p-3 dark:border-gray-700"
-                  >
-                    <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                      <span>{label}</span>
-                      <Tooltip
-                        content={getMetricDescription(key, tickerFundamentals)}
-                        maxTooltipWidth="24rem"
-                      >
-                        <span
-                          aria-label={`Explicação de ${label}`}
-                          className="inline-flex cursor-help"
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                        </span>
-                      </Tooltip>
-                    </div>
-                    <p className="mt-1 font-semibold text-gray-900 dark:text-white">
-                      {key === 'pvp' && formatMetric(tickerFundamentals?.pvp)}
-                      {key === 'pl' && formatMetric(tickerFundamentals?.pl)}
-                      {key === 'dy' && formatMetric(tickerFundamentals?.dy, true)}
-                      {key === 'roe' && formatMetric(tickerFundamentals?.roe, true)}
-                      {key === 'cagr5' && formatMetric(tickerFundamentals?.cagr_5y, true)}
-                    </p>
-                  </div>
-                ))}
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  {[
+                    ['Preço atual', 'price'],
+                    ['Máxima histórica', 'allTimeHigh'],
+                    ['CAGR 5 anos', 'cagr5'],
+                  ].map(renderMetricCard)}
+                </div>
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  {[
+                    ['P/VP', 'pvp'],
+                    ['P/L', 'pl'],
+                    ['Dividend Yield', 'dy'],
+                    ['ROE', 'roe'],
+                  ].map(renderMetricCard)}
+                </div>
               </div>
 
               {selectedPosition && (
@@ -516,8 +612,8 @@ export default function WhereToInvest() {
                     Aportes
                   </p>
                   <div
-                    className="grid min-w-0 gap-2 border-b border-gray-200 pb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400"
-                    style={{ gridTemplateColumns: '1.2fr 0.9fr 1fr 1fr' }}
+                    className="grid w-fit max-w-full min-w-0 gap-4 border-b border-gray-200 pb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400"
+                    style={{ gridTemplateColumns: '220px 90px 120px 110px' }}
                   >
                     <span className="min-w-0 whitespace-nowrap">Data</span>
                     <span className="min-w-0 whitespace-nowrap text-right">Quantidade</span>
@@ -528,11 +624,11 @@ export default function WhereToInvest() {
                     {selectedPosition.contributions.map((contribution, index) => (
                       <div
                         key={`${selectedTicker}-contribution-${index}`}
-                        className="grid min-w-0 gap-2 py-2 text-xs"
-                        style={{ gridTemplateColumns: '1.2fr 0.9fr 1fr 1fr' }}
+                        className="grid w-fit max-w-full min-w-0 gap-4 py-2 text-xs"
+                        style={{ gridTemplateColumns: '220px 90px 120px 110px' }}
                       >
                         <span className="min-w-0 whitespace-nowrap text-gray-500 dark:text-gray-400">
-                          {formatDate(contribution.date) || `Aporte ${index + 1}`}
+                          {formatFullDate(contribution.date) || `Aporte ${index + 1}`}
                         </span>
                         <span className="min-w-0 whitespace-nowrap text-right font-medium text-gray-900 dark:text-white">
                           {contribution.qty} cotas

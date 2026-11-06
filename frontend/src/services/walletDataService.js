@@ -52,8 +52,10 @@ export const fetchDashboardData = async () => {
   return await response.json();
 };
 
-export const fetchTickerFundamentals = async (ticker) => {
-  const response = await fetch(`${API_BASE}/sync/fundamentals/${encodeURIComponent(ticker)}`);
+export const fetchTickerFundamentals = async (ticker, { fresh = false } = {}) => {
+  const endpoint = `${API_BASE}/sync/fundamentals/${encodeURIComponent(ticker)}`;
+  const url = fresh ? `${endpoint}?refresh=${Date.now()}` : endpoint;
+  const response = await fetch(url, { cache: fresh ? 'no-store' : 'default' });
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {

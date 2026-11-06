@@ -998,20 +998,49 @@ def get_ticker_fundamentals(ticker: str):
 
     dividend_yield = max(dividend_yield_candidates) if dividend_yield_candidates else None
     cagr_5y = None
+    annual_returns = []
+    all_time_high = None
+    all_time_high_date = None
 
     try:
-        history = yf.Ticker(yf_ticker).history(period="5y", auto_adjust=False)
+        ticker = yf.Ticker(yf_ticker)
+        history = ticker.history(period="6y", auto_adjust=False)
+        max_history = ticker.history(period="max", auto_adjust=False)
+        if not max_history.empty:
+            max_price_column = "Close" if "Close" in max_history else "Adj Close"
+            historical_prices = pd.to_numeric(
+                max_history[max_price_column], errors="coerce"
+            ).dropna()
+            if not historical_prices.empty:
+                all_time_high = float(historical_prices.max())
+                all_time_high_date = pd.Timestamp(historical_prices.idxmax()).date().isoformat()
         if not history.empty:
             price_column = "Adj Close" if "Adj Close" in history else "Close"
-            prices = pd.to_numeric(history[price_column], errors="coerce").dropna()
+            prices = pd.to_numeric(history[price_column], errors="coerce").dropna().sort_index()
             if len(prices) >= 2:
-                start_price = float(prices.iloc[0])
+                five_year_start = prices.index[-1] - pd.DateOffset(years=5)
+                five_year_prices = prices[prices.index >= five_year_start]
+                start_price = float(five_year_prices.iloc[0])
                 end_price = float(prices.iloc[-1])
-                elapsed_days = (prices.index[-1] - prices.index[0]).days
+                elapsed_days = (prices.index[-1] - five_year_prices.index[0]).days
                 if start_price > 0 and elapsed_days > 0:
                     cagr_5y = (end_price / start_price) ** (365.25 / elapsed_days) - 1
+
+                current_year = date.today().year
+                for year in range(current_year, current_year - 5, -1):
+                    year_prices = prices[prices.index.year == year]
+                    if len(year_prices) >= 2:
+                        annual_returns.append(
+                            {
+                                "year": year,
+                                "value": float(year_prices.iloc[-1] / year_prices.iloc[0] - 1),
+                            }
+                        )
     except Exception:
         cagr_5y = None
+        annual_returns = []
+        all_time_high = None
+        all_time_high_date = None
 
     return {
         "ticker": ticker_up,
@@ -1019,12 +1048,16 @@ def get_ticker_fundamentals(ticker: str):
         "pvp": info.get("priceToBook"),
         "pl": info.get("trailingPE"),
         "price": info.get("currentPrice") or info.get("regularMarketPrice"),
+        "all_time_high": all_time_high,
+        "all_time_high_date": all_time_high_date,
         "eps": info.get("trailingEps"),
         "shares_outstanding": info.get("sharesOutstanding"),
+        "book_value_per_share": info.get("bookValue"),
         "dy": dividend_yield,
         "dividend_per_share": info.get("trailingAnnualDividendRate") or info.get("dividendRate"),
         "roe": info.get("returnOnEquity"),
         "cagr_5y": cagr_5y,
+        "annual_returns": annual_returns,
         "source": "yahoo",
         "updated_at": datetime.now().isoformat(),
     }
