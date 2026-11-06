@@ -28,9 +28,9 @@ const SUBTYPE_ICONS = {
     Desenvolvimento: desenvolvimento,
   },
   acoes: {
-    'Setor Financeiro': bancos,
-    Alimentos: alimentos,
+    Financeiro: bancos,
     Indústria: industria,
+    Consumo: alimentos,
   },
   etf: {
     'Ações Internacionais': internacionais,

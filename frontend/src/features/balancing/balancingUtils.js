@@ -1,6 +1,6 @@
 export const BALANCING_SCHEMA = {
   fii: ['Tijolo', 'Papel', 'Desenvolvimento'],
-  acoes: ['Setor Financeiro', 'Alimentos', 'Indústria'],
+  acoes: ['Financeiro', 'Indústria', 'Consumo', 'Energia e Saneamento'],
   etf: ['Ações Internacionais', 'Renda Fixa', 'Inflação', 'Imobiliários'],
   outros: ['Indefinido'],
 };
@@ -46,7 +46,6 @@ export const DEFAULT_BALANCING_TARGETS = {
 };
 
 export const LEGACY_SUBTYPE_MAP = {
-  'Bancos e Seguradoras': 'Setor Financeiro',
   Desenvolvimento: 'Desenvolvimento',
   Híbrido: 'Outros',
   'Fundos de Fundos': 'Outros',
@@ -100,10 +99,14 @@ const LOCAL_CLASSIFICATIONS = Object.freeze({
   LFTB11: ['ETF - Renda Fixa', 'Renda Fixa'],
   AUPO11: ['ETF - Renda Fixa', 'Renda Fixa'],
 
+  BBAS3: ['Ação - Financeiro Brasileiro', 'Financeiro'],
+  BBSE3: ['Ação - Financeiro Brasileiro', 'Financeiro'],
   WEGE3: ['Ação - Indústria Global', 'Indústria'],
-  BBAS3: ['Ação - Financeiro Brasileiro', 'Setor Financeiro'],
-  BBSE3: ['Ação - Financeiro Brasileiro', 'Setor Financeiro'],
-  MDIA3: ['Ação - Consumo Essencial', 'Alimentos'],
+  RANI3: ['Ação - Indústria', 'Indústria'],
+  MDIA3: ['Ação - Consumo', 'Consumo'],
+  ABEV3: ['Ação - Consumo', 'Consumo'],
+  ISAE4: ['Ação - Energia e Saneamento', 'Energia e Saneamento'],
+  SAPR4: ['Ação - Energia e Saneamento', 'Energia e Saneamento'],
 });
 
 export async function classifyAsset(ticker) {

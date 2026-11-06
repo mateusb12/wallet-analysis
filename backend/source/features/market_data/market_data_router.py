@@ -104,23 +104,43 @@ CLASSIFICATION_OVERRIDES: Dict[str, Dict[str, str]] = {
     },
     "BBAS3": {
         "detected_type": "Ação - Financeiro Brasileiro",
-        "sector": "Setor Financeiro",
+        "sector": "Financeiro",
         "reasoning": "Override: Banco brasileiro."
     },
     "BBSE3": {
         "detected_type": "Ação - Financeiro Brasileiro",
-        "sector": "Setor Financeiro",
+        "sector": "Financeiro",
         "reasoning": "Override: Seguradora brasileira."
-    },
-    "MDIA3": {
-        "detected_type": "Ação - Consumo Essencial",
-        "sector": "Alimentos",
-        "reasoning": "Override: Empresa brasileira de alimentos."
     },
     "WEGE3": {
         "detected_type": "Ação - Indústria Global",
         "sector": "Indústria",
         "reasoning": "Override: Indústria brasileira com atuação global."
+    },
+    "RANI3": {
+        "detected_type": "Ação - Indústria",
+        "sector": "Indústria",
+        "reasoning": "Override: Empresa brasileira do setor industrial."
+    },
+    "MDIA3": {
+        "detected_type": "Ação - Consumo",
+        "sector": "Consumo",
+        "reasoning": "Override: Empresa brasileira de consumo."
+    },
+    "ABEV3": {
+        "detected_type": "Ação - Consumo",
+        "sector": "Consumo",
+        "reasoning": "Override: Empresa brasileira de bebidas e consumo."
+    },
+    "ISAE4": {
+        "detected_type": "Ação - Energia e Saneamento",
+        "sector": "Energia e Saneamento",
+        "reasoning": "Override: Empresa brasileira de energia."
+    },
+    "SAPR4": {
+        "detected_type": "Ação - Energia e Saneamento",
+        "sector": "Energia e Saneamento",
+        "reasoning": "Override: Empresa brasileira de saneamento."
     },
     "HGLG11": {
         "detected_type": "FII - Tijolo (Logística)",
@@ -953,20 +973,22 @@ def classify_ticker(
             sector_n = _norm(sector_y)
             sector_map = {
                 "financial services": "Financeiro", "basic materials": "Materiais Básicos",
-                "utilities": "Utilidade Pública",
-                "energy": "Energia", "consumer defensive": "Consumo Não-Cíclico",
-                "consumer cyclical": "Consumo Cíclico",
+                "utilities": "Energia e Saneamento",
+                "energy": "Energia e Saneamento", "consumer defensive": "Consumo",
+                "consumer cyclical": "Consumo",
                 "industrials": "Industrial", "technology": "Tecnologia", "healthcare": "Saúde",
                 "real estate": "Imobiliário",
                 "communication services": "Comunicações"
             }
             translated_sector = sector_map.get(sector_n, sector_y.capitalize() if sector_y else "Geral")
             if translated_sector == "Financeiro":
-                macro_strategy = "Setor Financeiro"
-            elif translated_sector == "Consumo Não-Cíclico":
-                macro_strategy = "Alimentos"
+                macro_strategy = "Financeiro"
+            elif translated_sector == "Consumo":
+                macro_strategy = "Consumo"
             elif translated_sector == "Industrial":
                 macro_strategy = "Indústria"
+            elif translated_sector == "Energia e Saneamento":
+                macro_strategy = "Energia e Saneamento"
             else:
                 macro_strategy = "Outros"
 
