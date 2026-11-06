@@ -974,6 +974,7 @@ def classify_ticker(
 def get_ticker_fundamentals(ticker: str):
     ticker_up = ticker.upper().replace(".SA", "")
     yf_ticker = f"{ticker_up}.SA"
+    is_imab = ticker_up in {"IMAB", "IMAB11"}
 
     try:
         info = yf.Ticker(yf_ticker).info or {}
@@ -1041,6 +1042,10 @@ def get_ticker_fundamentals(ticker: str):
         annual_returns = []
         all_time_high = None
         all_time_high_date = None
+
+    if is_imab:
+        cagr_5y = None
+        annual_returns = []
 
     return {
         "ticker": ticker_up,
