@@ -27,7 +27,7 @@ const metricDescriptions = {
     'Mostra o crescimento médio anualizado do preço da ação nos últimos 5 anos. O cálculo usa os preços ajustados para considerar os proventos distribuídos.',
 };
 
-const FUNDAMENTALS_CACHE_KEY = 'wallet-analysis:ticker-fundamentals:v19';
+const FUNDAMENTALS_CACHE_KEY = 'wallet-analysis:ticker-fundamentals:v20';
 
 const readFundamentalsCache = (ticker) => {
   try {
@@ -310,6 +310,7 @@ export default function WhereToInvest() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedTicker, setSelectedTicker] = useState(null);
   const [tickerFundamentals, setTickerFundamentals] = useState(null);
+  const [tickerSearch, setTickerSearch] = useState('');
   const [fundamentalsFetchedAt, setFundamentalsFetchedAt] = useState(null);
   const [fundamentalsLoading, setFundamentalsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -411,6 +412,14 @@ export default function WhereToInvest() {
     transactions
   );
   const selectedPosition = selectedPositions.find((position) => position.ticker === selectedTicker);
+  const searchTicker = (event) => {
+    event.preventDefault();
+    const ticker = tickerSearch.trim().toUpperCase();
+    if (!ticker) return;
+
+    setSelectedCategory(null);
+    setSelectedTicker(ticker);
+  };
   const renderMetricCard = ([label, key]) => (
     <div
       key={key}
@@ -499,6 +508,29 @@ export default function WhereToInvest() {
         })}
       </div>
 
+      <form
+        onSubmit={searchTicker}
+        className="rounded-2xl border border-gray-200 bg-white p-5 shadow dark:border-gray-700 dark:bg-gray-800"
+      >
+        <h2 className="text-lg font-bold text-gray-900 dark:text-white">Procurar ticker</h2>
+        <div className="mt-3 flex max-w-xl gap-3">
+          <input
+            type="text"
+            value={tickerSearch}
+            onChange={(event) => setTickerSearch(event.target.value)}
+            placeholder="Ex.: PETR4, IMAB11 ou BBSE3"
+            aria-label="Ticker do ativo"
+            className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-600 dark:text-white"
+          />
+          <button
+            type="submit"
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+          >
+            Procurar
+          </button>
+        </div>
+      </form>
+
       {selected && (
         <div className="w-full rounded-2xl border border-gray-200 bg-white p-5 shadow dark:border-gray-700 dark:bg-gray-800">
           <div className="mb-4 flex items-center gap-3 border-b border-gray-100 pb-3 dark:border-gray-700">
@@ -551,102 +583,100 @@ export default function WhereToInvest() {
               Você ainda não possui ativos nessa categoria.
             </p>
           )}
+        </div>
+      )}
 
-          {selectedTicker && (
-            <footer className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
-              <div className="mb-3 flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                      Detalhes do ativo
-                    </p>
-                    <button
-                      type="button"
-                      onClick={refreshFundamentals}
-                      disabled={fundamentalsLoading}
-                      aria-label="Atualizar fundamentos"
-                      className="rounded-md p-1 text-gray-500 transition hover:bg-gray-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-700"
-                    >
-                      <RefreshCw
-                        className={`h-3.5 w-3.5 ${fundamentalsLoading ? 'animate-spin' : ''}`}
-                      />
-                    </button>
-                    <Tooltip
-                      content={`Última consulta: ${formatDateTimeLong(fundamentalsFetchedAt, { includeYear: true })}`}
-                    >
-                      <span
-                        aria-label="Data da última consulta"
-                        className="inline-flex cursor-help text-gray-500 dark:text-gray-400"
-                      >
-                        <Info className="h-3.5 w-3.5" />
-                      </span>
-                    </Tooltip>
-                  </div>
-                  <p className="text-lg font-bold text-gray-900 dark:text-white">
-                    {selectedTicker}
-                  </p>
-                </div>
+      {selectedTicker && (
+        <footer className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-3 flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Detalhes do ativo
+                </p>
+                <button
+                  type="button"
+                  onClick={refreshFundamentals}
+                  disabled={fundamentalsLoading}
+                  aria-label="Atualizar fundamentos"
+                  className="rounded-md p-1 text-gray-500 transition hover:bg-gray-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-700"
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${fundamentalsLoading ? 'animate-spin' : ''}`}
+                  />
+                </button>
+                <Tooltip
+                  content={`Última consulta: ${formatDateTimeLong(fundamentalsFetchedAt, { includeYear: true })}`}
+                >
+                  <span
+                    aria-label="Data da última consulta"
+                    className="inline-flex cursor-help text-gray-500 dark:text-gray-400"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </span>
+                </Tooltip>
               </div>
+              <p className="text-lg font-bold text-gray-900 dark:text-white">{selectedTicker}</p>
+            </div>
+          </div>
 
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                  {[
-                    ['Preço atual', 'price'],
-                    ['Máxima histórica', 'allTimeHigh'],
-                    ['CAGR 5 anos', 'cagr5'],
-                  ].map(renderMetricCard)}
-                </div>
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                  {[
-                    ['P/VP', 'pvp'],
-                    ['P/L', 'pl'],
-                    ['Dividend Yield', 'dy'],
-                    ['ROE', 'roe'],
-                  ].map(renderMetricCard)}
-                </div>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {[
+                ['Preço atual', 'price'],
+                ['Máxima histórica', 'allTimeHigh'],
+                ['CAGR 5 anos', 'cagr5'],
+              ].map(renderMetricCard)}
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {[
+                ['P/VP', 'pvp'],
+                ['P/L', 'pl'],
+                ['Dividend Yield', 'dy'],
+                ['ROE', 'roe'],
+              ].map(renderMetricCard)}
+            </div>
+          </div>
+
+          {selectedPosition && (
+            <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Aportes
+              </p>
+              <div
+                className="grid w-fit max-w-full min-w-0 gap-4 border-b border-gray-200 pb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400"
+                style={{ gridTemplateColumns: '220px 90px 120px 110px' }}
+              >
+                <span className="min-w-0 whitespace-nowrap">Data</span>
+                <span className="min-w-0 whitespace-nowrap text-right">Quantidade</span>
+                <span className="min-w-0 whitespace-nowrap text-right">Valor unitário</span>
+                <span className="min-w-0 whitespace-nowrap text-right">Custo total</span>
               </div>
-
-              {selectedPosition && (
-                <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Aportes
-                  </p>
+              <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                {selectedPosition.contributions.map((contribution, index) => (
                   <div
-                    className="grid w-fit max-w-full min-w-0 gap-4 border-b border-gray-200 pb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400"
+                    key={`${selectedTicker}-contribution-${index}`}
+                    className="grid w-fit max-w-full min-w-0 gap-4 py-2 text-xs"
                     style={{ gridTemplateColumns: '220px 90px 120px 110px' }}
                   >
-                    <span className="min-w-0 whitespace-nowrap">Data</span>
-                    <span className="min-w-0 whitespace-nowrap text-right">Quantidade</span>
-                    <span className="min-w-0 whitespace-nowrap text-right">Valor unitário</span>
-                    <span className="min-w-0 whitespace-nowrap text-right">Custo total</span>
+                    <span className="min-w-0 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                      {formatFullDate(contribution.date) || `Aporte ${index + 1}`}
+                    </span>
+                    <span className="min-w-0 whitespace-nowrap text-right font-medium text-gray-900 dark:text-white">
+                      {contribution.qty} cotas
+                    </span>
+                    <span className="min-w-0 whitespace-nowrap text-right font-medium text-gray-900 dark:text-white">
+                      {formatCurrency(contribution.price)}
+                    </span>
+                    <span className="min-w-0 whitespace-nowrap text-right font-medium text-gray-900 dark:text-white">
+                      {formatCurrency(contribution.totalValue)}
+                    </span>
                   </div>
-                  <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {selectedPosition.contributions.map((contribution, index) => (
-                      <div
-                        key={`${selectedTicker}-contribution-${index}`}
-                        className="grid w-fit max-w-full min-w-0 gap-4 py-2 text-xs"
-                        style={{ gridTemplateColumns: '220px 90px 120px 110px' }}
-                      >
-                        <span className="min-w-0 whitespace-nowrap text-gray-500 dark:text-gray-400">
-                          {formatFullDate(contribution.date) || `Aporte ${index + 1}`}
-                        </span>
-                        <span className="min-w-0 whitespace-nowrap text-right font-medium text-gray-900 dark:text-white">
-                          {contribution.qty} cotas
-                        </span>
-                        <span className="min-w-0 whitespace-nowrap text-right font-medium text-gray-900 dark:text-white">
-                          {formatCurrency(contribution.price)}
-                        </span>
-                        <span className="min-w-0 whitespace-nowrap text-right font-medium text-gray-900 dark:text-white">
-                          {formatCurrency(contribution.totalValue)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </footer>
+                ))}
+              </div>
+            </div>
           )}
-        </div>
+        </footer>
       )}
     </section>
   );

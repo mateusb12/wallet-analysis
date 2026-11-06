@@ -326,6 +326,28 @@ def normalize_yahoo_dividends(dividend_series: pd.Series) -> Dict[str, float]:
     return result
 
 
+def find_historical_high(price_series: pd.Series) -> tuple[Optional[float], Optional[str]]:
+    """Return the historical high while ignoring isolated Yahoo price spikes."""
+    prices = pd.to_numeric(price_series, errors="coerce").dropna().sort_index()
+    prices = prices[prices > 0]
+    if prices.empty:
+        return None, None
+
+    # A single value many times above both adjacent sessions is a malformed
+    # historical record, not a genuine market high.
+    if len(prices) >= 3:
+        previous_prices = prices.shift(1)
+        next_prices = prices.shift(-1)
+        isolated_spike = prices > 10 * pd.concat([previous_prices, next_prices], axis=1).max(axis=1)
+        prices = prices[~isolated_spike]
+
+    if prices.empty:
+        return None, None
+
+    high_date = prices.idxmax()
+    return float(prices.loc[high_date]), pd.Timestamp(high_date).date().isoformat()
+
+
 # ==============================================================================
 # 3. ROTAS DE SINCRONIZAÇÃO (INTEGRAÇÃO DE FUNCIONALIDADES)
 # ==============================================================================
@@ -1009,12 +1031,9 @@ def get_ticker_fundamentals(ticker: str):
         max_history = ticker.history(period="max", auto_adjust=False)
         if not max_history.empty:
             max_price_column = "Close" if "Close" in max_history else "Adj Close"
-            historical_prices = pd.to_numeric(
-                max_history[max_price_column], errors="coerce"
-            ).dropna()
-            if not historical_prices.empty:
-                all_time_high = float(historical_prices.max())
-                all_time_high_date = pd.Timestamp(historical_prices.idxmax()).date().isoformat()
+            all_time_high, all_time_high_date = find_historical_high(
+                max_history[max_price_column]
+            )
         if not history.empty:
             price_column = "Adj Close" if "Adj Close" in history else "Close"
             prices = pd.to_numeric(history[price_column], errors="coerce").dropna().sort_index()
