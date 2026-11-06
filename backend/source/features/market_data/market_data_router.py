@@ -988,6 +988,8 @@ def get_ticker_fundamentals(ticker: str):
         "sector": info.get("sectorDisp") or info.get("sector"),
         "pvp": info.get("priceToBook"),
         "pl": info.get("trailingPE"),
+        "price": info.get("currentPrice") or info.get("regularMarketPrice"),
+        "eps": info.get("trailingEps"),
         "dy": info.get("dividendYield") or info.get("trailingAnnualDividendYield"),
         "roe": info.get("returnOnEquity"),
         "source": "yahoo",

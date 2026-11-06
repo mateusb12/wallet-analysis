@@ -1,6 +1,12 @@
 import React, { useRef, useState } from 'react';
 
-export const Tooltip = ({ content, children, className = '' }) => {
+export const Tooltip = ({
+  content,
+  children,
+  className = '',
+  tooltipClassName = '',
+  maxTooltipWidth,
+}) => {
   const triggerRef = useRef(null);
   const [tooltipMaxWidth, setTooltipMaxWidth] = useState(null);
 
@@ -23,8 +29,16 @@ export const Tooltip = ({ content, children, className = '' }) => {
       {children}
       <span
         role="tooltip"
-        style={tooltipMaxWidth ? { maxWidth: `${tooltipMaxWidth}px` } : undefined}
-        className="pointer-events-none absolute bottom-full left-0 z-40 mb-2 w-max max-w-[calc(100vw-1rem)] whitespace-normal rounded-md border border-gray-600 bg-gray-900 px-2.5 py-1.5 text-center text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover/tooltip:opacity-100 group-focus/tooltip:opacity-100"
+        style={
+          tooltipMaxWidth
+            ? {
+                maxWidth: maxTooltipWidth
+                  ? `min(${tooltipMaxWidth}px, ${maxTooltipWidth})`
+                  : `${tooltipMaxWidth}px`,
+              }
+            : undefined
+        }
+        className={`pointer-events-none absolute bottom-full left-0 z-40 mb-2 w-max max-w-[calc(100vw-1rem)] whitespace-normal rounded-md border border-gray-600 bg-gray-900 px-2.5 py-1.5 text-center text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover/tooltip:opacity-100 group-focus/tooltip:opacity-100 ${tooltipClassName}`}
       >
         {content}
       </span>

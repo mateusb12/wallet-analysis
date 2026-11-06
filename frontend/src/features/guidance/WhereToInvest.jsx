@@ -15,7 +15,12 @@ const categories = [
   { type: 'fii', label: 'FIIs', icon: iconFiis },
 ];
 
-const FUNDAMENTALS_CACHE_KEY = 'wallet-analysis:ticker-fundamentals:v1';
+const metricDescriptions = {
+  dy: 'Mostra os dividendos pagos nos últimos 12 meses em relação ao preço atual. Ex.: DY de 6% em uma ação de R$ 100 representa cerca de R$ 6 em dividendos no período.',
+  roe: 'Mede quanto lucro líquido a empresa gera com o patrimônio dos acionistas. Ex.: ROE de 10% significa R$ 10 de lucro para cada R$ 100 de patrimônio.',
+};
+
+const FUNDAMENTALS_CACHE_KEY = 'wallet-analysis:ticker-fundamentals:v2';
 
 const readFundamentalsCache = (ticker) => {
   try {
@@ -65,6 +70,28 @@ const formatMetric = (value, percent = false) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}${percent ? '%' : ''}`;
+};
+
+const hasValue = (value) => value !== null && value !== undefined && !Number.isNaN(Number(value));
+
+const getMetricDescription = (key, fundamentals) => {
+  if (key === 'pvp' && hasValue(fundamentals?.pvp)) {
+    return `Compara o preço de mercado da ação com o valor patrimonial correspondente. Neste ativo, o P/VP é ${formatMetric(fundamentals.pvp)}: cada R$ 1,00 de patrimônio por ação é avaliado pelo mercado em R$ ${Number(fundamentals.pvp).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`;
+  }
+
+  if (key === 'pl' && hasValue(fundamentals?.price) && hasValue(fundamentals?.eps)) {
+    return `Para o valor de uma ação de ${formatCurrency(fundamentals.price)} e lucro gerado por cada ação de ${formatCurrency(fundamentals.eps)}, temos um P/L de ${formatMetric(fundamentals.pl)}. Isso significa que o preço da ação equivale a ${formatMetric(fundamentals.pl)} vezes o lucro anual gerado por ela.`;
+  }
+
+  if (key === 'pvp') {
+    return 'Compara o preço de mercado da ação com o valor patrimonial correspondente.';
+  }
+
+  if (key === 'pl') {
+    return 'Compara o preço da ação com o lucro anual por ação.';
+  }
+
+  return metricDescriptions[key];
 };
 
 const groupPositions = (positions, transactions) => {
@@ -367,7 +394,20 @@ export default function WhereToInvest() {
                     key={key}
                     className="rounded-lg border border-gray-200 p-3 dark:border-gray-700"
                   >
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+                    <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                      <span>{label}</span>
+                      <Tooltip
+                        content={getMetricDescription(key, tickerFundamentals)}
+                        maxTooltipWidth="24rem"
+                      >
+                        <span
+                          aria-label={`Explicação de ${label}`}
+                          className="inline-flex cursor-help"
+                        >
+                          <Info className="h-3.5 w-3.5" />
+                        </span>
+                      </Tooltip>
+                    </div>
                     <p className="mt-1 font-semibold text-gray-900 dark:text-white">
                       {key === 'pvp' && formatMetric(tickerFundamentals?.pvp)}
                       {key === 'pl' && formatMetric(tickerFundamentals?.pl)}
