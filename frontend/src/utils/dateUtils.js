@@ -33,7 +33,7 @@ export const formatFullDate = (dateInput) => {
   return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(date);
 };
 
-export const formatDateTimeLong = (dateInput) => {
+export const formatDateTimeLong = (dateInput, { includeYear = false } = {}) => {
   if (!dateInput) return '—';
 
   const value = dateInput instanceof Date ? dateInput : String(dateInput);
@@ -46,6 +46,7 @@ export const formatDateTimeLong = (dateInput) => {
   const parts = new Intl.DateTimeFormat('pt-BR', {
     day: 'numeric',
     month: 'long',
+    ...(includeYear ? { year: 'numeric' } : {}),
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -54,8 +55,9 @@ export const formatDateTimeLong = (dateInput) => {
   const getPart = (type) => parts.find((part) => part.type === type)?.value || '';
   const month = getPart('month');
   const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1);
+  const year = getPart('year');
 
-  return `${getPart('day')} de ${capitalizedMonth} às ${getPart('hour')}h${getPart('minute')}`;
+  return `${getPart('day')} de ${capitalizedMonth}${includeYear ? ` de ${year}` : ''} às ${getPart('hour')}h${getPart('minute')}`;
 };
 
 const parseDateAsUTC = (dateInput) => {

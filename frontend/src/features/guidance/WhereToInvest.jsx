@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
-import { fetchDashboardData } from '../../services/walletDataService.js';
+import { Info, RefreshCw } from 'lucide-react';
+import { fetchDashboardData, fetchTickerFundamentals } from '../../services/walletDataService.js';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { Tooltip } from '../../components/Tooltip.jsx';
+import { formatDateTimeLong } from '../../utils/dateUtils.js';
 
 import iconStocks from '../../assets/stocks.png';
 import iconEtf from '../../assets/etf.png';
@@ -12,19 +15,35 @@ const categories = [
   { type: 'fii', label: 'FIIs', icon: iconFiis },
 ];
 
-const tickerDetails = {
-  BBAS3: { sector: 'Bancos', pvp: '0,85', pl: '7,42', dy: '8,10%', roe: '12,40%' },
-  MDIA3: { sector: 'Alimentos', pvp: '1,65', pl: '11,30', dy: '4,20%', roe: '14,60%' },
-  WEGE3: { sector: 'Indústria', pvp: '8,20', pl: '32,10', dy: '1,30%', roe: '25,50%' },
-  BBSE3: { sector: 'Seguros', pvp: '4,10', pl: '8,20', dy: '7,60%', roe: '51,20%' },
+const FUNDAMENTALS_CACHE_KEY = 'wallet-analysis:ticker-fundamentals:v1';
+
+const readFundamentalsCache = (ticker) => {
+  try {
+    const cache = JSON.parse(localStorage.getItem(FUNDAMENTALS_CACHE_KEY) || '{}');
+    return cache[ticker] || null;
+  } catch {
+    return null;
+  }
 };
 
-const defaultTickerDetails = {
-  sector: 'Não informado',
-  pvp: '—',
-  pl: '—',
-  dy: '—',
-  roe: '—',
+const saveFundamentalsCache = (ticker, data) => {
+  try {
+    const cache = JSON.parse(localStorage.getItem(FUNDAMENTALS_CACHE_KEY) || '{}');
+    cache[ticker] = { data, fetchedAt: new Date().toISOString() };
+    localStorage.setItem(FUNDAMENTALS_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    return undefined;
+  }
+};
+
+const fetchAndCacheFundamentals = async (ticker, force = false) => {
+  const cached = !force && readFundamentalsCache(ticker);
+  if (cached) return cached;
+
+  const data = await fetchTickerFundamentals(ticker);
+  const cachedData = { data, fetchedAt: new Date().toISOString() };
+  saveFundamentalsCache(ticker, data);
+  return cachedData;
 };
 
 const formatCurrency = (value) =>
@@ -36,6 +55,16 @@ const formatCurrency = (value) =>
 const formatDate = (value) => {
   if (!value) return '';
   return new Date(value).toLocaleDateString('pt-BR');
+};
+
+const formatMetric = (value, percent = false) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
+
+  const numericValue = percent ? Number(value) * 100 : Number(value);
+  return `${numericValue.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}${percent ? '%' : ''}`;
 };
 
 const groupPositions = (positions, transactions) => {
@@ -95,7 +124,67 @@ export default function WhereToInvest() {
   const [transactions, setTransactions] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedTicker, setSelectedTicker] = useState(null);
+  const [tickerFundamentals, setTickerFundamentals] = useState(null);
+  const [fundamentalsFetchedAt, setFundamentalsFetchedAt] = useState(null);
+  const [fundamentalsLoading, setFundamentalsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!selectedTicker) {
+      setTickerFundamentals(null);
+      setFundamentalsFetchedAt(null);
+      return undefined;
+    }
+
+    let isMounted = true;
+    const cached = readFundamentalsCache(selectedTicker);
+
+    if (cached) {
+      setTickerFundamentals(cached.data);
+      setFundamentalsFetchedAt(cached.fetchedAt);
+      setFundamentalsLoading(false);
+      return undefined;
+    }
+
+    setFundamentalsLoading(true);
+
+    fetchAndCacheFundamentals(selectedTicker)
+      .then(({ data, fetchedAt }) => {
+        if (isMounted) {
+          setTickerFundamentals(data);
+          setFundamentalsFetchedAt(fetchedAt);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setTickerFundamentals(null);
+          setFundamentalsFetchedAt(null);
+        }
+      })
+      .finally(() => {
+        if (isMounted) setFundamentalsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedTicker]);
+
+  const refreshFundamentals = () => {
+    if (!selectedTicker || fundamentalsLoading) return;
+
+    setFundamentalsLoading(true);
+    fetchAndCacheFundamentals(selectedTicker, true)
+      .then(({ data, fetchedAt }) => {
+        setTickerFundamentals(data);
+        setFundamentalsFetchedAt(fetchedAt);
+      })
+      .catch(() => {
+        setTickerFundamentals(null);
+        setFundamentalsFetchedAt(null);
+      })
+      .finally(() => setFundamentalsLoading(false));
+  };
 
   useEffect(() => {
     if (!user?.id) return;
@@ -233,18 +322,38 @@ export default function WhereToInvest() {
 
           {selectedTicker && (
             <footer className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-3 flex items-start justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Detalhes do ativo
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Detalhes do ativo
+                    </p>
+                    <button
+                      type="button"
+                      onClick={refreshFundamentals}
+                      disabled={fundamentalsLoading}
+                      aria-label="Atualizar fundamentos"
+                      className="rounded-md p-1 text-gray-500 transition hover:bg-gray-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-700"
+                    >
+                      <RefreshCw
+                        className={`h-3.5 w-3.5 ${fundamentalsLoading ? 'animate-spin' : ''}`}
+                      />
+                    </button>
+                    <Tooltip
+                      content={`Última consulta: ${formatDateTimeLong(fundamentalsFetchedAt, { includeYear: true })}`}
+                    >
+                      <span
+                        aria-label="Data da última consulta"
+                        className="inline-flex cursor-help text-gray-500 dark:text-gray-400"
+                      >
+                        <Info className="h-3.5 w-3.5" />
+                      </span>
+                    </Tooltip>
+                  </div>
                   <p className="text-lg font-bold text-gray-900 dark:text-white">
                     {selectedTicker}
                   </p>
                 </div>
-                <span className="text-sm text-gray-500 dark:text-gray-400">
-                  {(tickerDetails[selectedTicker] || defaultTickerDetails).sector}
-                </span>
               </div>
 
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -260,7 +369,10 @@ export default function WhereToInvest() {
                   >
                     <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
                     <p className="mt-1 font-semibold text-gray-900 dark:text-white">
-                      {(tickerDetails[selectedTicker] || defaultTickerDetails)[key]}
+                      {key === 'pvp' && formatMetric(tickerFundamentals?.pvp)}
+                      {key === 'pl' && formatMetric(tickerFundamentals?.pl)}
+                      {key === 'dy' && formatMetric(tickerFundamentals?.dy, true)}
+                      {key === 'roe' && formatMetric(tickerFundamentals?.roe, true)}
                     </p>
                   </div>
                 ))}

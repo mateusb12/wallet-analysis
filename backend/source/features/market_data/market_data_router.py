@@ -968,3 +968,28 @@ def classify_ticker(
             "reasoning": str(e), "confidence": 0, "source": "error",
             "updated_at": datetime.now().isoformat()
         }
+
+
+@market_data_bp.get("/fundamentals/{ticker}")
+def get_ticker_fundamentals(ticker: str):
+    ticker_up = ticker.upper().replace(".SA", "")
+    yf_ticker = f"{ticker_up}.SA"
+
+    try:
+        info = yf.Ticker(yf_ticker).info or {}
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Yahoo não retornou os fundamentos do ativo.",
+        ) from exc
+
+    return {
+        "ticker": ticker_up,
+        "sector": info.get("sectorDisp") or info.get("sector"),
+        "pvp": info.get("priceToBook"),
+        "pl": info.get("trailingPE"),
+        "dy": info.get("dividendYield") or info.get("trailingAnnualDividendYield"),
+        "roe": info.get("returnOnEquity"),
+        "source": "yahoo",
+        "updated_at": datetime.now().isoformat(),
+    }

@@ -52,6 +52,17 @@ export const fetchDashboardData = async () => {
   return await response.json();
 };
 
+export const fetchTickerFundamentals = async (ticker) => {
+  const response = await fetch(`${API_BASE}/sync/fundamentals/${encodeURIComponent(ticker)}`);
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.detail || 'Falha ao carregar fundamentos do ativo');
+  }
+
+  return data;
+};
+
 export const getWalletPurchases = async () => {
   const headers = await getAuthHeaders();
 
