@@ -12,6 +12,21 @@ const categories = [
   { type: 'fii', label: 'FIIs', icon: iconFiis },
 ];
 
+const tickerDetails = {
+  BBAS3: { sector: 'Bancos', pvp: '0,85', pl: '7,42', dy: '8,10%', roe: '12,40%' },
+  MDIA3: { sector: 'Alimentos', pvp: '1,65', pl: '11,30', dy: '4,20%', roe: '14,60%' },
+  WEGE3: { sector: 'Indústria', pvp: '8,20', pl: '32,10', dy: '1,30%', roe: '25,50%' },
+  BBSE3: { sector: 'Seguros', pvp: '4,10', pl: '8,20', dy: '7,60%', roe: '51,20%' },
+};
+
+const defaultTickerDetails = {
+  sector: 'Não informado',
+  pvp: '—',
+  pl: '—',
+  dy: '—',
+  roe: '—',
+};
+
 const formatCurrency = (value) =>
   Number(value || 0).toLocaleString('pt-BR', {
     style: 'currency',
@@ -79,7 +94,7 @@ export default function WhereToInvest() {
   const [positions, setPositions] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [expandedTicker, setExpandedTicker] = useState(null);
+  const [selectedTicker, setSelectedTicker] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -113,6 +128,7 @@ export default function WhereToInvest() {
     positions.filter((position) => position.type === selectedCategory),
     transactions
   );
+  const selectedPosition = selectedPositions.find((position) => position.ticker === selectedTicker);
 
   return (
     <section className="w-full min-w-0 max-w-none space-y-6">
@@ -131,7 +147,10 @@ export default function WhereToInvest() {
             <button
               key={category.type}
               type="button"
-              onClick={() => setSelectedCategory(isSelected ? null : category.type)}
+              onClick={() => {
+                setSelectedCategory(isSelected ? null : category.type);
+                setSelectedTicker(null);
+              }}
               className={`relative flex w-full items-center rounded-2xl border p-5 text-left transition-all duration-300 ${
                 isSelected
                   ? 'scale-[1.02] border-blue-600 bg-blue-600 shadow-lg shadow-blue-500/30'
@@ -174,15 +193,17 @@ export default function WhereToInvest() {
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               {selectedPositions.map((position) => {
                 const positionKey = `${position.type}-${position.ticker}`;
-                const isExpanded = expandedTicker === positionKey;
+                const isSelectedTicker = selectedTicker === position.ticker;
 
                 return (
-                  <div key={positionKey} className="space-y-2">
+                  <div key={positionKey}>
                     <button
                       type="button"
                       data-testid={`position-card-${positionKey}`}
-                      aria-expanded={isExpanded}
-                      onClick={() => setExpandedTicker(isExpanded ? null : positionKey)}
+                      aria-expanded={isSelectedTicker}
+                      onClick={() => {
+                        setSelectedTicker(isSelectedTicker ? null : position.ticker);
+                      }}
                       className="flex w-full items-center justify-between rounded-xl border border-gray-100 p-3 text-left dark:border-gray-700"
                     >
                       <div className="min-w-0">
@@ -200,47 +221,6 @@ export default function WhereToInvest() {
                         </p>
                       </div>
                     </button>
-
-                    {isExpanded && (
-                      <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-900/40">
-                        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                          Aportes
-                        </p>
-                        <div
-                          className="grid min-w-0 gap-2 border-b border-gray-200 pb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400"
-                          style={{ gridTemplateColumns: '1.2fr 0.9fr 1fr 1fr' }}
-                        >
-                          <span className="min-w-0 whitespace-nowrap">Data</span>
-                          <span className="min-w-0 whitespace-nowrap text-right">Quantidade</span>
-                          <span className="min-w-0 whitespace-nowrap text-right">
-                            Valor unitário
-                          </span>
-                          <span className="min-w-0 whitespace-nowrap text-right">Custo total</span>
-                        </div>
-                        <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                          {position.contributions.map((contribution, index) => (
-                            <div
-                              key={`${positionKey}-contribution-${index}`}
-                              className="grid min-w-0 gap-2 py-2 text-xs"
-                              style={{ gridTemplateColumns: '1.2fr 0.9fr 1fr 1fr' }}
-                            >
-                              <span className="min-w-0 whitespace-nowrap text-gray-500 dark:text-gray-400">
-                                {formatDate(contribution.date) || `Aporte ${index + 1}`}
-                              </span>
-                              <span className="min-w-0 whitespace-nowrap text-right font-medium text-gray-900 dark:text-white">
-                                {contribution.qty} cotas
-                              </span>
-                              <span className="min-w-0 whitespace-nowrap text-right font-medium text-gray-900 dark:text-white">
-                                {formatCurrency(contribution.price)}
-                              </span>
-                              <span className="min-w-0 whitespace-nowrap text-right font-medium text-gray-900 dark:text-white">
-                                {formatCurrency(contribution.totalValue)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -249,6 +229,82 @@ export default function WhereToInvest() {
             <p className="py-4 text-sm text-gray-500 dark:text-gray-400">
               Você ainda não possui ativos nessa categoria.
             </p>
+          )}
+
+          {selectedTicker && (
+            <footer className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Detalhes do ativo
+                  </p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-white">
+                    {selectedTicker}
+                  </p>
+                </div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  {(tickerDetails[selectedTicker] || defaultTickerDetails).sector}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {[
+                  ['P/VP', 'pvp'],
+                  ['P/L', 'pl'],
+                  ['Dividend Yield', 'dy'],
+                  ['ROE', 'roe'],
+                ].map(([label, key]) => (
+                  <div
+                    key={key}
+                    className="rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+                  >
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+                    <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+                      {(tickerDetails[selectedTicker] || defaultTickerDetails)[key]}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {selectedPosition && (
+                <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Aportes
+                  </p>
+                  <div
+                    className="grid min-w-0 gap-2 border-b border-gray-200 pb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400"
+                    style={{ gridTemplateColumns: '1.2fr 0.9fr 1fr 1fr' }}
+                  >
+                    <span className="min-w-0 whitespace-nowrap">Data</span>
+                    <span className="min-w-0 whitespace-nowrap text-right">Quantidade</span>
+                    <span className="min-w-0 whitespace-nowrap text-right">Valor unitário</span>
+                    <span className="min-w-0 whitespace-nowrap text-right">Custo total</span>
+                  </div>
+                  <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {selectedPosition.contributions.map((contribution, index) => (
+                      <div
+                        key={`${selectedTicker}-contribution-${index}`}
+                        className="grid min-w-0 gap-2 py-2 text-xs"
+                        style={{ gridTemplateColumns: '1.2fr 0.9fr 1fr 1fr' }}
+                      >
+                        <span className="min-w-0 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                          {formatDate(contribution.date) || `Aporte ${index + 1}`}
+                        </span>
+                        <span className="min-w-0 whitespace-nowrap text-right font-medium text-gray-900 dark:text-white">
+                          {contribution.qty} cotas
+                        </span>
+                        <span className="min-w-0 whitespace-nowrap text-right font-medium text-gray-900 dark:text-white">
+                          {formatCurrency(contribution.price)}
+                        </span>
+                        <span className="min-w-0 whitespace-nowrap text-right font-medium text-gray-900 dark:text-white">
+                          {formatCurrency(contribution.totalValue)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </footer>
           )}
         </div>
       )}
