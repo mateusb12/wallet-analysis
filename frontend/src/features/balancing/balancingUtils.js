@@ -1,6 +1,6 @@
 export const BALANCING_SCHEMA = {
   fii: ['Tijolo', 'Papel', 'Desenvolvimento'],
-  acoes: ['Bancos e Seguradoras', 'Alimentos', 'Indústria'],
+  acoes: ['Setor Financeiro', 'Alimentos', 'Indústria'],
   etf: ['Ações Internacionais', 'Renda Fixa', 'Inflação', 'Imobiliários'],
   outros: ['Indefinido'],
 };
@@ -46,6 +46,7 @@ export const DEFAULT_BALANCING_TARGETS = {
 };
 
 export const LEGACY_SUBTYPE_MAP = {
+  'Bancos e Seguradoras': 'Setor Financeiro',
   Desenvolvimento: 'Desenvolvimento',
   Híbrido: 'Outros',
   'Fundos de Fundos': 'Outros',
@@ -100,8 +101,8 @@ const LOCAL_CLASSIFICATIONS = Object.freeze({
   AUPO11: ['ETF - Renda Fixa', 'Renda Fixa'],
 
   WEGE3: ['Ação - Indústria Global', 'Indústria'],
-  BBAS3: ['Ação - Financeiro Brasileiro', 'Bancos e Seguradoras'],
-  BBSE3: ['Ação - Financeiro Brasileiro', 'Bancos e Seguradoras'],
+  BBAS3: ['Ação - Financeiro Brasileiro', 'Setor Financeiro'],
+  BBSE3: ['Ação - Financeiro Brasileiro', 'Setor Financeiro'],
   MDIA3: ['Ação - Consumo Essencial', 'Alimentos'],
 });
 

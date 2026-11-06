@@ -104,12 +104,12 @@ CLASSIFICATION_OVERRIDES: Dict[str, Dict[str, str]] = {
     },
     "BBAS3": {
         "detected_type": "Ação - Financeiro Brasileiro",
-        "sector": "Bancos e Seguradoras",
+        "sector": "Setor Financeiro",
         "reasoning": "Override: Banco brasileiro."
     },
     "BBSE3": {
         "detected_type": "Ação - Financeiro Brasileiro",
-        "sector": "Bancos e Seguradoras",
+        "sector": "Setor Financeiro",
         "reasoning": "Override: Seguradora brasileira."
     },
     "MDIA3": {
@@ -962,7 +962,7 @@ def classify_ticker(
             }
             translated_sector = sector_map.get(sector_n, sector_y.capitalize() if sector_y else "Geral")
             if translated_sector == "Financeiro":
-                macro_strategy = "Bancos e Seguradoras"
+                macro_strategy = "Setor Financeiro"
             elif translated_sector == "Consumo Não-Cíclico":
                 macro_strategy = "Alimentos"
             elif translated_sector == "Industrial":

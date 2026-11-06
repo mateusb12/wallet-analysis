@@ -88,7 +88,7 @@ export const FII_SUBTYPE_ICONS = {
 
 export const STOCK_SUBTYPE_ICONS = {
   Alimentos: alimentos,
-  'Bancos e Seguradoras': bancos,
+  'Setor Financeiro': bancos,
   Indústria: industria,
 };
 
@@ -214,21 +214,21 @@ const AIAnalysisReport = ({ tree, targets }) => {
       });
     }
 
-    const financeVal = stockData.subTypes['Bancos e Seguradoras']?.value || 0;
+    const financeVal = stockData.subTypes['Setor Financeiro']?.value || 0;
     const financePct = (financeVal / stockData.totalValue) * 100;
 
     if (financePct > 70) {
       insights.push({
         type: 'info',
         title: 'Carteira de Ações Muito Conservadora',
-        text: `Mais de ${financePct.toFixed(0)}% das suas ações estão em Bancos e Seguradoras, com exposição compartilhada à economia local.`,
+        text: `Mais de ${financePct.toFixed(0)}% das suas ações estão no Setor Financeiro, com exposição compartilhada à economia local.`,
         action: 'Estude diversificar entre alimentos e indústria.',
       });
     } else if (financePct < 10) {
       insights.push({
         type: 'warning',
         title: 'Alta Volatilidade em Ações',
-        text: 'Sua carteira de ações tem pouca exposição a Bancos e Seguradoras.',
+        text: 'Sua carteira de ações tem pouca exposição ao Setor Financeiro.',
         action: 'Avalie se essa ausência é intencional antes de alterar os aportes.',
       });
     }

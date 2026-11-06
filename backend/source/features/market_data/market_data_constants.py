@@ -11,7 +11,7 @@ ASSET_SCHEMA = {
     "acoes": {
         "label": "Ações",
         "categories": [
-            "Bancos e Seguradoras",
+            "Setor Financeiro",
             "Alimentos",
             "Indústria",
             "Outros",

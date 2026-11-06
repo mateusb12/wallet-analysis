@@ -28,7 +28,7 @@ const SUBTYPE_ICONS = {
     Desenvolvimento: desenvolvimento,
   },
   acoes: {
-    'Bancos e Seguradoras': bancos,
+    'Setor Financeiro': bancos,
     Alimentos: alimentos,
     Indústria: industria,
   },
