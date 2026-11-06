@@ -18,9 +18,11 @@ const categories = [
 const metricDescriptions = {
   dy: 'Mostra os dividendos pagos nos últimos 12 meses em relação ao preço atual. Ex.: DY de 6% em uma ação de R$ 100 representa cerca de R$ 6 em dividendos no período.',
   roe: 'Mede quanto lucro líquido a empresa gera com o patrimônio dos acionistas. Ex.: ROE de 10% significa R$ 10 de lucro para cada R$ 100 de patrimônio.',
+  cagr5:
+    'Mostra o crescimento médio anualizado do preço da ação nos últimos 5 anos. O cálculo usa os preços ajustados para considerar os proventos distribuídos.',
 };
 
-const FUNDAMENTALS_CACHE_KEY = 'wallet-analysis:ticker-fundamentals:v7';
+const FUNDAMENTALS_CACHE_KEY = 'wallet-analysis:ticker-fundamentals:v8';
 
 const readFundamentalsCache = (ticker) => {
   try {
@@ -89,6 +91,10 @@ const getMetricDescription = (key, fundamentals) => {
 
   if (key === 'pl') {
     return 'Compara o preço da ação com o lucro anual por ação.';
+  }
+
+  if (key === 'cagr5' && hasValue(fundamentals?.cagr_5y)) {
+    return `Nos últimos 5 anos, o preço da ação teve um crescimento médio anual de ${formatMetric(fundamentals.cagr_5y, true)}. Isso representa a taxa anualizada de valorização no período.`;
   }
 
   const dividendPerShare =
@@ -415,12 +421,13 @@ export default function WhereToInvest() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
                 {[
                   ['P/VP', 'pvp'],
                   ['P/L', 'pl'],
                   ['Dividend Yield', 'dy'],
                   ['ROE', 'roe'],
+                  ['CAGR 5 anos', 'cagr5'],
                 ].map(([label, key]) => (
                   <div
                     key={key}
@@ -445,6 +452,7 @@ export default function WhereToInvest() {
                       {key === 'pl' && formatMetric(tickerFundamentals?.pl)}
                       {key === 'dy' && formatMetric(tickerFundamentals?.dy, true)}
                       {key === 'roe' && formatMetric(tickerFundamentals?.roe, true)}
+                      {key === 'cagr5' && formatMetric(tickerFundamentals?.cagr_5y, true)}
                     </p>
                   </div>
                 ))}

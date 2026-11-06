@@ -997,6 +997,21 @@ def get_ticker_fundamentals(ticker: str):
         )
 
     dividend_yield = max(dividend_yield_candidates) if dividend_yield_candidates else None
+    cagr_5y = None
+
+    try:
+        history = yf.Ticker(yf_ticker).history(period="5y", auto_adjust=False)
+        if not history.empty:
+            price_column = "Adj Close" if "Adj Close" in history else "Close"
+            prices = pd.to_numeric(history[price_column], errors="coerce").dropna()
+            if len(prices) >= 2:
+                start_price = float(prices.iloc[0])
+                end_price = float(prices.iloc[-1])
+                elapsed_days = (prices.index[-1] - prices.index[0]).days
+                if start_price > 0 and elapsed_days > 0:
+                    cagr_5y = (end_price / start_price) ** (365.25 / elapsed_days) - 1
+    except Exception:
+        cagr_5y = None
 
     return {
         "ticker": ticker_up,
@@ -1008,6 +1023,7 @@ def get_ticker_fundamentals(ticker: str):
         "dy": dividend_yield,
         "dividend_per_share": info.get("trailingAnnualDividendRate") or info.get("dividendRate"),
         "roe": info.get("returnOnEquity"),
+        "cagr_5y": cagr_5y,
         "source": "yahoo",
         "updated_at": datetime.now().isoformat(),
     }
