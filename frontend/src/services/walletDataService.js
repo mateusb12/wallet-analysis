@@ -75,6 +75,23 @@ export const getWalletPurchases = async () => {
   return await response.json();
 };
 
+// Curadoria de indicadores de saúde com fonte e data verificadas.
+// Se não existe documento cadastrado para a data, o backend retorna unavailable.
+export const fetchAssetHealthCoverage = async () => {
+  const response = await fetch(`${API_BASE}/asset-health/coverage`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || 'Falha ao consultar a cobertura');
+  return data;
+};
+
+export const fetchAssetHealth = async (ticker, asOf) => {
+  const search = new URLSearchParams({ as_of: asOf });
+  const response = await fetch(`${API_BASE}/asset-health/${encodeURIComponent(ticker)}?${search}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || 'Falha ao consultar a saúde do ativo');
+  return data;
+};
+
 export const getWalletProventos = async () => {
   const headers = await getAuthHeaders();
   const response = await fetch(`${API_BASE}/wallet/proventos`, {

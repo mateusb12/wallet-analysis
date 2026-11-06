@@ -22,7 +22,7 @@ const metricDescriptions = {
     'Mostra o crescimento médio anualizado do preço da ação nos últimos 5 anos. O cálculo usa os preços ajustados para considerar os proventos distribuídos.',
 };
 
-const FUNDAMENTALS_CACHE_KEY = 'wallet-analysis:ticker-fundamentals:v8';
+const FUNDAMENTALS_CACHE_KEY = 'wallet-analysis:ticker-fundamentals:v9';
 
 const readFundamentalsCache = (ticker) => {
   try {
@@ -76,13 +76,65 @@ const formatMetric = (value, percent = false) => {
 
 const hasValue = (value) => value !== null && value !== undefined && !Number.isNaN(Number(value));
 
+const formatShares = (value) => {
+  if (!hasValue(value)) return '—';
+
+  const numericValue = Number(value);
+  const absoluteValue = Math.abs(numericValue);
+  const formatUnit = (unitValue, unit) =>
+    `${unitValue.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} ${unit}`;
+
+  if (absoluteValue >= 1e12) return formatUnit(numericValue / 1e12, 'trilhões');
+  if (absoluteValue >= 1e9) return formatUnit(numericValue / 1e9, 'bilhões');
+  if (absoluteValue >= 1e6) return formatUnit(numericValue / 1e6, 'milhões');
+
+  return numericValue.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+};
+
+const formatEstimatedProfit = (value) => {
+  if (!hasValue(value)) return '—';
+
+  const absoluteValue = Math.abs(Number(value));
+  const formatUnit = (unitValue, unit) =>
+    `R$ ${unitValue.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} ${unit}`;
+
+  if (absoluteValue >= 1e12) return formatUnit(Number(value) / 1e12, 'trilhões');
+  if (absoluteValue >= 1e9) return formatUnit(Number(value) / 1e9, 'bilhões');
+  if (absoluteValue >= 1e6) return formatUnit(Number(value) / 1e6, 'milhões');
+
+  return formatCurrency(value);
+};
+
 const getMetricDescription = (key, fundamentals) => {
   if (key === 'pvp' && hasValue(fundamentals?.pvp)) {
     return `Compara o preço de mercado da ação com o valor patrimonial correspondente. Neste ativo, o P/VP é ${formatMetric(fundamentals.pvp)}: cada R$ 1,00 de patrimônio por ação é avaliado pelo mercado em R$ ${Number(fundamentals.pvp).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`;
   }
 
   if (key === 'pl' && hasValue(fundamentals?.price) && hasValue(fundamentals?.eps)) {
-    return `Para o valor de uma ação de ${formatCurrency(fundamentals.price)} e lucro gerado por cada ação de ${formatCurrency(fundamentals.eps)}, temos um P/L de ${formatMetric(fundamentals.pl)}. Isso significa que o preço da ação equivale a ${formatMetric(fundamentals.pl)} vezes o lucro anual gerado por ela.`;
+    const totalProfit = hasValue(fundamentals?.shares_outstanding)
+      ? Number(fundamentals.eps) * Number(fundamentals.shares_outstanding)
+      : null;
+
+    return (
+      <span className="block text-left">
+        <span className="block">Valor atual da ação = {formatCurrency(fundamentals.price)}</span>
+        <span className="block">
+          Quantidade de ações = {formatShares(fundamentals.shares_outstanding)}
+        </span>
+        <span className="block">Lucro total estimado = {formatEstimatedProfit(totalProfit)}</span>
+        <span className="block">Lucro por ação = {formatCurrency(fundamentals.eps)}</span>
+        <span className="block">
+          P/L = {formatMetric(fundamentals.price)} / {formatMetric(fundamentals.eps)} ={' '}
+          {formatMetric(fundamentals.pl)}
+        </span>
+      </span>
+    );
   }
 
   if (key === 'pvp') {

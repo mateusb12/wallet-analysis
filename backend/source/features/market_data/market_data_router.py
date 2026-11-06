@@ -1020,6 +1020,7 @@ def get_ticker_fundamentals(ticker: str):
         "pl": info.get("trailingPE"),
         "price": info.get("currentPrice") or info.get("regularMarketPrice"),
         "eps": info.get("trailingEps"),
+        "shares_outstanding": info.get("sharesOutstanding"),
         "dy": dividend_yield,
         "dividend_per_share": info.get("trailingAnnualDividendRate") or info.get("dividendRate"),
         "roe": info.get("returnOnEquity"),

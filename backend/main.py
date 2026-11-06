@@ -17,6 +17,7 @@ from backend.source.features.market_data.b3_router import b3_bp
 from backend.source.features.storage.storage_router import storage_bp
 from backend.source.features.users.user_router import user_bp
 from backend.source.features.wallet.wallet_router import wallet_bp
+from backend.source.features.asset_health.asset_health_router import asset_health_bp
 from backend.source.features.scraper.scraper_router import scraper_bp, stop_local_scraper
 from backend.source.core.database import SessionLocal
 
@@ -46,6 +47,7 @@ app.include_router(reference_data_bp)
 app.include_router(b3_bp)
 app.include_router(analysis_bp)
 app.include_router(wallet_bp)
+app.include_router(asset_health_bp)
 app.include_router(user_bp)
 app.include_router(storage_bp)
 app.include_router(scraper_bp)
