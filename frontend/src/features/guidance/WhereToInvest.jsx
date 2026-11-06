@@ -20,7 +20,7 @@ const metricDescriptions = {
   roe: 'Mede quanto lucro líquido a empresa gera com o patrimônio dos acionistas. Ex.: ROE de 10% significa R$ 10 de lucro para cada R$ 100 de patrimônio.',
 };
 
-const FUNDAMENTALS_CACHE_KEY = 'wallet-analysis:ticker-fundamentals:v2';
+const FUNDAMENTALS_CACHE_KEY = 'wallet-analysis:ticker-fundamentals:v7';
 
 const readFundamentalsCache = (ticker) => {
   try {
@@ -89,6 +89,38 @@ const getMetricDescription = (key, fundamentals) => {
 
   if (key === 'pl') {
     return 'Compara o preço da ação com o lucro anual por ação.';
+  }
+
+  const dividendPerShare =
+    hasValue(fundamentals?.dy) && hasValue(fundamentals?.price)
+      ? Number(fundamentals.dy) * Number(fundamentals.price)
+      : hasValue(fundamentals?.dividend_per_share)
+        ? Number(fundamentals.dividend_per_share)
+        : null;
+
+  if (
+    key === 'dy' &&
+    hasValue(dividendPerShare) &&
+    hasValue(fundamentals?.price) &&
+    hasValue(fundamentals?.dy)
+  ) {
+    const ticker = fundamentals.ticker || 'este ativo';
+    const dividendYield = formatMetric(fundamentals.dy, true);
+
+    return (
+      <span className="block text-left">
+        <span className="block">
+          Dividendos pagos por cada ação de {ticker} (nos últimos 12 meses) ={' '}
+          {formatCurrency(dividendPerShare)}
+        </span>
+        <span className="mt-1 block">
+          Preço de uma ação individual de {ticker} (hoje) = {formatCurrency(fundamentals.price)}
+        </span>
+        <span className="mt-1 block">
+          Isso significa que os dividendos representam {dividendYield} do preço da ação.
+        </span>
+      </span>
+    );
   }
 
   return metricDescriptions[key];

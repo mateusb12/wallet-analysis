@@ -983,6 +983,21 @@ def get_ticker_fundamentals(ticker: str):
             detail="Yahoo não retornou os fundamentos do ativo.",
         ) from exc
 
+    forward_dividend_yield = info.get("dividendYield")
+    trailing_dividend_yield = info.get("trailingAnnualDividendYield")
+    dividend_yield_candidates = []
+
+    if forward_dividend_yield is not None:
+        dividend_yield_candidates.append(float(forward_dividend_yield) / 100)
+
+    if trailing_dividend_yield is not None:
+        trailing_value = float(trailing_dividend_yield)
+        dividend_yield_candidates.append(
+            trailing_value / 100 if abs(trailing_value) > 1 else trailing_value
+        )
+
+    dividend_yield = max(dividend_yield_candidates) if dividend_yield_candidates else None
+
     return {
         "ticker": ticker_up,
         "sector": info.get("sectorDisp") or info.get("sector"),
@@ -990,7 +1005,8 @@ def get_ticker_fundamentals(ticker: str):
         "pl": info.get("trailingPE"),
         "price": info.get("currentPrice") or info.get("regularMarketPrice"),
         "eps": info.get("trailingEps"),
-        "dy": info.get("dividendYield") or info.get("trailingAnnualDividendYield"),
+        "dy": dividend_yield,
+        "dividend_per_share": info.get("trailingAnnualDividendRate") or info.get("dividendRate"),
         "roe": info.get("returnOnEquity"),
         "source": "yahoo",
         "updated_at": datetime.now().isoformat(),
