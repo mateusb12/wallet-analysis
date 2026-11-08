@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Info, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Info, RefreshCw, ShieldCheck } from 'lucide-react';
 import { fetchDashboardData, fetchTickerFundamentals } from '../../services/walletDataService.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { Tooltip } from '../../components/Tooltip.jsx';
@@ -18,6 +18,68 @@ const categories = [
   { type: 'stock', label: 'Ações', icon: iconStocks },
   { type: 'etf', label: 'ETFs', icon: iconEtf },
   { type: 'fii', label: 'FIIs', icon: iconFiis },
+];
+
+const fiiHealthCards = [
+  {
+    ticker: 'XPCM11',
+    name: 'XP Corporate Macaé',
+    segment: 'FII de tijolo / lajes corporativas',
+    referenceDate: '30/09/2026',
+    sourceTitle: 'Informativo mensal XPCM11 setembro/2026',
+    source: 'https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?cvm=true&id=1360374',
+    alert: 'Vacância elevada e concentração em um único imóvel',
+    metrics: [
+      {
+        label: 'Vacância física',
+        value: '48,60%',
+        page: 2,
+        description: 'Percentual da área dos imóveis que está desocupada.',
+      },
+      {
+        label: 'Vacância financeira',
+        value: '51,54%',
+        page: 2,
+        description: 'Percentual da receita potencial que não está sendo recebida.',
+      },
+      {
+        label: 'Imóveis próprios',
+        value: '1',
+        page: 1,
+        description: 'Quantidade de imóveis que pertence diretamente ao fundo.',
+      },
+    ],
+  },
+  {
+    ticker: 'TGAR11',
+    name: 'TG Ativo Real',
+    segment: 'FII multiestratégia com foco em desenvolvimento',
+    referenceDate: '30/09/2026',
+    sourceTitle: 'Relatório gerencial TGAR11 setembro/2026',
+    source: 'https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?cvm=true&id=1365779',
+    alert: 'Rendimento anunciado caiu para R$ 0,46/cota',
+    metrics: [
+      {
+        label: 'Resultado de caixa',
+        value: 'R$ 1,84/cota',
+        page: 20,
+        description: 'Quanto sobrou de caixa por cota no mês, após as entradas e saídas do fundo.',
+      },
+      {
+        label: 'Distribuição',
+        value: 'R$ 0,70/cota',
+        page: 20,
+        description: 'Quanto foi efetivamente pago aos cotistas por cota naquele mês.',
+      },
+      {
+        label: 'Projeção mensal',
+        value: 'R$ 0,40 a R$ 0,60/cota',
+        page: 4,
+        description:
+          'Faixa estimada para os próximos rendimentos mensais; não é garantia de pagamento.',
+      },
+    ],
+  },
 ];
 
 const metricDescriptions = {
@@ -412,6 +474,7 @@ export default function WhereToInvest() {
     transactions
   );
   const selectedPosition = selectedPositions.find((position) => position.ticker === selectedTicker);
+  const selectedFiiHealth = fiiHealthCards.find((card) => card.ticker === selectedTicker);
   const searchTicker = (event) => {
     event.preventDefault();
     const ticker = tickerSearch.trim().toUpperCase();
@@ -560,7 +623,21 @@ export default function WhereToInvest() {
                       className="flex w-full items-center justify-between rounded-xl border border-gray-100 p-3 text-left dark:border-gray-700"
                     >
                       <div className="min-w-0">
-                        <p className="font-bold text-gray-900 dark:text-white">{position.ticker}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-bold text-gray-900 dark:text-white">
+                            {position.ticker}
+                          </p>
+                          {position.type === 'fii' &&
+                            fiiHealthCards.some((card) => card.ticker === position.ticker) && (
+                              <span
+                                title="Saúde do ativo disponível"
+                                aria-label="Saúde do ativo disponível"
+                                className="inline-flex text-blue-500 dark:text-blue-400"
+                              >
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                              </span>
+                            )}
+                        </div>
                         <p className="truncate text-sm text-gray-500 dark:text-gray-400">
                           {position.name}
                         </p>
@@ -637,6 +714,94 @@ export default function WhereToInvest() {
               ].map(renderMetricCard)}
             </div>
           </div>
+
+          {selectedCategory === 'fii' && (
+            <section className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+              <div className="mb-4 flex items-center gap-3">
+                <ShieldCheck className="h-7 w-7 text-blue-600 dark:text-blue-400" />
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">Saúde do FII</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Últimos indicadores verificados nos relatórios oficiais.
+                  </p>
+                </div>
+              </div>
+
+              {selectedFiiHealth ? (
+                <article className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">
+                        {selectedFiiHealth.ticker}
+                      </p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {selectedFiiHealth.name}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                      {selectedFiiHealth.referenceDate}
+                    </span>
+                  </div>
+
+                  <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                    {selectedFiiHealth.segment}
+                  </p>
+
+                  <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {selectedFiiHealth.metrics.map((metric) => (
+                      <div
+                        key={metric.label}
+                        className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900/50"
+                      >
+                        <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                          {metric.label}
+                          <Tooltip content={metric.description} maxTooltipWidth="18rem">
+                            <span
+                              aria-label={`Explicação de ${metric.label}`}
+                              className="inline-flex cursor-help"
+                            >
+                              <Info className="h-3 w-3" />
+                            </span>
+                          </Tooltip>
+                        </p>
+                        <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+                          {metric.value}
+                        </p>
+                        <Tooltip content={selectedFiiHealth.sourceTitle} maxTooltipWidth="18rem">
+                          <a
+                            href={`${selectedFiiHealth.source}#page=${metric.page}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 block text-[10px] text-blue-600 hover:underline dark:text-blue-400"
+                          >
+                            pág. {metric.page}
+                          </a>
+                        </Tooltip>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{selectedFiiHealth.alert}</span>
+                  </div>
+
+                  <a
+                    href={selectedFiiHealth.source}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-block text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+                  >
+                    Ver relatório original
+                  </a>
+                </article>
+              ) : (
+                <div className="rounded-xl border border-dashed border-gray-300 p-5 text-sm text-gray-600 dark:border-gray-700 dark:text-gray-300">
+                  {selectedTicker}: não há indicadores verificados cadastrados em Saúde do Ativo.
+                </div>
+              )}
+            </section>
+          )}
 
           {selectedPosition && (
             <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
