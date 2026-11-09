@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, ShieldCheck } from 'lucide-react';
 import { fetchFiiChartData } from '../../services/b3service.js';
 import { fetchAssetHealth } from '../../services/walletDataService.js';
+import TgarPurchasePanel from './TgarPurchasePanel.jsx';
 
 const today = () => {
   const now = new Date();
@@ -387,7 +388,152 @@ function SharePriceCard({ ticker, referenceDate }) {
   );
 }
 
-export default function FiiHealthPanel({ ticker, purchaseDate }) {
+
+// Histórico manual, conferido em relatórios gerenciais oficiais do TGAR11.
+// Não usar cotações de mercado como substituto de resultado de caixa.
+// Cada ponto tem competência mensal; o último resultado de caixa é set/26.
+const TGAR_HISTORY = [
+  { month: 'out/25', cash: 1.07, distribution: 1.00 },
+  { month: 'nov/25', cash: 0.97, distribution: 1.00 },
+  { month: 'dez/25', cash: 1.00, distribution: 1.00 },
+  { month: 'jan/26', cash: 0.62, distribution: 0.71 },
+  { month: 'fev/26', cash: 0.79, distribution: 0.72 },
+  { month: 'mar/26', cash: 0.63, distribution: 0.72 },
+  { month: 'abr/26', cash: 0.76, distribution: 0.72 },
+  { month: 'mai/26', cash: 0.75, distribution: 0.72 },
+  { month: 'jun/26', cash: 0.67, distribution: 0.72 },
+  { month: 'jul/26', cash: 0.79, distribution: 0.72 },
+  { month: 'ago/26', cash: 0.59, distribution: 0.70 },
+  { month: 'set/26', cash: 1.84, distribution: 0.70 },
+  { month: 'out/26', cash: null, distribution: 0.46 },
+];
+
+const TGAR_SOURCES = [
+  { label: 'Out/25 · p. 12', url: 'https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?cvm=true&id=1059871#page=12' },
+  { label: 'Nov–dez/25 · p. 17', url: 'https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?cvm=true&id=1093428#page=17' },
+  { label: 'Jan–mar/26 · p. 14', url: 'https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?cvm=true&id=1173456#page=14' },
+  { label: 'Abr–set/26 · p. 20', url: 'https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?cvm=true&id=1365779#page=20' },
+  { label: 'Rendimento out/26', url: 'https://tgar11.com.br/relatorio/rendimentos/' },
+];
+
+function TgarHistoryChart() {
+  const left = 55;
+  const right = 918;
+  const top = 20;
+  const bottom = 236;
+  const axisMax = 2;
+  const x = (index) => left + (index / (TGAR_HISTORY.length - 1)) * (right - left);
+  const y = (value) => bottom - (value / axisMax) * (bottom - top);
+  const path = (key) => TGAR_HISTORY.reduce((parts, item, index) => {
+    const value = item[key];
+    if (value === null) return parts;
+    const previousExists = index > 0 && TGAR_HISTORY[index - 1][key] !== null;
+    parts.push(`${previousExists ? 'L' : 'M'} ${x(index).toFixed(2)} ${y(value).toFixed(2)}`);
+    return parts;
+  }, []).join(' ');
+
+  const first = TGAR_HISTORY[0].distribution;
+  const latest = TGAR_HISTORY[TGAR_HISTORY.length - 1].distribution;
+  const variation = ((latest / first - 1) * 100);
+  const attention = variation <= -30; // Limite visual local, não oficial.
+
+  return (
+    <div className="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+            Evolução mensal de caixa e rendimentos
+          </h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Out/2025 a out/2026 · R$/cota · dados históricos dos relatórios oficiais
+          </p>
+        </div>
+        <span className="rounded-full border border-gray-300 px-2.5 py-1 text-xs text-gray-600 dark:border-gray-600 dark:text-gray-300">
+          13 competências
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <div className={`rounded-lg border p-3 ${attention
+          ? 'border-rose-500/50 bg-rose-500/10'
+          : 'border-gray-200 dark:border-gray-700'}`}>
+          <p className={`text-xs font-semibold ${attention ? 'text-rose-600 dark:text-rose-300' : 'text-gray-600 dark:text-gray-300'}`}>
+            {attention ? 'Cuidado · redução do rendimento distribuído' : 'Rendimento distribuído'}
+          </p>
+          <p className="mt-1 text-lg font-bold tabular-nums text-gray-900 dark:text-white">
+            {money(first)} → {money(latest)}/cota
+            <span className={`ml-2 text-base ${attention ? 'text-rose-600 dark:text-rose-300' : 'text-gray-500'}`}>
+              {variation.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%
+            </span>
+          </p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Out/25 → out/26 · variação nominal, sem ajuste pela inflação</p>
+        </div>
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+          <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">Evento não recorrente no resultado de caixa</p>
+          <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">Set/26: {money(1.84)}/cota</p>
+          <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+            Inclui alienações de empreendimentos; R$ 38,84 mi reconhecidos em setembro.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-600 dark:text-gray-300">
+        <span><span className="mr-1 inline-block h-0.5 w-4 align-middle bg-blue-500" />Resultado de caixa</span>
+        <span><span className="mr-1 inline-block h-0.5 w-4 align-middle bg-rose-500" />Distribuição</span>
+        <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-amber-500" />Venda de ativos (set/26)</span>
+      </div>
+      <div className="overflow-x-auto">
+        <svg viewBox="0 0 950 280" className="min-w-[650px] w-full" role="img"
+          aria-label="Histórico mensal: linha azul para resultado de caixa e vermelha para rendimentos, de outubro de 2025 a outubro de 2026">
+          {[0, 0.5, 1, 1.5, 2].map((tick) => (
+            <g key={tick}>
+              <line x1={left} x2={right} y1={y(tick)} y2={y(tick)} stroke="currentColor" strokeOpacity="0.15" strokeDasharray="4 4" />
+              <text x={left - 9} y={y(tick) + 4} fill="currentColor" opacity="0.65" fontSize="12" textAnchor="end">
+                {tick.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </text>
+            </g>
+          ))}
+          <rect x={x(11) - 20} y={top} width="40" height={bottom - top} rx="5" fill="#f59e0b" fillOpacity="0.08" />
+          <path d={path('cash')} fill="none" stroke="#3b82f6" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+          <path d={path('distribution')} fill="none" stroke="#f43f5e" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+          {TGAR_HISTORY.map((item, index) => (
+            <g key={item.month}>
+              {item.cash !== null && (
+                <circle cx={x(index)} cy={y(item.cash)} r={index === 11 ? 5.5 : 3} fill={index === 11 ? '#f59e0b' : '#3b82f6'}>
+                  <title>{item.month}: resultado de caixa {money(item.cash)}/cota</title>
+                </circle>
+              )}
+              <circle cx={x(index)} cy={y(item.distribution)} r={index === 12 ? 5.5 : 3} fill="#f43f5e">
+                <title>{item.month}: distribuição {money(item.distribution)}/cota</title>
+              </circle>
+              {(index % 2 === 0 || index === TGAR_HISTORY.length - 1) && (
+                <text x={x(index)} y={bottom + 22} fill="currentColor" opacity="0.65" fontSize="12" textAnchor="middle">
+                  {item.month}
+                </text>
+              )}
+            </g>
+          ))}
+          <text x={x(11)} y={y(1.84) - 12} fill="#f59e0b" fontWeight="600" fontSize="13" textAnchor="middle">1,84*</text>
+          <text x={x(12)} y={y(0.46) + 22} fill="#f43f5e" fontWeight="600" fontSize="13" textAnchor="middle">0,46</text>
+        </svg>
+      </div>
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        *Set/26 inclui operações de venda. Resultado de caixa não equivale a renda recorrente.
+        Out/26 ainda não possui resultado de caixa neste conjunto de relatórios; a linha azul termina em set/26.
+        Sinal vermelho: redução de distribuição ≥30% (limite visual configurado, não oficial).
+      </p>
+      <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-blue-600 dark:text-blue-400">
+        {TGAR_SOURCES.map((source) => (
+          <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+            Fonte: {source.label} ↗
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function FiiHealthPanel({ ticker, purchaseDate, purchasePrice }) {
   const [mode, setMode] = useState('current');
   const asOf = mode === 'purchase' && purchaseDate ? purchaseDate : today();
   const current = useQuery({
@@ -475,120 +621,128 @@ export default function FiiHealthPanel({ ticker, purchaseDate }) {
               </p>
             )}
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {metrics.map((metric) => {
-              const old =
-                metric.key === 'announced_distribution_per_share_brl'
-                  ? baseline
-                  : prior?.metrics?.find((m) => m.key === metric.key);
-              const diff =
-                old && Number(old.value) !== 0
-                  ? (Number(metric.value) / Number(old.value) - 1) * 100
-                  : null;
-              const vacancy = ['physical_vacancy_pct', 'financial_vacancy_pct'].includes(
-                metric.key
-              );
-              const highVacancy = vacancy && Number(metric.value) >= 40;
-              const mediumVacancy = vacancy && Number(metric.value) >= 20;
-              const negative =
-                ['monthly_result_brl', 'result_12m_brl'].includes(metric.key) &&
-                Number(metric.value) < 0;
-              const badColor = highVacancy || negative;
-              const border = badColor
-                ? 'border-rose-400 bg-rose-50/40 dark:border-rose-900 dark:bg-rose-950/20'
-                : mediumVacancy
-                  ? 'border-amber-400 bg-amber-50/40 dark:border-amber-900 dark:bg-amber-950/20'
-                  : 'border-gray-200 dark:border-gray-700';
-              const fallingDistribution =
-                ['distribution_per_share_brl', 'announced_distribution_per_share_brl'].includes(
-                  metric.key
-                ) && diff < 0;
-              return (
-                <div key={metric.key} className={`rounded-xl border p-4 ${border}`}>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{metric.label}</p>
-                  <p
-                    className={`mt-2 text-xl font-bold ${badColor ? 'text-rose-700 dark:text-rose-300' : 'text-gray-900 dark:text-white'}`}
-                  >
-                    {display(metric)}
-                  </p>
-                  {old && metric.unit !== 'brl_per_share' && (
-                    <p
-                      className={`mt-2 text-xs ${fallingDistribution ? 'text-rose-600 dark:text-rose-300' : 'text-gray-500 dark:text-gray-400'}`}
-                    >
-                      Anterior: {display(old)} (
-                      {dateLabel(
-                        metric.key === 'announced_distribution_per_share_brl'
-                          ? data.reference_date
-                          : prior?.reference_date
+          {ticker?.toUpperCase() === 'TGAR11' && mode === 'current' && <TgarHistoryChart />}
+          {ticker?.toUpperCase() === 'TGAR11' && mode === 'purchase' && (
+            <TgarPurchasePanel asOf={asOf} purchasePrice={purchasePrice} />
+          )}
+          {!(ticker?.toUpperCase() === 'TGAR11' && mode === 'purchase') && (
+            <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {metrics.map((metric) => {
+                  const old =
+                    metric.key === 'announced_distribution_per_share_brl'
+                      ? baseline
+                      : prior?.metrics?.find((m) => m.key === metric.key);
+                  const diff =
+                    old && Number(old.value) !== 0
+                      ? (Number(metric.value) / Number(old.value) - 1) * 100
+                      : null;
+                  const vacancy = ['physical_vacancy_pct', 'financial_vacancy_pct'].includes(
+                    metric.key
+                  );
+                  const highVacancy = vacancy && Number(metric.value) >= 40;
+                  const mediumVacancy = vacancy && Number(metric.value) >= 20;
+                  const negative =
+                    ['monthly_result_brl', 'result_12m_brl'].includes(metric.key) &&
+                    Number(metric.value) < 0;
+                  const badColor = highVacancy || negative;
+                  const border = badColor
+                    ? 'border-rose-400 bg-rose-50/40 dark:border-rose-900 dark:bg-rose-950/20'
+                    : mediumVacancy
+                      ? 'border-amber-400 bg-amber-50/40 dark:border-amber-900 dark:bg-amber-950/20'
+                      : 'border-gray-200 dark:border-gray-700';
+                  const fallingDistribution =
+                    ['distribution_per_share_brl', 'announced_distribution_per_share_brl'].includes(
+                      metric.key
+                    ) && diff < 0;
+                  return (
+                    <div key={metric.key} className={`rounded-xl border p-4 ${border}`}>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{metric.label}</p>
+                      <p
+                        className={`mt-2 text-xl font-bold ${badColor ? 'text-rose-700 dark:text-rose-300' : 'text-gray-900 dark:text-white'}`}
+                      >
+                        {display(metric)}
+                      </p>
+                      {old && metric.unit !== 'brl_per_share' && (
+                        <p
+                          className={`mt-2 text-xs ${fallingDistribution ? 'text-rose-600 dark:text-rose-300' : 'text-gray-500 dark:text-gray-400'}`}
+                        >
+                          Anterior: {display(old)} (
+                          {dateLabel(
+                            metric.key === 'announced_distribution_per_share_brl'
+                              ? data.reference_date
+                              : prior?.reference_date
+                          )}
+                          )
+                          {diff !== null &&
+                            ` · ${diff > 0 ? '+' : ''}${diff.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`}
+                        </p>
                       )}
-                      )
-                      {diff !== null &&
-                        ` · ${diff > 0 ? '+' : ''}${diff.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`}
+                      {metric.unit === 'brl_per_share' && old && !(ticker?.toUpperCase() === 'TGAR11' && mode === 'current') && (
+                        <ShareValueBars
+                          current={metric}
+                          previous={old}
+                          currentDate={
+                            metric.key === 'announced_distribution_per_share_brl'
+                              ? nextMonthEnd(data.reference_date)
+                              : data.reference_date
+                          }
+                          previousDate={
+                            metric.key === 'announced_distribution_per_share_brl'
+                              ? data.reference_date
+                              : prior?.reference_date
+                          }
+                        />
+                      )}
+                      {metric.note &&
+                        !['cash_result_per_share_brl', 'announced_distribution_per_share_brl'].includes(
+                          metric.key
+                        ) && (
+                          <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">{metric.note}</p>
+                        )}
+                      <a
+                        href={`${data.source.url}#page=${metric.page}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
+                      >
+                        Fonte · pág. {metric.page} <ArrowUpRight size={12} />
+                      </a>
+                    </div>
+                  );
+                })}
+                {minGuidance && maxGuidance && (
+                  <div className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+                    <p className="text-xs text-gray-500">Projeção mensal (não garantida)</p>
+                    <p className="mt-2 text-xl font-bold dark:text-white">
+                      {money(minGuidance.value)} a {money(maxGuidance.value)}/cota
                     </p>
-                  )}
-                  {metric.unit === 'brl_per_share' && old && (
-                    <ShareValueBars
-                      current={metric}
-                      previous={old}
-                      currentDate={
-                        metric.key === 'announced_distribution_per_share_brl'
-                          ? nextMonthEnd(data.reference_date)
-                          : data.reference_date
-                      }
-                      previousDate={
-                        metric.key === 'announced_distribution_per_share_brl'
-                          ? data.reference_date
-                          : prior?.reference_date
+                    <GuidanceRangeChart
+                      minimum={minGuidance.value}
+                      maximum={maxGuidance.value}
+                      announced={
+                        data?.metrics?.find((m) => m.key === 'announced_distribution_per_share_brl')
+                          ?.value
                       }
                     />
-                  )}
-                  {metric.note &&
-                    !['cash_result_per_share_brl', 'announced_distribution_per_share_brl'].includes(
-                      metric.key
-                    ) && (
-                      <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">{metric.note}</p>
-                    )}
-                  <a
-                    href={`${data.source.url}#page=${metric.page}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-3 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
-                  >
-                    Fonte · pág. {metric.page} <ArrowUpRight size={12} />
-                  </a>
-                </div>
-              );
-            })}
-            {minGuidance && maxGuidance && (
-              <div className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-                <p className="text-xs text-gray-500">Projeção mensal (não garantida)</p>
-                <p className="mt-2 text-xl font-bold dark:text-white">
-                  {money(minGuidance.value)} a {money(maxGuidance.value)}/cota
-                </p>
-                <GuidanceRangeChart
-                  minimum={minGuidance.value}
-                  maximum={maxGuidance.value}
-                  announced={
-                    data?.metrics?.find((m) => m.key === 'announced_distribution_per_share_brl')
-                      ?.value
-                  }
-                />
-                <a
-                  href={`${data.source.url}#page=${minGuidance.page}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 block text-xs text-blue-600"
-                >
-                  Fonte · pág. {minGuidance.page}
-                </a>
+                    <a
+                      href={`${data.source.url}#page=${minGuidance.page}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 block text-xs text-blue-600"
+                    >
+                      Fonte · pág. {minGuidance.page}
+                    </a>
+                  </div>
+                )}
+                <SharePriceCard ticker={data.ticker} referenceDate={data.reference_date} />
               </div>
-            )}
-            <SharePriceCard ticker={data.ticker} referenceDate={data.reference_date} />
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Cores: vacância ≥40% vermelha, ≥20% amarela; resultados negativos vermelhos. Limites
-            visuais configuráveis, não oficiais. Nenhuma nota ou recomendação de investimento.
-          </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Cores: vacância ≥40% vermelha, ≥20% amarela; resultados negativos vermelhos. Limites
+                visuais configuráveis, não oficiais. Nenhuma nota ou recomendação de investimento.
+              </p>
+            </>
+          )}
         </>
       )}
     </section>

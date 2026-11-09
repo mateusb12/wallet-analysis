@@ -423,6 +423,9 @@ export default function WhereToInvest() {
     const date = item.date?.slice(0, 10);
     return date && (!oldest || date < oldest) ? date : oldest;
   }, null);
+  const firstPurchasePrice = selectedPosition?.contributions?.find(
+    (item) => item.date?.slice(0, 10) === firstPurchaseDate
+  )?.price;
   const searchTicker = (event) => {
     event.preventDefault();
     const ticker = tickerSearch.trim().toUpperCase();
@@ -664,7 +667,7 @@ export default function WhereToInvest() {
           </div>
 
           {selectedCategory === 'fii' && (
-            <FiiHealthPanel ticker={selectedTicker} purchaseDate={firstPurchaseDate} />
+            <FiiHealthPanel ticker={selectedTicker} purchaseDate={firstPurchaseDate} purchasePrice={firstPurchasePrice} />
           )}
           {selectedPosition && (
             <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
