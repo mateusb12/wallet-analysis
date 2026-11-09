@@ -114,7 +114,7 @@ export const FII_HEALTH_REPORTS = {
         note: 'R$ 0,00 em todas as competências de dez/24 a set/26: a ausência de pagamento é dado confirmado, não lacuna preenchida.',
       },
       {
-        id: 'vacancy',
+        id: 'vacancy', xAxis: 'report_dates',
         title: 'Vacância física',
         unit: 'percent',
         color: '#f43f5e',
@@ -147,7 +147,7 @@ export const FII_HEALTH_REPORTS = {
         note: 'Vacância física informada nos gerenciais do The Corporate. Valores pós-fechamento não foram antecipados; lacunas sem interpolação.',
       },
       {
-        id: 'result',
+        id: 'result', xAxis: 'report_dates',
         title: 'Resultado mensal',
         unit: 'brl',
         color: '#f43f5e',

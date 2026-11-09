@@ -11,7 +11,6 @@ import Contributions from '../contributions/Contributions.jsx';
 import WhereToInvest from '../guidance/WhereToInvest.jsx';
 import WalletBalancer from '../balancing/WalletBalancer.jsx';
 import AssetsManager from '../importer/AssetsManager.jsx';
-import AssetHealth from '../assetHealth/AssetHealth.jsx';
 
 import { Settings as SettingsIcon, LogOut, Database } from 'lucide-react';
 
@@ -36,13 +35,6 @@ export const menuItems = [
     icon: '🧭',
     path: '/recomendacao',
     component: WhereToInvest,
-  },
-  {
-    id: 'asset-health',
-    label: 'Saúde do Ativo',
-    icon: '🩺',
-    path: '/saude-do-ativo',
-    component: AssetHealth,
   },
   {
     id: 'wallet-balancer',

@@ -110,6 +110,98 @@ function TimelineChart({ chart, months, contributions }) {
   );
 }
 
+
+// Modo opcional: posiciona somente observações oficiais no dia da publicação do PDF.
+// Falta de uma competência não cria ponto fictício; intervalos sem observações são tracejados.
+function ReportDatesChart({ chart, contributions }) {
+  const width = 560, height = 208, left = 53, right = 538, top = 24, bottom = 169;
+  const actualDate = (row) => /^\d{4}-\d{2}-\d{2}$/.test(row.publishedAt || '')
+    ? row.publishedAt : `${row.month}-15`;
+  const timestamp = (date) => Date.parse(`${date}T00:00:00Z`);
+  const rows = chart.data
+    .filter((row) => row.value !== null && Number.isFinite(Number(row.value)))
+    .sort((a, b) => actualDate(a).localeCompare(actualDate(b)) || a.month.localeCompare(b.month));
+  const datesOfContributions = contributions
+    .map((item) => String(item.date || '').slice(0, 10))
+    .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date));
+  const dates = [...rows.map(actualDate), ...datesOfContributions].map(timestamp);
+  const start = Math.min(...dates), end = Math.max(...dates);
+  const xDate = (date) => left + (timestamp(date) - start) / Math.max(1, end - start) * (right - left);
+  // Duas competências podem ser divulgadas no mesmo PDF: ligeiro deslocamento visual.
+  const x = (index) => xDate(actualDate(rows[index]))
+    + (index > 0 && actualDate(rows[index - 1]) === actualDate(rows[index]) ? 3 : 0);
+
+  const values = rows.map((row) => Number(row.value));
+  if (chart.reference !== null && chart.reference !== undefined) values.push(chart.reference);
+  const minimum = Math.min(...values), maximum = Math.max(...values);
+  const padding = Math.max((maximum - minimum) * 0.08, chart.unit === 'brl_per_share' ? 0.02 : 1);
+  const yMin = minimum < 0 ? minimum - padding : Math.max(0, minimum - padding);
+  const yMax = maximum + padding;
+  const y = (value) => bottom - (value - yMin) / Math.max(0.00001, yMax - yMin) * (bottom - top);
+  const ticks = [];
+  rows.forEach((row, index) => {
+    const position = x(index), last = index === rows.length - 1;
+    if (last && ticks.length && position - ticks.at(-1).position < 78) ticks.pop();
+    if (last || !ticks.length || position - ticks.at(-1).position >= 78) {
+      ticks.push({ key: `${row.month}-${index}`, position,
+        label: row.publishedAt ? shortDate(row.publishedAt) : displayMonth(row.month) });
+    }
+  });
+  const markers = datesOfContributions.map((date, index) => ({
+    date,
+    x: xDate(date) + datesOfContributions.slice(0, index).filter((other) => other === date).length * 2.5,
+    item: contributions.filter((item) => String(item.date || '').slice(0, 10) === date)[0],
+  }));
+
+  return (
+    <div className="overflow-x-auto">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full min-w-[420px]" role="img"
+        aria-label={`${chart.title}: valores na data de publicação dos relatórios, com marcações de aporte`}>
+        {[yMin, (yMin + yMax) / 2, yMax].map((tick) => (
+          <g key={tick}>
+            <line x1={left} x2={right} y1={y(tick)} y2={y(tick)}
+              stroke="currentColor" strokeOpacity="0.15" strokeDasharray="4 4" />
+            <text x={left - 6} y={y(tick) + 4} fill="currentColor" opacity="0.65"
+              fontSize="10.5" textAnchor="end">{formatAxis(tick, chart.unit)}</text>
+          </g>
+        ))}
+        {chart.reference !== null && chart.reference !== undefined && (
+          <line x1={left} x2={right} y1={y(chart.reference)} y2={y(chart.reference)}
+            stroke="#94a3b8" strokeOpacity="0.7" strokeDasharray="2 4" />
+        )}
+        {rows.slice(1).map((row, index) => (
+          <line key={`${rows[index].month}-${row.month}`}
+            x1={x(index)} y1={y(Number(rows[index].value))}
+            x2={x(index + 1)} y2={y(Number(row.value))}
+            stroke={chart.color || '#3b82f6'} strokeWidth="2.7" strokeLinecap="round"
+            strokeDasharray={Math.abs(monthNumber(row.month) - monthNumber(rows[index].month)) > 1
+              ? '5 4' : undefined} />
+        ))}
+        {rows.map((row, index) => (
+          <circle key={row.month} cx={x(index)} cy={y(Number(row.value))} r="3"
+            fill={chart.color || '#3b82f6'}>
+            <title>{`${displayMonth(row.month)}: ${formatValue(row.value, chart.unit)}.${row.publishedAt
+              ? ` Publicado em ${shortDate(row.publishedAt)}.` : ' Data de publicação não cadastrada.'}${row.note ? ` ${row.note}` : ''}`}</title>
+          </circle>
+        ))}
+        {markers.map((mark, index) => (
+          <g key={`${mark.date}-${index}`}>
+            <line x1={mark.x} x2={mark.x} y1={top} y2={bottom}
+              stroke="#93c5fd" strokeDasharray="3 4" strokeWidth="1.3" />
+            <circle cx={mark.x} cy={top} r="3" fill="#93c5fd" />
+            <text x={mark.x + 4} y={top - 7 - index % 2 * 9} fontSize="10"
+              fill="currentColor" opacity="0.9">{shortDate(mark.date)}</text>
+          </g>
+        ))}
+        {ticks.map((tick) => (
+          <text key={tick.key} x={tick.position} y={bottom + 21}
+            fill="currentColor" fontSize="10.5" opacity="0.7" textAnchor="middle">{tick.label}</text>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 function MetricChart({ chart, months, contributions }) {
   const valid = chart.data.filter((row) => row.value !== null && Number.isFinite(Number(row.value)));
   const last = [...valid].sort((a, b) => a.month.localeCompare(b.month)).at(-1);
@@ -121,12 +213,18 @@ function MetricChart({ chart, months, contributions }) {
           {formatValue(last.value, chart.unit)}
         </span>}
       </div>
-      {valid.length ? <TimelineChart chart={chart} months={months} contributions={contributions} /> : (
+      {valid.length ? (chart.xAxis === 'report_dates'
+        ? <ReportDatesChart chart={chart} contributions={contributions} />
+        : <TimelineChart chart={chart} months={months} contributions={contributions} />) : (
         <div className="flex h-44 items-center justify-center text-xs text-gray-500 dark:text-gray-400">
           Série histórica ainda não cadastrada
         </div>
       )}
       {chart.note && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{chart.note}</p>}
+      {chart.xAxis === 'report_dates' && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        Eixo X: publicação dos PDFs (sem data cadastrada: competência). Linha tracejada =
+        intervalo sem competências confirmadas; nenhum valor intermediário foi inventado.
+      </p>}
       {last?.source && <a href={`${last.source}${last.page ? `#page=${last.page}` : ''}`}
         target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-blue-500 hover:underline">
         Fonte de {displayMonth(last.month)} <ArrowUpRight size={12} />
