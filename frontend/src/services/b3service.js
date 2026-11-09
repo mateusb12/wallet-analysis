@@ -43,15 +43,19 @@ export async function fetchFiiDividends(ticker = null, page = 1, pageSize = 50) 
   return request(`/data/b3/fiis/dividends?${params}`);
 }
 
-export async function fetchFiiChartData(ticker, months) {
+export async function fetchFiiChartData(ticker, months, startDate = null) {
   const params = new URLSearchParams();
-  if (months > 0) {
+  if (startDate) {
+    params.set('start_date', startDate);
+  } else if (months > 0) {
     const date = new Date();
     date.setMonth(date.getMonth() - months);
     params.set('start_date', date.toISOString().split('T')[0]);
   }
   const query = params.toString();
-  return request(`/data/b3/fiis/${encodeURIComponent(ticker.toUpperCase())}/chart${query ? `?${query}` : ''}`);
+  return request(
+    `/data/b3/fiis/${encodeURIComponent(ticker.toUpperCase())}/chart${query ? `?${query}` : ''}`
+  );
 }
 
 export async function fetchFiiDateRange(ticker) {
@@ -92,4 +96,3 @@ export async function fetchPriceClosestToDate(ticker, targetDate) {
   const value = data.adjusted_close && data.adjusted_close > 0 ? data.adjusted_close : data.close;
   return parseFloat(value);
 }
-
