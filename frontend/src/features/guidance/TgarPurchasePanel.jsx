@@ -93,78 +93,301 @@ const DIVIDENDS_AT_BUY = DISTRIBUTIONS.slice(
   0, DISTRIBUTIONS.findIndex((row) => row.month === 'nov/25') + 1
 );
 
-function HistoryLine({ data, stroke, accessibleLabel, unit = 'money', reference = null }) {
-  const width = 560, height = 208;
-  const left = 48, right = 540, top = 22, bottom = 169;
-  const byMonth = new Map(data.map((row) => [row.month, row]));
-  const rows = TGAR_TIMELINE.map((month) => byMonth.get(month) || { month, value: null });
-  const valid = rows.filter((row) => Number.isFinite(row.value));
-  if (!valid.length) return null;
-  const values = valid.map((row) => row.value);
-  if (reference !== null) values.push(reference);
-  const rawMin = Math.min(...values), rawMax = Math.max(...values);
-  const margin = Math.max((rawMax - rawMin) * 0.12, unit === 'percent' ? 3 : 0.03);
-  const min = rawMin - margin, max = rawMax + margin;
-  const x = (index) => left + index / (TGAR_TIMELINE.length - 1) * (right - left);
-  const y = (value) => bottom - (value - min) / (max - min) * (bottom - top);
-  const buyIndex = TGAR_TIMELINE.indexOf('nov/25');
-  const dividerX = (x(buyIndex) + x(buyIndex + 1)) / 2;
-  const format = (value) => unit === 'percent'
-    ? `${value.toFixed(0).replace('.', ',')}%`
-    : value.toFixed(2).replace('.', ',');
-  // Descontinuidades reais não são interpoladas. Após a compra, a linha é tracejada.
-  const segments = (start, end) => {
-    const output = []; let active = [];
-    for (let i = start; i <= end; i += 1) {
-      if (Number.isFinite(rows[i].value)) active.push(`${x(i)},${y(rows[i].value)}`);
-      else if (active.length) { output.push(active.join(' ')); active = []; }
+function HistoryLine({
+  data,
+  stroke,
+  accessibleLabel,
+  unit = 'money',
+  reference = null,
+  contributions = [],
+}) {
+  const width = 560;
+  const height = 208;
+  const left = 48;
+  const right = 540;
+  const top = 22;
+  const bottom = 169;
+
+  const monthNames = [
+    'jan', 'fev', 'mar', 'abr', 'mai', 'jun',
+    'jul', 'ago', 'set', 'out', 'nov', 'dez',
+  ];
+
+  const purchases = contributions
+    .filter((item) =>
+      /^\d{4}-\d{2}-\d{2}/.test(String(item.date || ''))
+    )
+    .map((item) => ({
+      ...item,
+      date: String(item.date).slice(0, 10),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  // Mesmo eixo temporal para os quatro gráficos.
+  const timeline = [...TGAR_TIMELINE];
+
+  // Estende o eixo caso exista algum aporte mais recente.
+  const lastPurchase = purchases[purchases.length - 1]?.date;
+
+  if (lastPurchase) {
+    const lastMonth = lastPurchase.slice(0, 7);
+    let year = 2026;
+    let month = 10;
+
+    while (
+      `${year}-${String(month).padStart(2, '0')}` < lastMonth &&
+      timeline.length < 100
+    ) {
+      month += 1;
+
+      if (month > 12) {
+        month = 1;
+        year += 1;
+      }
+
+      timeline.push(
+        `${monthNames[month - 1]}/${String(year).slice(-2)}`
+      );
     }
-    if (active.length) output.push(active.join(' '));
-    return output;
-  };
+  }
+
+  const byMonth = new Map(
+    data.map((row) => [row.month, row])
+  );
+
+  const rows = timeline.map(
+    (month) => byMonth.get(month) || { month, value: null }
+  );
+
+  const valid = rows.filter(
+    (row) => Number.isFinite(row.value)
+  );
+
+  if (!valid.length) return null;
+
+  const values = valid.map((row) => row.value);
+
+  if (reference !== null) {
+    values.push(reference);
+  }
+
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+
+  const margin = Math.max(
+    (rawMax - rawMin) * 0.12,
+    unit === 'percent' ? 3 : 0.03
+  );
+
+  const min = rawMin - margin;
+  const max = rawMax + margin;
+
+  const x = (index) =>
+    left + (index / (timeline.length - 1)) * (right - left);
+
+  const y = (value) =>
+    bottom -
+    ((value - min) / (max - min)) * (bottom - top);
+
+  const format = (value) =>
+    unit === 'percent'
+      ? `${value.toFixed(0).replace('.', ',')}%`
+      : value.toFixed(2).replace('.', ',');
+
+  // Linha única: não divide antes/depois do aporte.
+  const segments = [];
+  let current = [];
+
+  rows.forEach((row, i) => {
+    if (Number.isFinite(row.value)) {
+      current.push(`${x(i)},${y(row.value)}`);
+    } else if (current.length) {
+      segments.push(current.join(' '));
+      current = [];
+    }
+  });
+
+  if (current.length) {
+    segments.push(current.join(' '));
+  }
+
+  // Cada aporte recebe sua própria posição no eixo temporal.
+  const marks = purchases.map((item, i) => {
+    const [year, month, day] = item.date
+      .split('-')
+      .map(Number);
+
+    const label =
+      `${monthNames[month - 1]}/${String(year).slice(-2)}`;
+
+    const monthIndex = timeline.indexOf(label);
+
+    if (monthIndex < 0) return null;
+
+    const days = new Date(
+      Date.UTC(year, month, 0)
+    ).getUTCDate();
+
+    // Evita sobreposição completa de aportes feitos no mesmo dia.
+    const overlap = purchases
+      .slice(0, i)
+      .filter((previous) => previous.date === item.date)
+      .length;
+
+    const position = (
+      monthIndex === 0
+        ? x(0)
+        : x(monthIndex - 1 + day / days)
+    ) + overlap * 2.5;
+
+    return {
+      ...item,
+      position,
+      label: item.date.split('-').reverse().join('/'),
+    };
+  }).filter(Boolean);
 
   return (
-    <div className="overflow-x-auto">
-      <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[420px] w-full"
-        role="img" aria-label={accessibleLabel}>
+    <div
+      className="overflow-x-auto"
+      data-tgar-all-contributions="true"
+    >
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="min-w-[420px] w-full"
+        role="img"
+        aria-label={accessibleLabel}
+      >
+        {/* Eixo Y */}
         {[min, (min + max) / 2, max].map((tick) => (
           <g key={tick}>
-            <line x1={left} x2={right} y1={y(tick)} y2={y(tick)}
-              stroke="currentColor" strokeOpacity="0.15" strokeDasharray="4 4" />
-            <text x={left - 6} y={y(tick) + 4} fontSize="11" opacity="0.65"
-              fill="currentColor" textAnchor="end">{format(tick)}</text>
+            <line
+              x1={left}
+              x2={right}
+              y1={y(tick)}
+              y2={y(tick)}
+              stroke="currentColor"
+              strokeOpacity="0.15"
+              strokeDasharray="4 4"
+            />
+            <text
+              x={left - 6}
+              y={y(tick) + 4}
+              fontSize="11"
+              opacity="0.65"
+              fill="currentColor"
+              textAnchor="end"
+            >
+              {format(tick)}
+            </text>
           </g>
         ))}
+
+        {/* Linha de referência, quando aplicável */}
         {reference !== null && (
-          <line x1={left} x2={right} y1={y(reference)} y2={y(reference)}
-            stroke="#94a3b8" strokeDasharray="2 4" strokeOpacity="0.65" />
+          <line
+            x1={left}
+            x2={right}
+            y1={y(reference)}
+            y2={y(reference)}
+            stroke="#94a3b8"
+            strokeDasharray="2 4"
+            strokeOpacity="0.65"
+          />
         )}
-        <rect x={dividerX} y={top} width={right - dividerX}
-          height={bottom - top} fill="#60a5fa" opacity="0.055" />
-        <line x1={dividerX} x2={dividerX} y1={top} y2={bottom}
-          stroke="#94a3b8" strokeDasharray="3 4" strokeWidth="1.4" />
-        <text x={dividerX + 5} y={top - 7} fontSize="10"
-          fill="currentColor" opacity="0.8">Compra 29/12/25</text>
-        {segments(0, buyIndex).map((points, index) => (
-          <polyline key={`before-${index}`} points={points} fill="none"
-            stroke={stroke} strokeWidth="2.7" strokeLinecap="round" strokeLinejoin="round" />
+
+        {/* Série histórica contínua */}
+        {segments.map((points, i) => (
+          <polyline
+            key={i}
+            points={points}
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         ))}
-        {segments(buyIndex, rows.length - 1).map((points, index) => (
-          <polyline key={`after-${index}`} points={points} fill="none"
-            stroke="#60a5fa" strokeDasharray="5 3" strokeWidth="2.7"
-            strokeLinecap="round" strokeLinejoin="round" />
+
+        {/* Pontos da série */}
+        {rows.map((row, i) =>
+          Number.isFinite(row.value) && (
+            <circle
+              key={row.month}
+              cx={x(i)}
+              cy={y(row.value)}
+              r={
+                row === valid[valid.length - 1]
+                  ? 4
+                  : 2.3
+              }
+              fill={stroke}
+            >
+              <title>
+                {row.month}: {format(row.value)}
+                {unit === 'percent' ? '' : ' R$/cota'}
+                {row.note || ''}
+              </title>
+            </circle>
+          )
+        )}
+
+        {/* Uma marcação vertical por aporte */}
+        {marks.map((mark, i) => (
+          <g key={`${mark.date}-${i}`}>
+            <line
+              x1={mark.position}
+              x2={mark.position}
+              y1={top}
+              y2={bottom}
+              stroke="#94a3b8"
+              strokeDasharray="3 4"
+              strokeWidth="1.4"
+            />
+
+            <circle
+              cx={mark.position}
+              cy={top}
+              r="3"
+              fill="#93c5fd"
+            />
+
+            <text
+              x={mark.position + 4}
+              y={top - 7 - (i % 2) * 9}
+              fontSize="10"
+              fill="currentColor"
+              opacity="0.85"
+            >
+              {mark.label.slice(0, 6) + mark.label.slice(-2)}
+            </text>
+
+            <title>
+              Aporte em {mark.label}:
+              {' '}{mark.qty || '?'} cota(s)
+              {mark.price
+                ? `, ${money(mark.price)}/cota`
+                : ''}
+            </title>
+          </g>
         ))}
-        {rows.map((row, i) => Number.isFinite(row.value) && (
-          <circle key={row.month} cx={x(i)} cy={y(row.value)}
-            r={i === TGAR_TIMELINE.length - 1 || row === valid[valid.length - 1] ? 4 : 2.3}
-            fill={i > buyIndex ? '#60a5fa' : stroke}>
-            <title>{row.month}: {format(row.value)}{unit === 'percent' ? '' : ' R$/cota'}. {row.note || ''}</title>
-          </circle>
-        ))}
-        {TGAR_TIMELINE.map((month, i) => (i % 4 === 0 || i === TGAR_TIMELINE.length - 1) && (
-          <text key={month} x={x(i)} y={bottom + 21} fontSize="10.5"
-            opacity="0.65" fill="currentColor" textAnchor="middle">{month}</text>
-        ))}
+
+        {/* Eixo X compartilhado */}
+        {timeline.map((month, i) =>
+          (i % 4 === 0 || i === timeline.length - 1) && (
+            <text
+              key={month}
+              x={x(i)}
+              y={bottom + 21}
+              fontSize="10.5"
+              opacity="0.65"
+              fill="currentColor"
+              textAnchor="middle"
+            >
+              {month}
+            </text>
+          )
+        )}
       </svg>
     </div>
   );
@@ -193,7 +416,7 @@ const SOURCES = [
   { label: 'Todos os informes mensais', url: 'https://brfiis.com.br/fundos/TGAR11/documentos?tipo=informes-periodicos' },
 ];
 
-export default function TgarPurchasePanel({ asOf, purchasePrice }) {
+export default function TgarPurchasePanel({ asOf, purchasePrice, contributions = [] }) {
   // Evita usar documentos de 23/12/25 para simular uma compra anterior.
   if (!asOf || asOf.slice(0, 10) < '2025-12-23') return null;
 
@@ -214,10 +437,10 @@ export default function TgarPurchasePanel({ asOf, purchasePrice }) {
     <div className="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
       <div>
         <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-          Sinais na compra · evolução até os últimos relatórios
+          Evolução histórica do TGAR11
         </h3>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Aporte em {contributionDate} · dados atualizados até 08/11/2026.
+          As datas dos aportes registrados aparecem nos quatro gráficos. Patrimônio e liquidez até set/26; rendimentos até out/26.
         </p>
       </div>
 
@@ -227,14 +450,14 @@ export default function TgarPurchasePanel({ asOf, purchasePrice }) {
             <p className="text-sm font-medium text-gray-900 dark:text-white">Valor patrimonial por cota</p>
             <span className="text-sm font-semibold text-rose-600 dark:text-rose-300">{navChange.toFixed(1).replace('.', ',')}%</span>
           </div>
-          <HistoryLine data={NAV} stroke="#f43f5e" contributionDate={contributionDate} contributionMonth={contributionMonth} accessibleLabel="Valor patrimonial por cota de dezembro de 2024 a setembro de 2026, com indicador do aporte" />
+          <HistoryLine contributions={contributions} data={NAV} stroke="#f43f5e" contributionDate={contributionDate} contributionMonth={contributionMonth} accessibleLabel="Valor patrimonial por cota de dezembro de 2024 a setembro de 2026, com indicador do aporte" />
         </div>
         <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium text-gray-900 dark:text-white">Rendimentos anunciados por cota</p>
             <span className="text-sm font-semibold text-amber-600 dark:text-amber-300">{dividendChange.toFixed(1).replace('.', ',')}%*</span>
           </div>
-          <HistoryLine data={DISTRIBUTIONS} stroke="#f59e0b" contributionDate={contributionDate} contributionMonth={contributionMonth} accessibleLabel="Rendimentos mensais anunciados de janeiro de 2024 a outubro de 2026, com indicador do aporte" />
+          <HistoryLine contributions={contributions} data={DISTRIBUTIONS} stroke="#f59e0b" contributionDate={contributionDate} contributionMonth={contributionMonth} accessibleLabel="Rendimentos mensais anunciados de janeiro de 2024 a outubro de 2026, com indicador do aporte" />
         </div>
       </div>
 
@@ -243,7 +466,7 @@ export default function TgarPurchasePanel({ asOf, purchasePrice }) {
           <p className="text-sm font-medium text-gray-900 dark:text-white">
             Ganho patrimonial acumulado ÷ proventos
           </p>
-          <HistoryLine data={TGAR_ECONOMIC_RATIO} unit="percent" reference={100}
+          <HistoryLine contributions={contributions} data={TGAR_ECONOMIC_RATIO} unit="percent" reference={100}
             stroke="#f43f5e" accessibleLabel="Ganho patrimonial aproximado, acumulado desde janeiro de 2025, por mês no eixo de dezembro de 2024 a outubro de 2026" />
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Estimativa = (variação do VP desde dez/24 + proventos) ÷ proventos desde jan/25.
@@ -254,7 +477,7 @@ export default function TgarPurchasePanel({ asOf, purchasePrice }) {
           <p className="text-sm font-medium text-gray-900 dark:text-white">
             Liquidez imediata ÷ rendimentos a distribuir
           </p>
-          <HistoryLine data={TGAR_LIQUIDITY} unit="percent" reference={100}
+          <HistoryLine contributions={contributions} data={TGAR_LIQUIDITY} unit="percent" reference={100}
             stroke="#f59e0b" accessibleLabel="Liquidez dividida por rendimentos a distribuir em cada informe mensal, dezembro de 2024 a setembro de 2026" />
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Informes B3/CVM: campo 9 ÷ campo 12, por competência. Linha 100% é só

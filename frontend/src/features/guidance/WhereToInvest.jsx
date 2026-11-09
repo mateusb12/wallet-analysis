@@ -667,7 +667,7 @@ export default function WhereToInvest() {
           </div>
 
           {selectedCategory === 'fii' && (
-            <FiiHealthPanel ticker={selectedTicker} purchaseDate={firstPurchaseDate} purchasePrice={firstPurchasePrice} />
+            <FiiHealthPanel ticker={selectedTicker} purchaseDate={firstPurchaseDate} purchasePrice={firstPurchasePrice} contributions={selectedPosition?.contributions || []} />
           )}
           {selectedPosition && (
             <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">

@@ -533,7 +533,7 @@ function TgarHistoryChart() {
   );
 }
 
-export default function FiiHealthPanel({ ticker, purchaseDate, purchasePrice }) {
+export default function FiiHealthPanel({ ticker, purchaseDate, purchasePrice, contributions = [] }) {
   const [mode, setMode] = useState('current');
   const asOf = mode === 'purchase' && purchaseDate ? purchaseDate : today();
   const current = useQuery({
@@ -623,7 +623,7 @@ export default function FiiHealthPanel({ ticker, purchaseDate, purchasePrice }) 
           </div>
           {ticker?.toUpperCase() === 'TGAR11' && mode === 'current' && <TgarHistoryChart />}
           {ticker?.toUpperCase() === 'TGAR11' && mode === 'purchase' && (
-            <TgarPurchasePanel asOf={asOf} purchasePrice={purchasePrice} />
+            <TgarPurchasePanel asOf={asOf} purchasePrice={purchasePrice} contributions={contributions} />
           )}
           {!(ticker?.toUpperCase() === 'TGAR11' && mode === 'purchase') && (
             <>
