@@ -15,7 +15,7 @@ const monthLabelFromDate = (date) => {
 // conhecidos até 29/12/2025; a série exibida continua depois do aporte.
 // Dez/24–out/25: relatório de out/25 publicado em 12/12/25, tabela p. 9.
 // Nov/25: informe mensal divulgado em 23/12/25 (FNET 1068335).
-const NAV = [
+export const NAV = [
   ['dez/24', 115.15], ['jan/25', 114.42], ['fev/25', 113.90],
   ['mar/25', 113.19], ['abr/25', 112.82], ['mai/25', 112.10],
   ['jun/25', 111.15], ['jul/25', 110.24], ['ago/25', 109.67],
@@ -28,7 +28,7 @@ const NAV = [
 
 // Rendimentos por mês de anúncio, conforme histórico oficial da gestora.
 // Dez/25 foi anunciado em 30/12/2025, após a compra.
-const DISTRIBUTIONS = [
+export const DISTRIBUTIONS = [
   ['jan/24', 1.32], ['fev/24', 1.33], ['mar/24', 1.33],
   ['abr/24', 1.34], ['mai/24', 1.35], ['jun/24', 1.33],
   ['jul/24', 1.22], ['ago/24', 1.12], ['set/24', 1.14],
@@ -57,7 +57,7 @@ const TGAR_TIMELINE = [
 // Fontes originais (https://fnet.bmfbovespa.com.br/fnet/publico/
 // exibirDocumento?cvm=true&id=ID): 909350, 881553, 947793,
 // 1015816, 1068335, 1096174, 1161646, 1249735 e 1352690.
-const TGAR_LIQUIDITY = [
+export const TGAR_LIQUIDITY = [
   ['dez/24',27.45,25.92], ['jan/25',30.2,23.6], ['fev/25',7.56,23.6],
   ['mar/25',38.39,23.6], ['abr/25',13.75,23.6], ['mai/25',22.52,23.6],
   ['jun/25',14.90,23.6], ['jul/25',14.0,23.6], ['ago/25',9.75,23.6],
@@ -76,7 +76,7 @@ const TGAR_LIQUIDITY = [
 // Usa apenas valores divulgados, sem preencher competências inexistentes.
 const TGAR_DISTRIBUTION_MAP = new Map(DISTRIBUTIONS.map(({ month, value }) => [month, value]));
 let tgarDistributed = 0;
-const TGAR_ECONOMIC_RATIO = NAV.slice(1).map(({ month, value }) => {
+export const TGAR_ECONOMIC_RATIO = NAV.slice(1).map(({ month, value }) => {
   const distributed = TGAR_DISTRIBUTION_MAP.get(month);
   if (distributed === undefined) return { month, value: null };
   tgarDistributed += distributed;

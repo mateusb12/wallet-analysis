@@ -3,6 +3,8 @@ import { ArrowUpRight, ShieldCheck } from 'lucide-react';
 import { fetchFiiChartData } from '../../services/b3service.js';
 import { fetchAssetHealth } from '../../services/walletDataService.js';
 import TgarPurchasePanel from './TgarPurchasePanel.jsx';
+import FiiHistoricalPanel from './FiiHistoricalPanel.jsx';
+import { FII_HEALTH_REPORTS } from './fiiHealthReports.js';
 
 const dateLabel = (value) => (value ? value.slice(0, 10).split('-').reverse().join('/') : '—');
 const chartDateLabel = (value) => {
@@ -383,7 +385,7 @@ function SharePriceCard({ ticker, referenceDate }) {
   );
 }
 
-export default function FiiHealthPanel({
+function LegacyFiiHealthPanel({
   ticker,
   purchaseDate,
   purchasePrice,
@@ -587,4 +589,21 @@ export default function FiiHealthPanel({
       )}
     </section>
   );
+}
+
+// Painel configurável: cada fundo define suas séries e indicadores.
+// Fundos sem histórico cadastrado preservam a implementação anterior.
+export default function FiiHealthPanel(props) {
+  const ticker = String(props.ticker || '').toUpperCase();
+  const report = FII_HEALTH_REPORTS[ticker];
+
+  return report
+    ? (
+      <FiiHistoricalPanel
+        report={report}
+        contributions={props.contributions || []}
+        purchasePrice={props.purchasePrice}
+      />
+    )
+    : <LegacyFiiHealthPanel {...props} />;
 }
